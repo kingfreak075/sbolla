@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sbolla Manager v3.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #e2e8f0; }
+        ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        .badge { padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+        .badge-green { background-color: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+        .badge-yellow { background-color: #fefce8; color: #854d0e; border: 1px solid #fde047; }
+        .badge-gray { background-color: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+        .wp-reperibilita { color: #dc2626; font-weight: 800; }
+        .wp-normale { color: #16a34a; font-weight: 800; }
+        .wp-consuntivo { color: #2563eb; font-weight: 800; }
+        .price-input { background: #fff; border: 1px solid #cbd5e1; border-radius: 4px; color: #0f172a; font-weight: 700; text-align: right; width: 100%; padding: 4px 8px; transition: all 0.2s; font-family: monospace; font-size: 13px; }
+        .price-input:focus { border-color: #3b82f6; outline: none; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); color: #2563eb; }
+        .price-input:disabled { background: #f8fafc; color: #94a3b8; border-color: transparent; cursor: not-allowed; }
+        .price-historical { color: #1e40af; background: #eff6ff; border-color: #bfdbfe; }
+        .nav-tab { padding: 0 1.5rem; height: 100%; display: flex; align-items: center; color: #94a3b8; font-weight: 500; font-size: 0.875rem; border-bottom: 3px solid transparent; transition: all 0.2s; }
+        .nav-tab:hover { color: white; }
+        .nav-tab.active { color: white; border-bottom-color: #3b82f6; background: rgba(255,255,255,0.05); }
+        .loader-ring { display: inline-block; width: 40px; height: 40px; }
+        .loader-ring:after { content: " "; display: block; width: 32px; height: 32px; margin: 4px; border-radius: 50%; border: 3px solid #3b82f6; border-color: #3b82f6 transparent #3b82f6 transparent; animation: loader-ring 1.2s linear infinite; }
+        @keyframes loader-ring { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .animate-slide-up { animation: slideUp 0.3s ease-out; }
+        @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    </style>
+</head>
+<body class="text-slate-800">
+
+    <!-- Script iniziale per caricamento storico -->
+  <!-- Script per caricamento automatico sbolla.json -->
+<script>
+    // Variabili globali
+    let storicoInterventi = null;
+    let debugMode = true;
+
+    console.log("==========================================");
+    console.log("🚀 Sbolla Manager v3.0 - Avvio");
+    console.log("==========================================");
+
+    // Funzione per caricare storico all'avvio
+    async function caricaStoricoAvvio() {
+        console.log("📂 Tentativo caricamento sbolla.json...");
+        try {
+            const response = await fetch('sbolla.json');
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status} - File non trovato`);
+            }
+            storicoInterventi = await response.json();
+            console.log("✅ Storico caricato con successo!");
+            console.log("📊 Dati storico:", {
+                interventi: storicoInterventi.interventi?.length || 0,
+                fileName: storicoInterventi.fileName,
+                timestamp: storicoInterventi.timestamp
+            });
+            
+            // Calcola statistiche rapide
+            if (storicoInterventi.interventi) {
+                let storici = 0, nuovi = 0;
+                storicoInterventi.interventi.forEach(row => {
+                    const costo = parseFloat(row['COSTO']);
+                    if (!isNaN(costo) && costo > 0) storici++;
+                    else nuovi++;
+                });
+                console.log(`📈 Statistiche storico: ${storicoInterventi.interventi.length} totali (${storici} storici, ${nuovi} nuovi)`);
+            }
+            
+            // Salva in una variabile globale accessibile
+            window.storicoInterventi = storicoInterventi;
+            
+            mostraNotifica('✅ Storico caricato', 'success');
+            
+            // Se appData è già stato inizializzato, ricalcola le medie
+            if (typeof window.calcolaMedieComponenti === 'function') {
+                console.log("🔄 Ricalcolo medie con storico...");
+                window.calcolaMedieComponenti();
+            }
+            
+        } catch (error) {
+            console.log("❌ Errore caricamento storico:", error.message);
+            storicoInterventi = null;
+            window.storicoInterventi = null;
+            mostraNotifica('⚠️ Nessuno storico trovato', 'warning');
+        }
+    }
+
+    function mostraNotifica(testo, tipo) {
+        // Crea notifica se non esiste già
+        if (document.getElementById('notifica-storico')) return;
+        
+        const notifica = document.createElement('div');
+        notifica.id = 'notifica-storico';
+        notifica.className = `fixed bottom-4 right-4 z-50 bg-white rounded-lg shadow-xl border p-4 max-w-sm animate-slide-up ${
+            tipo === 'success' ? 'border-emerald-200' : 'border-amber-200'
+        }`;
+        notifica.innerHTML = `
+            <div class="flex items-start gap-3">
+                <span class="text-2xl">${tipo === 'success' ? '✅' : '⚠️'}</span>
+                <div>
+                    <h4 class="font-bold ${tipo === 'success' ? 'text-emerald-600' : 'text-amber-600'}">${testo}</h4>
+                    <p class="text-xs text-slate-500 mt-1">
+                        ${tipo === 'success' 
+                            ? `${storicoInterventi?.interventi?.length || 0} interventi caricati` 
+                            : 'Crea sbolla.json con admin.html e mettilo nella stessa cartella'}
+                    </p>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(notifica);
+        setTimeout(() => {
+            const n = document.getElementById('notifica-storico');
+            if (n) n.remove();
+        }, 5000);
+    }
+
+    // Avvia caricamento IMMEDIATAMENTE
+    caricaStoricoAvvio();
+</script>
+
+    <header class="bg-slate-900 text-white shadow-md z-40 h-16 flex-none flex justify-between items-center px-6">
+        <div class="flex items-center gap-3 w-64">
+            <div class="bg-blue-600 w-8 h-8 rounded flex items-center justify-center font-bold text-white shadow shadow-blue-500/50">KF</div>
+            <div>
+                <h1 class="font-bold text-lg leading-tight">Buono Prezzo del King</h1>
+                <div class="text-[10px] text-slate-400">Sbolla Manager v3.0</div>
+            </div>
+        </div>
+        
+        <div class="flex h-full">
+            <button onclick="window.switchTab('pricing')" id="tab-btn-pricing" class="nav-tab active">💰 Pricing</button>
+            <button onclick="window.switchTab('analytics')" id="tab-btn-analytics" class="nav-tab">📊 Analisi</button>
+        </div>
+
+        <div class="flex items-center gap-3 w-auto justify-end">
+            <input type="file" id="sessionInput" accept=".json" class="hidden" onchange="window.loadSessionFile(this)">
+            <input type="file" id="storicoInput" accept=".json" class="hidden" onchange="window.caricaStoricoFile(this)">
+            
+            <div class="flex gap-1">
+                <button onclick="window.downloadSession()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded border border-slate-700 transition" title="Scarica backup JSON">💾 Salva</button>
+                <button onclick="document.getElementById('sessionInput').click()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded border border-slate-700 transition" title="Carica backup JSON">📂 Carica</button>
+                <button onclick="document.getElementById('storicoInput').click()" class="text-xs bg-indigo-800 hover:bg-indigo-700 text-slate-300 px-3 py-1.5 rounded border border-indigo-700 transition" title="Carica storico JSON">📚 Storico</button>
+            </div>
+
+            <div class="h-8 w-px bg-slate-700 mx-1"></div>
+
+            <div class="bg-slate-800 px-3 py-1 rounded border border-slate-700 text-right">
+                <span class="block text-[10px] text-slate-400 uppercase font-bold">Totale Stimato</span>
+                <span class="block text-emerald-400 font-mono font-bold text-lg leading-none" id="header-total">€ 0,00</span>
+            </div>
+            
+            <!-- Menu configurazione -->
+            <div class="relative" id="settings-menu-container">
+                <button onclick="window.toggleSettingsMenu()" class="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition" title="Menu Configurazione">⚙️</button>
+                <div id="settings-menu" class="hidden absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 z-50 py-1 overflow-hidden">
+                    <div class="px-4 py-2 bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        Configurazione
+                    </div>
+                    <button onclick="window.toggleSettings(); window.toggleSettingsMenu()" class="w-full text-left px-4 py-3 hover:bg-blue-50 text-slate-700 text-sm flex items-center gap-3 transition">
+                        <span class="text-xl bg-blue-100 w-8 h-8 rounded-full flex items-center justify-center text-blue-600">💰</span>
+                        <div>
+                            <div class="font-bold">Tariffe Orarie</div>
+                            <div class="text-[10px] text-slate-400">OA, OM, SA, moltiplicatori</div>
+                        </div>
+                    </button>
+                    <button onclick="window.apriListinoModal(); window.toggleSettingsMenu()" class="w-full text-left px-4 py-3 hover:bg-indigo-50 text-slate-700 text-sm flex items-center gap-3 transition border-t border-slate-100">
+                        <span class="text-xl bg-indigo-100 w-8 h-8 rounded-full flex items-center justify-center text-indigo-600">📋</span>
+                        <div>
+                            <div class="font-bold">Listino Componenti</div>
+                            <div class="text-[10px] text-slate-400">Prezzi per codice</div>
+                        </div>
+                    </button>
+                    <div class="border-t border-slate-100 my-1"></div>
+                    <button onclick="window.esportaListinoExcel(); window.toggleSettingsMenu()" class="w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-600 text-sm flex items-center gap-3">
+                        <span class="text-lg w-8 text-center">📊</span> Esporta Listino Excel
+                    </button>
+                    <button onclick="document.getElementById('import-listino-excel-input').click(); window.toggleSettingsMenu()" class="w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-600 text-sm flex items-center gap-3">
+                        <span class="text-lg w-8 text-center">📥</span> Importa Listino Excel
+                    </button>
+                </div>
+            </div>
+
+            <!-- Debug panel -->
+            <div class="relative group" id="debug-storico-container">
+                <button onclick="window.toggleDebugPanel()" class="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition" title="Info storico">
+                    📊
+                </button>
+                <div id="debug-storico-panel" class="hidden absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 overflow-hidden">
+                    <div class="bg-gradient-to-r from-indigo-600 to-blue-600 px-4 py-3 text-white">
+                        <h3 class="font-bold flex items-center gap-2">
+                            <span>📚</span> Database Storico
+                        </h3>
+                    </div>
+                    <div class="p-4 space-y-3">
+                        <div id="debug-status" class="text-sm">Verifica in corso...</div>
+                        <div id="debug-stats" class="grid grid-cols-2 gap-2 text-xs hidden">
+                            <div class="bg-slate-50 p-2 rounded">
+                                <div class="text-slate-400">Interventi</div>
+                                <div class="text-lg font-bold" id="debug-totale">0</div>
+                            </div>
+                            <div class="bg-slate-50 p-2 rounded">
+                                <div class="text-slate-400">Storici</div>
+                                <div class="text-lg font-bold text-emerald-600" id="debug-storici">0</div>
+                            </div>
+                            <div class="bg-slate-50 p-2 rounded">
+                                <div class="text-slate-400">Da prezzare</div>
+                                <div class="text-lg font-bold text-blue-600" id="debug-nuovi">0</div>
+                            </div>
+                            <div class="bg-slate-50 p-2 rounded">
+                                <div class="text-slate-400">Codici</div>
+                                <div class="text-lg font-bold text-indigo-600" id="debug-codici">0</div>
+                            </div>
+                        </div>
+                        <div id="debug-file" class="text-xs bg-slate-100 p-2 rounded hidden">
+                            <div class="font-medium text-slate-600">Ultimo aggiornamento</div>
+                            <div class="text-slate-500" id="debug-data">-</div>
+                            <div class="text-slate-500 text-[10px] mt-1 truncate" id="debug-nomefile">-</div>
+                        </div>
+                        <div id="debug-corrente" class="text-xs bg-blue-50 p-2 rounded hidden">
+                            <div class="font-medium text-blue-600">File corrente</div>
+                            <div class="text-slate-600" id="debug-corrente-nome">Nessuno</div>
+                            <div class="text-slate-500 text-[10px] mt-1" id="debug-corrente-stats">-</div>
+                        </div>
+                        <div class="flex gap-2 pt-2 border-t border-slate-100">
+                            <button onclick="window.ricaricaStorico()" class="flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold py-2 rounded transition">🔄 Ricarica</button>
+                            <button onclick="window.nascondiDebugPanel()" class="flex-1 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold py-2 rounded transition">✕ Chiudi</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex gap-1">
+                <button onclick="window.exportFiltered()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded shadow text-sm font-bold flex items-center gap-2 transition" title="Scarica solo la vista attuale">📤 Filtro</button>
+                <button onclick="window.exportExcel()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded shadow text-sm font-bold flex items-center gap-2 transition" title="Scarica file completo">📥 Master</button>
+            </div>
+        </div>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden relative w-full">
+        <!-- Sidebar -->
+        <aside class="w-72 bg-white border-r border-slate-200 flex flex-col z-30 shadow-sm hidden" id="sidebar">
+            <div class="p-4 border-b border-slate-100 bg-slate-50">
+                <input type="text" id="searchBox" placeholder="🔍 Cerca Job, Via, Impianto..." class="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+            <div class="flex-1 overflow-y-auto p-4 space-y-6">
+                <div class="flex items-center justify-between bg-blue-50 p-3 rounded border border-blue-100">
+                    <span class="text-xs font-bold text-blue-900">Mostra Storico</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="toggle-history" class="sr-only peer" onchange="window.applyFilters()">
+                        <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+                <div><label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Venditore</label><select id="filter-venditore" onchange="window.applyFilters()" class="w-full text-sm border-slate-200 rounded p-2 bg-white focus:ring-2 focus:ring-blue-100 outline-none"><option value="ALL">Tutti</option></select></div>
+                <div><label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Contratto</label><select id="filter-contract" onchange="window.applyFilters()" class="w-full text-sm border-slate-200 rounded p-2 bg-white focus:ring-2 focus:ring-blue-100 outline-none"><option value="ALL">Tutti</option></select></div>
+                <div><label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Periodo</label><div class="flex gap-2"><input type="date" id="filter-date-start" onchange="window.applyFilters()" class="w-full text-xs border-slate-200 rounded bg-white p-1.5 outline-none"><input type="date" id="filter-date-end" onchange="window.applyFilters()" class="w-full text-xs border-slate-200 rounded bg-white p-1.5 outline-none"></div></div>
+                <div><label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Tipo Intervento</label><select id="filter-workperf" onchange="window.applyFilters()" class="w-full text-sm border-slate-200 rounded p-2 bg-white focus:ring-2 focus:ring-blue-100 outline-none"><option value="ALL">Tutti</option></select></div>
+                
+                <!-- Azioni Massive -->
+                <div class="pt-4 border-t border-slate-100">
+                    <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Azioni Massive</label>
+                    <div class="grid grid-cols-2 gap-2"><button onclick="window.massAdjust(1.10)" class="bg-blue-50 text-blue-700 border border-blue-200 rounded px-2 py-1.5 text-xs hover:bg-blue-100 font-bold transition">+10%</button><button onclick="window.massAdjust(0.90)" class="bg-red-50 text-red-700 border border-red-200 rounded px-2 py-1.5 text-xs hover:bg-red-100 font-bold transition">-10%</button></div>
+                </div>
+                
+                <!-- Storico Ricerche -->
+                <div class="pt-4 border-t border-slate-100">
+                    <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Storico Ricerche</label>
+                    <div class="space-y-1">
+                        <button onclick="window.salvaRicercaCorrente()" class="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded px-2 py-1.5 text-xs font-bold transition flex items-center justify-center gap-1">💾 Salva ricerca corrente</button>
+                        <div id="ricerche-salvate" class="max-h-40 overflow-y-auto space-y-1 mt-2"></div>
+                        <button onclick="window.storicoRicerche = []; window.salvaStoricoRicerche(); window.aggiornaMenuRicerche();" class="w-full text-slate-400 hover:text-red-500 text-[10px] transition text-center mt-1">Cancella cronologia</button>
+                    </div>
+                </div>
+            </div>
+            <div class="p-4 border-t border-slate-200 bg-slate-50 text-center flex-none"><button onclick="window.resetFilters()" class="text-xs text-slate-500 hover:text-blue-600 font-medium w-full py-2 hover:bg-white rounded border border-transparent hover:border-slate-200 transition">Resetta Filtri</button></div>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col relative bg-white overflow-hidden">
+            <!-- Upload Overlay -->
+            <div id="upload-overlay" class="absolute inset-0 z-40 bg-slate-50 flex items-center justify-center p-4">
+                <div class="bg-white rounded-2xl shadow-xl p-12 text-center max-w-lg w-full border border-slate-100">
+                    <div class="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner"><span class="text-4xl">📂</span></div>
+                    <h2 class="text-3xl font-bold text-slate-800 mb-2">Carica File Interventi</h2>
+                    <p class="text-slate-500 mb-8">Seleziona il file Excel con gli interventi da prezzare</p>
+                    <input type="file" id="fileInput" accept=".xlsx, .xls, .csv" class="hidden">
+                    <button onclick="document.getElementById('fileInput').click()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-xl transition shadow-lg transform hover:-translate-y-1">Seleziona File</button>
+                    <div id="loader" class="hidden mt-8"><div class="loader-ring"></div><p class="text-sm text-slate-400 mt-2">Elaborazione in corso...</p></div>
+                </div>
+            </div>
+
+            <!-- Pricing View -->
+            <main id="main-content" class="flex-1 flex flex-col hidden h-full overflow-hidden">
+                <div class="bg-white border-b border-slate-200 px-6 py-3 flex justify-between items-center shadow-sm flex-none z-20">
+                    <div class="flex items-center gap-3">
+                        <h2 class="font-bold text-slate-700 text-lg">Elenco Interventi</h2>
+                        <span class="bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md text-xs font-mono border border-slate-200" id="row-count">0</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-bold text-slate-400 uppercase">Ordina per:</span>
+                        <select id="sort-order" onchange="window.applySorting()" class="text-xs border border-slate-300 rounded px-2 py-1.5 bg-white focus:border-blue-500 outline-none font-medium text-slate-600">
+                            <option value="date-desc">📅 Data (Recenti)</option>
+                            <option value="date-asc">📅 Data (Vecchi)</option>
+                            <option value="impianto-asc">🏢 Impianto (A-Z)</option>
+                            <option value="addr-asc">📍 Indirizzo (A-Z)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-auto bg-white relative">
+                    <table class="w-full text-sm text-left border-collapse">
+                        <thead class="bg-slate-50 text-slate-500 font-semibold sticky top-0 z-10 shadow-sm text-xs uppercase tracking-wide">
+                            <tr>
+                                <th class="px-4 py-3 border-b border-slate-200 w-32">Job / Data</th>
+                                <th class="px-4 py-3 border-b border-slate-200 w-28">Impianto</th>
+                                <th class="px-4 py-3 border-b border-slate-200 w-56">Indirizzo / Venditore</th>
+                                <th class="px-4 py-3 border-b border-slate-200 w-20">Contratto</th>
+                                <th class="px-4 py-3 border-b border-slate-200 w-96">Tipologia</th>
+                                <th class="px-4 py-3 border-b border-slate-200 text-center w-16">Durata</th>
+                                <th class="px-4 py-3 border-b border-slate-200 text-center w-16">Info</th>
+                                <th class="px-4 py-3 border-b border-slate-200 text-right w-32">Prezzo (€)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pricing-table-body" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+            </main>
+
+            <!-- Analytics View -->
+            <div id="view-analytics" class="hidden flex-1 overflow-auto bg-slate-50 p-6 w-full">
+                <!-- Verrà popolato da analisi.js -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Modali Vari -->
+    <div id="details-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+            <div class="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 rounded-t-xl">
+                <div><h3 class="text-lg font-bold text-slate-800" id="modal-title">Dettaglio</h3><p class="text-xs text-slate-500" id="modal-subtitle"></p></div>
+                <button onclick="window.closeDetails()" class="text-slate-400 hover:text-red-500 text-2xl">&times;</button>
+            </div>
+            <div class="flex-1 overflow-auto p-0">
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-slate-100 text-slate-600 font-semibold text-xs uppercase sticky top-0 shadow-sm z-10">
+                        <tr><th class="px-4 py-3 w-10">Info</th><th class="px-4 py-3">Componente</th><th class="px-4 py-3">Descrizione</th><th class="px-4 py-3 text-center">Qtà</th><th class="px-4 py-3 text-center">Min</th><th class="px-4 py-3 text-right w-32">Prezzo (€)</th></tr>
+                    </thead>
+                    <tbody id="modal-body" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+            <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 text-right"><button onclick="window.closeDetails()" class="px-6 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg font-bold shadow-lg">Chiudi e Salva</button></div>
+        </div>
+    </div>
+
+    <div id="info-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto">
+            <div class="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-blue-50 rounded-t-xl">
+                <h3 class="text-lg font-bold text-blue-800">ℹ️ Scheda Tecnica</h3>
+                <button onclick="document.getElementById('info-modal').classList.add('hidden')" class="text-blue-400 hover:text-blue-700 text-2xl">&times;</button>
+            </div>
+            <div class="p-6 space-y-6" id="info-modal-content"></div>
+        </div>
+    </div>
+
+    <div id="settings-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl p-8">
+            <h3 class="text-xl font-bold text-slate-800 mb-6">Configurazione Tariffe</h3>
+            <div class="grid grid-cols-2 gap-4 mb-6">
+                <div><label class="text-xs font-bold text-slate-500">OA (€/h)</label><input type="number" id="cfg-oa" class="w-full border rounded p-2 font-bold" value="75"></div>
+                <div><label class="text-xs font-bold text-slate-500">OM (€/h)</label><input type="number" id="cfg-om" class="w-full border rounded p-2 font-bold" value="85"></div>
+                <div><label class="text-xs font-bold text-slate-500">SA/P (€/h)</label><input type="number" id="cfg-sa" class="w-full border rounded p-2 font-bold" value="90"></div>
+                <div><label class="text-xs font-bold text-slate-500">Urgenza (x)</label><input type="number" id="cfg-urg" class="w-full border rounded p-2 font-bold" value="1.4" step="0.1"></div>
+                <div class="col-span-2">
+                    <label class="text-xs font-bold text-slate-500">Arrotondamento</label>
+                    <select id="cfg-rounding" class="w-full border rounded p-2 font-bold">
+                        <option value="1">Nessuno (€ 1)</option>
+                        <option value="5" selected>A 5 €</option>
+                        <option value="10">A 10 €</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex justify-end gap-2">
+                <button onclick="window.toggleSettings()" class="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded">Annulla</button>
+                <button onclick="window.saveSettings()" class="px-4 py-2 bg-blue-600 text-white font-bold rounded">Salva</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modale Listino -->
+    <div id="listino-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div class="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-gradient-to-r from-indigo-50 to-blue-50">
+                <div>
+                    <h3 class="text-xl font-bold text-indigo-800 flex items-center gap-2">📋 Listino Prezzi Componenti <span class="text-xs bg-indigo-100 text-indigo-600 px-2 py-1 rounded-full">Intelligente</span></h3>
+                    <p class="text-xs text-indigo-600 mt-1">Prezzi medi calcolati dagli storici</p>
+                </div>
+                <button onclick="window.chiudiListinoModal()" class="text-slate-400 hover:text-red-500 text-2xl">&times;</button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-6">
+                <div class="mb-4 flex justify-between items-center">
+                    <div class="text-sm text-slate-500" id="listino-stats">Caricamento...</div>
+                    <div class="flex gap-2">
+                        <button onclick="window.ricalcolaMedie()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1">🔄 Ricalcola Medie</button>
+                        <button onclick="window.salvaListinoDaModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg text-sm font-bold shadow-md flex items-center gap-1">💾 Salva Modifiche</button>
+                    </div>
+                </div>
+                <div class="border border-slate-200 rounded-xl overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead class="bg-slate-100 text-slate-600 font-semibold text-xs uppercase sticky top-0">
+                            <tr><th class="px-4 py-3 text-left">Codice</th><th class="px-4 py-3 text-left">Categoria</th><th class="px-4 py-3 text-left">Descrizione</th><th class="px-4 py-3 text-right">Occorrenze</th><th class="px-4 py-3 text-right">Prezzo Medio (€)</th><th class="px-4 py-3 text-right w-48">Prezzo Listino (€)</th></tr>
+                        </thead>
+                        <tbody id="listino-table-body" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
+                <div class="text-xs text-slate-400">💡 Clicca sulla pillola 💡 per applicare il prezzo</div>
+                <button onclick="window.chiudiListinoModal()" class="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg transition text-sm font-medium">Chiudi</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modale Scelta Iniziale -->
+    <div id="scelta-iniziale-modal" class="hidden fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
+            <div class="px-6 py-5 bg-gradient-to-r from-indigo-600 to-blue-600 text-white">
+                <h3 class="text-2xl font-bold flex items-center gap-2">📊 Sbolla Manager</h3>
+                <p class="text-indigo-100 text-sm mt-1" id="scelta-nome-file">Caricamento in corso...</p>
+            </div>
+            <div class="p-6">
+                <div class="grid grid-cols-3 gap-4 mb-8">
+                    <div class="bg-slate-50 p-4 rounded-xl text-center border border-slate-200"><div class="text-2xl font-bold text-slate-800" id="scelta-totale">0</div><div class="text-xs text-slate-500">Interventi totali</div></div>
+                    <div class="bg-slate-50 p-4 rounded-xl text-center border border-slate-200"><div class="text-2xl font-bold text-emerald-600" id="scelta-storici">0</div><div class="text-xs text-slate-500">Prezzi storici</div></div>
+                    <div class="bg-slate-50 p-4 rounded-xl text-center border border-slate-200"><div class="text-2xl font-bold text-blue-600" id="scelta-da-prezzare">0</div><div class="text-xs text-slate-500">Da prezzare</div></div>
+                </div>
+                <h4 class="font-bold text-slate-700 mb-3">Come vuoi procedere?</h4>
+                <div class="space-y-3">
+                    <label class="block border border-slate-200 rounded-xl p-4 hover:border-indigo-200 hover:bg-indigo-50/20 cursor-pointer transition">
+                        <div class="flex items-start gap-3"><input type="radio" name="scelta-prezzi" value="vuoti" class="mt-1"><div><div class="font-bold text-slate-700">Lascia vuoti i prezzi nuovi</div><div class="text-xs text-slate-500">Tutti gli interventi non storici partiranno da € 0</div></div></div>
+                    </label>
+                    <label class="block border border-slate-200 rounded-xl p-4 hover:border-indigo-200 hover:bg-indigo-50/20 cursor-pointer transition">
+                        <div class="flex items-start gap-3"><input type="radio" name="scelta-prezzi" value="json" class="mt-1"><div><div class="font-bold text-slate-700">Carica sessione precedente</div><div class="text-xs text-slate-500">Seleziona un file JSON con i prezzi già impostati</div></div></div>
+                    </label>
+                    <label class="block border border-slate-200 rounded-xl p-4 hover:border-indigo-200 hover:bg-indigo-50/20 cursor-pointer transition">
+                        <div class="flex items-start gap-3"><input type="radio" name="scelta-prezzi" value="medi" class="mt-1" checked><div><div class="font-bold text-slate-700">Calcola prezzi medi</div><div class="text-xs text-slate-500">Usa la media degli storici come punto di partenza</div></div></div>
+                    </label>
+                </div>
+                <input type="file" id="json-scelta-input" accept=".json" class="hidden" onchange="window.anteprimaJSON(this)">
+                <div class="flex justify-end gap-3 mt-8">
+                    <button onclick="window.chiudiSceltaIniziale()" class="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-lg transition">Annulla</button>
+                    <button onclick="window.confermaSceltaIniziale()" class="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-lg transition">Applica</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Input nascosti -->
+    <input type="file" id="import-listino-excel-input" accept=".xlsx, .xls" class="hidden" onchange="window.importaListinoExcel(this)">
+
+    <!-- Script files -->
+    <script src="app.js"></script>
+    <script src="analisi.js"></script>
+</body>
+</html>
