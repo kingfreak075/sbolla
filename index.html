@@ -158,35 +158,52 @@
             </div>
             
             <!-- Menu configurazione -->
-            <div class="relative" id="settings-menu-container">
-                <button onclick="window.toggleSettingsMenu()" class="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition" title="Menu Configurazione">⚙️</button>
-                <div id="settings-menu" class="hidden absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 z-50 py-1 overflow-hidden">
-                    <div class="px-4 py-2 bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                        Configurazione
-                    </div>
-                    <button onclick="window.toggleSettings(); window.toggleSettingsMenu()" class="w-full text-left px-4 py-3 hover:bg-blue-50 text-slate-700 text-sm flex items-center gap-3 transition">
-                        <span class="text-xl bg-blue-100 w-8 h-8 rounded-full flex items-center justify-center text-blue-600">💰</span>
-                        <div>
-                            <div class="font-bold">Tariffe Orarie</div>
-                            <div class="text-[10px] text-slate-400">OA, OM, SA, moltiplicatori</div>
-                        </div>
-                    </button>
-                    <button onclick="window.apriListinoModal(); window.toggleSettingsMenu()" class="w-full text-left px-4 py-3 hover:bg-indigo-50 text-slate-700 text-sm flex items-center gap-3 transition border-t border-slate-100">
-                        <span class="text-xl bg-indigo-100 w-8 h-8 rounded-full flex items-center justify-center text-indigo-600">📋</span>
-                        <div>
-                            <div class="font-bold">Listino Componenti</div>
-                            <div class="text-[10px] text-slate-400">Prezzi per codice</div>
-                        </div>
-                    </button>
-                    <div class="border-t border-slate-100 my-1"></div>
-                    <button onclick="window.esportaListinoExcel(); window.toggleSettingsMenu()" class="w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-600 text-sm flex items-center gap-3">
-                        <span class="text-lg w-8 text-center">📊</span> Esporta Listino Excel
-                    </button>
-                    <button onclick="document.getElementById('import-listino-excel-input').click(); window.toggleSettingsMenu()" class="w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-600 text-sm flex items-center gap-3">
-                        <span class="text-lg w-8 text-center">📥</span> Importa Listino Excel
-                    </button>
-                </div>
+           <!-- Menu configurazione -->
+<div class="relative" id="settings-menu-container">
+    <button onclick="window.toggleSettingsMenu()" class="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition" title="Menu Configurazione">⚙️</button>
+    <div id="settings-menu" class="hidden absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 z-50 py-1 overflow-hidden">
+        <div class="px-4 py-2 bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider">
+            Configurazione
+        </div>
+        
+        <!-- Tariffe Orarie -->
+        <button onclick="window.toggleSettings(); window.toggleSettingsMenu()" class="w-full text-left px-4 py-3 hover:bg-blue-50 text-slate-700 text-sm flex items-center gap-3 transition">
+            <span class="text-xl bg-blue-100 w-8 h-8 rounded-full flex items-center justify-center text-blue-600">💰</span>
+            <div>
+                <div class="font-bold">Tariffe Orarie</div>
+                <div class="text-[10px] text-slate-400">OA, OM, SA, moltiplicatori</div>
             </div>
+        </button>
+        
+        <!-- Listino Componenti -->
+        <button onclick="window.apriListinoModal(); window.toggleSettingsMenu()" class="w-full text-left px-4 py-3 hover:bg-indigo-50 text-slate-700 text-sm flex items-center gap-3 transition border-t border-slate-100">
+            <span class="text-xl bg-indigo-100 w-8 h-8 rounded-full flex items-center justify-center text-indigo-600">📋</span>
+            <div>
+                <div class="font-bold">Listino Componenti</div>
+                <div class="text-[10px] text-slate-400">Prezzi per codice</div>
+            </div>
+        </button>
+        
+        <!-- GESTIONE STORICO - NUOVO LINK -->
+        <button onclick="window.open('admin.html', '_blank')" class="w-full text-left px-4 py-3 hover:bg-purple-50 text-slate-700 text-sm flex items-center gap-3 transition border-t border-slate-100">
+            <span class="text-xl bg-purple-100 w-8 h-8 rounded-full flex items-center justify-center text-purple-600">📚</span>
+            <div>
+                <div class="font-bold">Gestione Storico</div>
+                <div class="text-[10px] text-slate-400">Crea/aggiorna sbolla.json</div>
+            </div>
+        </button>
+        
+        <div class="border-t border-slate-100 my-1"></div>
+        
+        <!-- Export/Import Listino Excel -->
+        <button onclick="window.esportaListinoExcel(); window.toggleSettingsMenu()" class="w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-600 text-sm flex items-center gap-3">
+            <span class="text-lg w-8 text-center">📊</span> Esporta Listino Excel
+        </button>
+        <button onclick="document.getElementById('import-listino-excel-input').click(); window.toggleSettingsMenu()" class="w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-600 text-sm flex items-center gap-3">
+            <span class="text-lg w-8 text-center">📥</span> Importa Listino Excel
+        </button>
+    </div>
+</div>
 
             <!-- Debug panel -->
             <div class="relative group" id="debug-storico-container">
