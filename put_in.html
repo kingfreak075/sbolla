@@ -1,0 +1,2078 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KAPPA BOLLE - Gestione Interventi</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-color: #f0f2f5;
+        }
+        
+        /* Barra superiore per upload */
+        .upload-bar {
+            background-color: white;
+            padding: 10px 20px;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .upload-area {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .file-input-label {
+            background-color: #0d6efd;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .file-input-label:hover {
+            background-color: #0b5ed7;
+        }
+        
+        #fileInput {
+            display: none;
+        }
+        
+        .sheet-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .sheet-selector select {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #ced4da;
+            background-color: white;
+            min-width: 200px;
+        }
+        
+        .export-btn {
+            background-color: #198754;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .export-btn:hover {
+            background-color: #157347;
+        }
+        
+        .export-btn:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .debug-info {
+            background-color: #e9ecef;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            color: #495057;
+        }
+        
+        .debug-info.success {
+            background-color: #d1e7dd;
+            color: #0f5132;
+        }
+        
+        .debug-info.error {
+            background-color: #f8d7da;
+            color: #842029;
+        }
+        
+        /* Layout principale */
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        /* Sidebar sinistra - 20% */
+        .sidebar {
+            width: 20%;
+            background-color: #1e2b3a;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #2c3e50;
+        }
+        
+        .sidebar-header {
+            padding: 15px 15px;
+            border-bottom: 1px solid #2c3e50;
+        }
+        
+        .sidebar-header h2 {
+            font-size: 1rem;
+            font-weight: 400;
+            color: #a0b8cc;
+        }
+        
+        .sidebar-header h1 {
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+        
+        .interventi-count {
+            margin-top: 8px;
+            font-size: 0.85rem;
+            color: #8aa4bc;
+        }
+        
+        /* Filtri nella sidebar */
+        .filters-section {
+            padding: 15px;
+            background-color: #2c3e50;
+            border-bottom: 1px solid #34495e;
+        }
+        
+        .filter-group {
+            margin-bottom: 15px;
+        }
+        
+        .filter-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: #8aa4bc;
+            margin-bottom: 5px;
+            letter-spacing: 0.5px;
+        }
+        
+        .filter-select, .filter-input {
+            width: 100%;
+            padding: 8px 10px;
+            border-radius: 6px;
+            border: none;
+            background-color: #34495e;
+            color: white;
+            font-size: 0.85rem;
+        }
+        
+        .filter-select option {
+            background-color: #2c3e50;
+        }
+        
+        .filter-input::placeholder {
+            color: #6c859e;
+        }
+        
+        .reset-filters {
+            background-color: #4a5f73;
+            color: white;
+            border: none;
+            padding: 8px;
+            border-radius: 6px;
+            width: 100%;
+            cursor: pointer;
+            font-size: 0.85rem;
+            margin-top: 5px;
+        }
+        
+        .reset-filters:hover {
+            background-color: #5d748b;
+        }
+        
+        /* Lista interventi - RAGGRUPPATA PER JOB */
+        .interventi-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+        
+        .job-item {
+            background-color: #2c3e50;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+            position: relative;
+        }
+        
+        .job-item:hover {
+            background-color: #34495e;
+            transform: translateY(-1px);
+        }
+        
+        .job-item.selected {
+            background-color: #0d6efd;
+            border-left-color: #ffc107;
+        }
+        
+        .job-item .job-code {
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-bottom: 3px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .job-item .task-count {
+            font-size: 0.65rem;
+            background-color: #4a5f73;
+            padding: 2px 6px;
+            border-radius: 10px;
+        }
+        
+        .job-item.selected .task-count {
+            background-color: #0b5ed7;
+        }
+        
+        .job-item .indirizzo {
+            font-size: 0.75rem;
+            color: #cbd5e0;
+            margin-bottom: 5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .job-item .badge-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px;
+        }
+        
+        .job-item .badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 0.6rem;
+            font-weight: 600;
+            background-color: #4a5f73;
+            color: white;
+        }
+        
+        .job-item.selected .badge {
+            background-color: #0b5ed7;
+        }
+        
+        .job-item .check-indicator {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            color: #10b981;
+            font-size: 0.8rem;
+        }
+        
+        /* Contenuto principale destro - 80% */
+        .main-content {
+            width: 80%;
+            display: flex;
+            flex-direction: column;
+            background-color: #f8fafc;
+            overflow: hidden;
+        }
+        
+        .main-header {
+            background-color: white;
+            padding: 12px 20px;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .nav-arrows {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .nav-arrow {
+            background: none;
+            border: 1px solid #dee2e6;
+            border-radius: 20px;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 1.2rem;
+            color: #495057;
+            transition: all 0.2s;
+        }
+        
+        .nav-arrow:hover:not(:disabled) {
+            background-color: #e9ecef;
+            border-color: #adb5bd;
+        }
+        
+        .nav-arrow:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+        
+        .main-header h2 {
+            font-weight: 400;
+            color: #2c3e50;
+            font-size: 1.1rem;
+        }
+        
+        .main-header h2 span {
+            font-weight: 600;
+            color: #0d6efd;
+        }
+        
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .status-badge {
+            background-color: #10b981;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+        
+        .register-btn {
+            background-color: #ffc107;
+            color: #1e2b3a;
+            border: none;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .register-btn:hover {
+            background-color: #ffca2c;
+        }
+        
+        .register-btn.registered {
+            background-color: #198754;
+            color: white;
+        }
+        
+        .detail-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+        
+        .no-selection {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            color: #94a3b8;
+            font-size: 1rem;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        /* Card - stesso stile */
+        .detail-card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            padding: 12px 15px;
+            margin-bottom: 12px;
+        }
+        
+        .detail-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #1e2b3a;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .detail-title i {
+            margin-right: 6px;
+            color: #0d6efd;
+            font-size: 1rem;
+        }
+        
+        /* Badge impianto cliccabile */
+        .impianto-badge {
+            background-color: #e9ecef;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: #0d6efd;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .impianto-badge:hover {
+            background-color: #0d6efd;
+            color: white;
+        }
+        
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+        
+        .detail-item {
+            margin-bottom: 5px;
+        }
+        
+        .detail-label {
+            font-size: 0.65rem;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-bottom: 2px;
+        }
+        
+        .detail-value {
+            font-size: 0.85rem;
+            color: #1e293b;
+            font-weight: 500;
+            word-break: break-word;
+            background-color: #f8fafc;
+            padding: 5px 8px;
+            border-radius: 4px;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .full-width {
+            grid-column: span 2;
+        }
+        
+        /* Sezione X e Y in alto */
+        .xy-section {
+            background-color: #f8f9fa;
+            border-left: 4px solid #0d6efd;
+            margin-bottom: 15px;
+        }
+        
+        .xy-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        
+        .xy-item .detail-value {
+            background-color: #fff3cd;
+            border-color: #ffecb5;
+            font-weight: 600;
+        }
+        
+        .component-badge {
+            display: inline-block;
+            background-color: #e9ecef;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            color: #495057;
+            margin-right: 5px;
+            margin-bottom: 5px;
+        }
+        
+        .task-description {
+            background-color: #f0f9ff;
+            border-left: 3px solid #0d6efd;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 10px;
+        }
+        
+        .task-description .detail-label {
+            color: #0d6efd;
+            margin-bottom: 5px;
+        }
+        
+        .task-description .detail-value {
+            background-color: transparent;
+            border: none;
+            padding: 0;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+        
+        /* Container per task multiple */
+        .tasks-container {
+            margin-top: 10px;
+        }
+        
+        .task-item {
+            background-color: #f8f9fa;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 15px;
+            border-left: 3px solid #0d6efd;
+        }
+        
+        .task-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.75rem;
+            color: #64748b;
+        }
+        
+        .task-component {
+            font-weight: 600;
+            color: #0d6efd;
+        }
+        
+        .task-footer {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+        
+        .task-cost {
+            font-weight: 600;
+            color: #198754;
+        }
+        
+        .total-cost {
+            background-color: #e9ecef;
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-weight: 600;
+            text-align: right;
+            margin-top: 15px;
+            font-size: 1rem;
+        }
+        
+        .footer-info {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            gap: 20px;
+            color: #64748b;
+            font-size: 0.75rem;
+        }
+        
+        /* Toast notifica */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: #1e2b3a;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .toast.show {
+            opacity: 1;
+        }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 3px;
+        }
+        
+        .sidebar ::-webkit-scrollbar-track {
+            background: #2c3e50;
+        }
+        
+        .sidebar ::-webkit-scrollbar-thumb {
+            background: #4a5f73;
+        }
+
+        /* Stili per il pulsante statistiche */
+        .stats-btn {
+            background-color: #6f42c1;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .stats-btn:hover {
+            background-color: #5a32a3;
+        }
+
+        .stats-btn:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+
+        /* Stili per il modale */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+
+        .modal-content {
+            background-color: white;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 1200px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+        }
+
+        .modal-header {
+            padding: 20px 25px;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #f8fafc;
+            border-radius: 12px 12px 0 0;
+        }
+
+        .modal-header h2 {
+            font-size: 1.4rem;
+            color: #1e2b3a;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.8rem;
+            cursor: pointer;
+            color: #64748b;
+            line-height: 1;
+        }
+
+        .modal-close:hover {
+            color: #1e2b3a;
+        }
+
+        .modal-body {
+            padding: 25px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .modal-footer {
+            padding: 15px 25px;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            background-color: #f8fafc;
+            border-radius: 0 0 12px 12px;
+        }
+
+        .modal-footer button {
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .export-pdf-btn {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .export-pdf-btn:hover {
+            background-color: #c82333;
+        }
+
+        .export-excel-btn {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .export-excel-btn:hover {
+            background-color: #218838;
+        }
+
+        .export-mancanti-btn {
+            background-color: #ffc107;
+            color: #1e2b3a;
+        }
+
+        .export-mancanti-btn:hover {
+            background-color: #e0a800;
+        }
+
+        .modal-close-btn {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        .modal-close-btn:hover {
+            background-color: #5a6268;
+        }
+
+        /* Stili per le tabelle delle statistiche */
+        .stats-section {
+            margin-bottom: 30px;
+        }
+
+        .stats-section h3 {
+            font-size: 1.1rem;
+            color: #1e2b3a;
+            margin-bottom: 15px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: #64748b;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 1.6rem;
+            font-weight: 600;
+            color: #1e2b3a;
+            line-height: 1.2;
+        }
+
+        .stat-value small {
+            font-size: 0.9rem;
+            font-weight: 400;
+            color: #64748b;
+        }
+
+        .stats-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        .stats-table th {
+            text-align: left;
+            padding: 10px;
+            background-color: #f1f5f9;
+            color: #475569;
+            font-weight: 600;
+        }
+
+        .stats-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .stats-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .stats-table .total-row {
+            background-color: #f8fafc;
+            font-weight: 600;
+        }
+
+        .stats-table .text-right {
+            text-align: right;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background-color: #e2e8f0;
+            border-radius: 4px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background-color: #0d6efd;
+            border-radius: 4px;
+        }
+
+        .job-mancanti-list {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+        }
+
+        .job-mancanti-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 15px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .job-mancanti-item:last-child {
+            border-bottom: none;
+        }
+
+        .job-mancanti-item:hover {
+            background-color: #f8fafc;
+        }
+
+        .job-mancanti-info {
+            flex: 2;
+        }
+
+        .job-mancanti-job {
+            font-weight: 600;
+            color: #0d6efd;
+        }
+
+        .job-mancanti-details {
+            font-size: 0.8rem;
+            color: #64748b;
+        }
+
+        .job-mancanti-costo {
+            font-weight: 600;
+            color: #198754;
+            min-width: 100px;
+            text-align: right;
+        }
+    </style>
+    <!-- Libreria per leggere file Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+    <!-- Toast per notifiche -->
+    <div id="toast" class="toast"></div>
+    
+    <!-- Barra superiore per upload -->
+    <div class="upload-bar">
+        <div class="upload-area">
+            <label for="fileInput" class="file-input-label">
+                <span>📂</span> Carica file Excel
+            </label>
+            <input type="file" id="fileInput" accept=".xlsx, .xls, .csv">
+            
+            <div class="sheet-selector" id="sheetSelectorContainer" style="display: none;">
+                <span style="color: #495057;">Foglio:</span>
+                <select id="sheetSelector"></select>
+            </div>
+        </div>
+        
+        <button id="exportBtn" class="export-btn" disabled>
+            <span>💾</span> Esporta Excel con CHECK
+        </button>
+        
+        <div style="display: flex; align-items: center; gap: 10px; margin-left: auto;">
+            <button id="statsBtn" class="stats-btn" disabled onclick="openStatsModal()">
+                <span>📊</span> Statistiche
+            </button>
+            <div id="debugInfo" class="debug-info">Nessun file caricato</div>
+        </div>
+    </div>
+    
+    <!-- Contenitore principale -->
+    <div class="main-container">
+        <!-- Sidebar sinistra - Lista JOB (raggruppati) -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2>KAPPA BOLLE</h2>
+                <h1 id="fileName">NOVEMBRE 2025</h1>
+                <div class="interventi-count" id="interventi-count">0 job</div>
+            </div>
+            
+            <!-- Filtri avanzati -->
+            <div class="filters-section">
+                <div class="filter-group">
+                    <div class="filter-label">🔍 Ricerca testo</div>
+                    <input type="text" class="filter-input" id="searchText" placeholder="Job, impianto o indirizzo..." oninput="filterJobs()">
+                </div>
+                
+                <div class="filter-group">
+                    <div class="filter-label">👤 Venditore</div>
+                    <select class="filter-select" id="filterVenditore" onchange="filterJobs()">
+                        <option value="">Tutti i venditori</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <div class="filter-label">📄 Contract template</div>
+                    <select class="filter-select" id="filterContract" onchange="filterJobs()">
+                        <option value="">Tutti i contratti</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <div class="filter-label">🔧 Lavoro performed</div>
+                    <select class="filter-select" id="filterWork" onchange="filterJobs()">
+                        <option value="">Tutti i lavori</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <div class="filter-label">✅ Stato CHECK</div>
+                    <select class="filter-select" id="filterCheck" onchange="filterJobs()">
+                        <option value="">Tutti</option>
+                        <option value="checked">Registrati (OK)</option>
+                        <option value="unchecked">Da registrare</option>
+                    </select>
+                </div>
+                <!-- Aggiungi questo nel filtro-section, dopo il filtro Stato CHECK -->
+<div class="filter-group">
+    <div class="filter-label">💰 Filtro Costo</div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+        <input type="checkbox" id="filterCosto" onchange="filterJobs()" style="width: 16px; height: 16px;">
+        <label for="filterCosto" style="color: white; font-size: 0.85rem;">Solo job con costo > 0</label>
+    </div>
+</div>
+                <button class="reset-filters" onclick="resetFilters()">Reset filtri</button>
+            </div>
+            
+            <div class="interventi-list" id="interventiList"></div>
+        </div>
+        
+        <!-- Contenuto principale destro - Dettaglio JOB con tutte le sue task -->
+        <div class="main-content">
+            <div class="main-header">
+                <div class="header-left">
+                    <div class="nav-arrows">
+                        <button class="nav-arrow" id="prevJob" onclick="navigateJob(-1)" disabled>◀</button>
+                        <button class="nav-arrow" id="nextJob" onclick="navigateJob(1)" disabled>▶</button>
+                    </div>
+                    <h2>Job <span id="selectedJob"></span></h2>
+                </div>
+                
+                <div class="header-right">
+                    <div class="status-badge" id="workType-badge"></div>
+                    <button id="registerBtn" class="register-btn" onclick="toggleJobCheck()">
+                        <span>✅</span> Registra
+                    </button>
+                </div>
+            </div>
+            
+            <div class="detail-content" id="detailContent">
+                <div class="no-selection">
+                    <div>
+                        <h3>👈 Seleziona un job dalla lista</h3>
+                        <p style="margin-top: 10px; color: #94a3b8;">Carica un file Excel per iniziare</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modale statistiche -->
+    <div id="statsModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📊 Statistiche Job</h2>
+                <button class="modal-close" onclick="closeStatsModal()">×</button>
+            </div>
+            
+            <div class="modal-body" id="statsContent">
+                <!-- Il contenuto viene generato dinamicamente -->
+            </div>
+            
+            <div class="modal-footer">
+                <button class="export-pdf-btn" onclick="exportStatsPDF()">
+                    <span>📄</span> Esporta PDF
+                </button>
+                <button class="export-excel-btn" onclick="exportStatsExcel()">
+                    <span>📊</span> Esporta Excel
+                </button>
+                <button class="export-mancanti-btn" onclick="exportMancantiExcel()">
+                    <span>📋</span> Esporta Job Mancanti
+                </button>
+                <button class="modal-close-btn" onclick="closeStatsModal()">Chiudi</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Variabili globali
+        let workbook = null;
+        let allRows = [];                 // Tutte le righe dal file
+        let jobs = [];                    // Job raggruppati (UN elemento per job)
+        let filteredJobs = [];             // Job dopo filtri
+        let selectedJobIndex = 0;
+        let checkMap = new Map();          // Mappa jobId -> true/false (CHECK sul JOB)
+        
+        // Mostra notifica toast
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.style.backgroundColor = type === 'success' ? '#198754' : '#1e2b3a';
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+        
+        // Copia negli appunti
+        async function copyToClipboard(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                showToast(`✅ Copiato: ${text}`, 'success');
+            } catch (err) {
+                showToast('❌ Errore nella copia');
+            }
+        }
+        
+        // Funzione per formattare la data
+        function formatDate(dateString) {
+            if (!dateString) return 'N/D';
+            try {
+                if (typeof dateString === 'number') {
+                    const date = XLSX.SSF.parse_date_code(dateString);
+                    if (date) {
+                        return `${date.d.toString().padStart(2,'0')}/${date.m.toString().padStart(2,'0')}/${date.y} ${date.H.toString().padStart(2,'0')}:${date.M.toString().padStart(2,'0')}`;
+                    }
+                } else {
+                    const date = new Date(dateString.replace(' ', 'T'));
+                    if (!isNaN(date)) {
+                        return date.toLocaleString('it-IT', {
+                            day: '2-digit', month: '2-digit', year: 'numeric',
+                            hour: '2-digit', minute: '2-digit'
+                        });
+                    }
+                }
+                return dateString;
+            } catch {
+                return dateString;
+            }
+        }
+
+        // Raggruppa le righe per Job (colonna D)
+        function groupJobsByJobId(rows) {
+            const jobMap = new Map();
+            
+            rows.forEach(row => {
+                const jobId = row.job; // Questo è il JOB dalla colonna D
+                if (!jobId) return;
+                
+                if (!jobMap.has(jobId)) {
+                    jobMap.set(jobId, {
+                        job: jobId,
+                        impianto: row.impianto,
+                        indirizzo: row.indirizzo,
+                        tasks: [],
+                        venditori: new Set(),
+                        contratti: new Set(),
+                        lavori: new Set(),
+                        workType: row.workType,
+                        cliente: row.cliente,
+                        amministratore: row.amministratore
+                    });
+                }
+                
+                const job = jobMap.get(jobId);
+                job.tasks.push(row);
+                if (row.venditore) job.venditori.add(row.venditore);
+                if (row.contractTemplate) job.contratti.add(row.contractTemplate);
+                if (row.localWorkPerformed) job.lavori.add(row.localWorkPerformed);
+            });
+            
+            return Array.from(jobMap.values());
+        }
+
+        // Funzione per caricare file Excel
+        async function handleFileUpload(file) {
+            const debugInfo = document.getElementById('debugInfo');
+            debugInfo.className = 'debug-info';
+            debugInfo.textContent = 'Caricamento in corso...';
+            
+            try {
+                const data = await file.arrayBuffer();
+                workbook = XLSX.read(data, { type: 'array' });
+                
+                const sheetNames = workbook.SheetNames;
+                const sheetSelector = document.getElementById('sheetSelector');
+                sheetSelector.innerHTML = sheetNames.map(name => 
+                    `<option value="${name}">${name}</option>`
+                ).join('');
+                
+                document.getElementById('sheetSelectorContainer').style.display = 'flex';
+                document.getElementById('exportBtn').disabled = false;
+                
+                loadSheet(sheetNames[0]);
+                
+            } catch (error) {
+                debugInfo.className = 'debug-info error';
+                debugInfo.textContent = `❌ Errore: ${error.message}`;
+                console.error(error);
+            }
+        }
+
+        // Funzione per caricare un foglio specifico
+        function loadSheet(sheetName) {
+            if (!workbook) return;
+            
+            const debugInfo = document.getElementById('debugInfo');
+            const sheet = workbook.Sheets[sheetName];
+            const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+            
+            // Cerca l'intestazione
+            let headerRow = -1;
+            for (let i = 0; i < Math.min(20, data.length); i++) {
+                const row = data[i];
+                if (row && row.some(cell => 
+                    typeof cell === 'string' && 
+                    (cell.includes('JobTask') || cell.includes('Impiantodiriferimento'))
+                )) {
+                    headerRow = i;
+                    break;
+                }
+            }
+            
+            if (headerRow === -1) {
+                debugInfo.className = 'debug-info error';
+                debugInfo.textContent = '❌ Foglio non riconosciuto: intestazioni non trovate';
+                return;
+            }
+            
+            const headers = data[headerRow];
+            
+            // Cerca se esiste già una colonna CHECK
+            const checkColIndex = headers.findIndex(h => h === 'CHECK');
+            
+            // Mappa indici colonne - IMPORTANTE: Job è alla colonna D (indice 3)
+            const colIndex = {
+                jobTask: 0, // Colonna A
+                job: 3,     // Colonna D - QUESTO È IL JOB!
+                impianto: headers.findIndex(h => h && h.includes('Impiantodiriferimento')),
+                indirizzo: headers.findIndex(h => h && h.includes('Indrizzo Edificio')),
+                scheduledDate: headers.findIndex(h => h && h.includes('ScheduledDate')),
+                venditore: headers.findIndex(h => h && h.includes('Venditore')),
+                cliente: headers.findIndex(h => h && h.includes('Cliente')),
+                amministratore: headers.findIndex(h => h && h.includes('Amministratore')),
+                workType: headers.findIndex(h => h && h.includes('WorkType')),
+                contractTemplate: headers.findIndex(h => h && h.includes('Contract template')),
+                localWorkPerformed: headers.findIndex(h => h && h.includes('LocalWorkPerformed')),
+                componentCategory: headers.findIndex(h => h && h.includes('LocalComponentCategory')),
+                component: headers.findIndex(h => h && h.includes('LocalComponent')),
+                quantity: headers.findIndex(h => h && h.includes('Quantity')),
+                employeeId: headers.findIndex(h => h && h.includes('LocalEmployeeId')),
+                taskDescription: headers.findIndex(h => h && h.includes('TaskDescription')),
+                tempoLavoro: headers.findIndex(h => h && h.includes('Tempo Lavoro')),
+                acceptedTime: headers.findIndex(h => h && h.includes('AcceptedTime')),
+                jobCompletedDate: headers.findIndex(h => h && h.includes('JobCompletedDate')),
+                costo: headers.findIndex(h => h && h.includes('COSTO')),
+                note: headers.findIndex(h => h && h.includes('NOTE')),
+                dataModifica: headers.findIndex(h => h && h.includes('Data modifica')),
+                x: 23, // Colonna X
+                y: 24  // Colonna Y
+            };
+            
+            // Estrai tutte le righe
+            allRows = [];
+            
+            // Pulisci la checkMap prima di ricaricare
+            checkMap.clear();
+            
+            for (let i = headerRow + 1; i < data.length; i++) {
+                const row = data[i];
+                if (!row || row.length === 0) continue;
+                if (row.every(cell => cell === undefined || cell === null || cell === '')) continue;
+                
+                const jobId = row[3] || ''; // Colonna D - JOB
+                const checkValue = (checkColIndex !== -1 && row[checkColIndex]) ? row[checkColIndex] : '';
+                
+                // Se c'è un OK, registralo nella checkMap
+                if (jobId && checkValue === 'OK') {
+                    checkMap.set(jobId, true);
+                }
+                
+                allRows.push({
+                    jobTask: row[0] || '',                    // Colonna A
+                    job: jobId,                                // Colonna D - QUESTO È IL JOB!
+                    impianto: row[colIndex.impianto] || '',
+                    indirizzo: row[colIndex.indirizzo] || '',
+                    scheduledDate: row[colIndex.scheduledDate] || '',
+                    venditore: row[colIndex.venditore] || '',
+                    cliente: row[colIndex.cliente] || '',
+                    amministratore: row[colIndex.amministratore] || '',
+                    workType: row[colIndex.workType] || '',
+                    contractTemplate: row[colIndex.contractTemplate] || '',
+                    localWorkPerformed: row[colIndex.localWorkPerformed] || '',
+                    componentCategory: row[colIndex.componentCategory] || '',
+                    component: row[colIndex.component] || '',
+                    quantity: row[colIndex.quantity] || '',
+                    employeeId: row[colIndex.employeeId] || '',
+                    taskDescription: row[colIndex.taskDescription] || '',
+                    tempoLavoro: row[colIndex.tempoLavoro] || '',
+                    acceptedTime: row[colIndex.acceptedTime] || '',
+                    jobCompletedDate: row[colIndex.jobCompletedDate] || '',
+                    costo: row[colIndex.costo] || '',
+                    note: row[colIndex.note] || '',
+                    dataModifica: row[colIndex.dataModifica] || '',
+                    x: row[23] || '',
+                    y: row[24] || ''
+                });
+            }
+            
+            // Raggruppa per Job
+            jobs = groupJobsByJobId(allRows);
+            
+            // Aggiorna filtri
+            updateFilterOptions();
+            
+            // Reset filtri e mostra dati
+            resetFilters();
+            
+            // Abilita pulsante statistiche
+            document.getElementById('statsBtn').disabled = jobs.length === 0;
+            
+            document.getElementById('fileName').textContent = sheetName;
+            debugInfo.className = 'debug-info success';
+            debugInfo.textContent = `✅ ${jobs.length} job, ${allRows.length} task`;
+        }
+        
+        // Funzione per aggiornare le opzioni dei filtri
+        function updateFilterOptions() {
+            const venditori = new Set();
+            const contratti = new Set();
+            const lavori = new Set();
+            
+            jobs.forEach(job => {
+                job.venditori.forEach(v => venditori.add(v));
+                job.contratti.forEach(c => contratti.add(c));
+                job.lavori.forEach(l => lavori.add(l));
+            });
+            
+            const selectVenditore = document.getElementById('filterVenditore');
+            selectVenditore.innerHTML = '<option value="">Tutti i venditori</option>' + 
+                Array.from(venditori).sort().map(v => `<option value="${v}">${v}</option>`).join('');
+            
+            const selectContract = document.getElementById('filterContract');
+            selectContract.innerHTML = '<option value="">Tutti i contratti</option>' + 
+                Array.from(contratti).sort().map(c => `<option value="${c}">${c}</option>`).join('');
+            
+            const selectWork = document.getElementById('filterWork');
+            selectWork.innerHTML = '<option value="">Tutti i lavori</option>' + 
+                Array.from(lavori).sort().map(l => `<option value="${l}">${l}</option>`).join('');
+        }
+
+        // Funzione per filtrare i job
+    // Funzione per filtrare i job (MODIFICATA con filtro costo)
+function filterJobs() {
+    const searchText = document.getElementById('searchText').value.toLowerCase();
+    const filtroVenditore = document.getElementById('filterVenditore').value;
+    const filtroContract = document.getElementById('filterContract').value;
+    const filtroWork = document.getElementById('filterWork').value;
+    const filtroCheck = document.getElementById('filterCheck').value;
+    const filtroCosto = document.getElementById('filterCosto')?.checked || false; // NUOVO
+    
+    filteredJobs = jobs.filter(job => {
+        // Calcola costo totale del job
+        let costoTotaleJob = 0;
+        job.tasks.forEach(task => {
+            const costo = parseFloat(task.costo);
+            if (!isNaN(costo)) costoTotaleJob += costo;
+        });
+        
+        const matchesSearch = searchText === '' || 
+            job.job.toLowerCase().includes(searchText) ||
+            job.impianto.toLowerCase().includes(searchText) ||
+            job.indirizzo.toLowerCase().includes(searchText);
+        
+        const matchesVenditore = !filtroVenditore || job.venditori.has(filtroVenditore);
+        const matchesContract = !filtroContract || job.contratti.has(filtroContract);
+        const matchesWork = !filtroWork || job.lavori.has(filtroWork);
+        
+        const isChecked = checkMap.get(job.job) || false;
+        const matchesCheck = 
+            filtroCheck === '' ? true :
+            filtroCheck === 'checked' ? isChecked :
+            !isChecked;
+        
+        // NUOVO: filtro costo
+        const matchesCosto = !filtroCosto || costoTotaleJob > 0;
+        
+        return matchesSearch && matchesVenditore && matchesContract && matchesWork && matchesCheck && matchesCosto;
+    });
+    
+    document.getElementById('interventi-count').innerHTML = `${filteredJobs.length} job`;
+    renderJobList();
+    
+    if (filteredJobs.length > 0) {
+        selectedJobIndex = 0;
+        showJobDetail(0);
+        updateNavButtons();
+    } else {
+        document.getElementById('detailContent').innerHTML = `
+            <div class="no-selection">
+                <div>
+                    <h3>🔍 Nessun job trovato</h3>
+                    <p style="margin-top: 10px;">Prova a modificare i filtri</p>
+                </div>
+            </div>
+        `;
+        document.getElementById('prevJob').disabled = true;
+        document.getElementById('nextJob').disabled = true;
+    }
+}
+        // Funzione per resettare i filtri
+     // Funzione per resettare i filtri (MODIFICATA)
+function resetFilters() {
+    document.getElementById('searchText').value = '';
+    document.getElementById('filterVenditore').value = '';
+    document.getElementById('filterContract').value = '';
+    document.getElementById('filterWork').value = '';
+    document.getElementById('filterCheck').value = '';
+    const filterCosto = document.getElementById('filterCosto');
+    if (filterCosto) filterCosto.checked = false; // NUOVO
+    filterJobs();
+}
+        // Funzione per renderizzare la lista dei JOB (UNA VOCE PER JOB)
+        function renderJobList() {
+            const listElement = document.getElementById('interventiList');
+            listElement.innerHTML = filteredJobs.map((job, index) => {
+                const isChecked = checkMap.get(job.job) || false;
+                const primoVenditore = Array.from(job.venditori)[0] || '';
+                const primoContratto = Array.from(job.contratti)[0] || '';
+                const primoLavoro = Array.from(job.lavori)[0] || '';
+                
+                return `
+                    <div class="job-item ${index === selectedJobIndex ? 'selected' : ''}" 
+                         onclick="showJobDetail(${index})">
+                        ${isChecked ? '<div class="check-indicator">✅</div>' : ''}
+                        <div class="job-code">
+                            <span>${job.job}</span>
+                            <span class="task-count">${job.tasks.length}</span>
+                        </div>
+                        <div class="indirizzo">${job.indirizzo || 'N/D'}</div>
+                        <div class="badge-container">
+                            <span class="badge">${primoVenditore.split(' ')[0] || '?'}</span>
+                            <span class="badge">${primoContratto || '?'}</span>
+                            <span class="badge">${primoLavoro || '?'}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Funzione per mostrare il dettaglio del JOB con TUTTE le sue task
+        function showJobDetail(index) {
+            if (filteredJobs.length === 0) return;
+            
+            selectedJobIndex = index;
+            const job = filteredJobs[index];
+            
+            // Aggiorna selezione
+            document.querySelectorAll('.job-item').forEach((item, i) => {
+                if (i === index) item.classList.add('selected');
+                else item.classList.remove('selected');
+            });
+            
+            // Aggiorna header con il JOB
+            document.getElementById('selectedJob').innerText = job.job || 'N/D';
+            document.getElementById('workType-badge').innerText = job.workType || 'N/D';
+            
+            // Aggiorna bottone registrazione (CHECK a livello di JOB)
+            const registerBtn = document.getElementById('registerBtn');
+            const isChecked = checkMap.get(job.job) || false;
+            registerBtn.classList.toggle('registered', isChecked);
+            registerBtn.innerHTML = isChecked ? 
+                '<span>✅</span> Registrato' : 
+                '<span>⏳</span> Registra';
+            
+            // Calcola costi totali
+            let costoTotale = 0;
+            job.tasks.forEach(task => {
+                const costo = parseFloat(task.costo);
+                if (!isNaN(costo)) costoTotale += costo;
+            });
+            
+            // Prepara HTML per TUTTE le task del job
+            const tasksHtml = job.tasks.map(task => {
+                const costo = parseFloat(task.costo);
+                return `
+                    <div class="task-item">
+                        <div class="task-header">
+                            <span class="task-component">${task.componentCategory || 'N/D'} - ${task.component || 'N/D'}</span>
+                            <span>${task.employeeId || 'N/D'}</span>
+                        </div>
+                        <div class="detail-label" style="margin-top: 5px;">📝 DESCRIZIONE</div>
+                        <div class="task-description" style="margin-top: 0;">
+                            <div class="detail-value">${(task.taskDescription || 'Nessuna descrizione').replace(/<br>/g, '<br>')}</div>
+                        </div>
+                        <div class="task-footer">
+                            <span>Quantità: ${task.quantity || '1'}</span>
+                            <span class="task-cost">€ ${!isNaN(costo) ? costo.toFixed(2) : '0.00'}</span>
+                        </div>
+                        ${task.x || task.y ? `
+                        <div style="margin-top: 8px; font-size: 0.7rem; color: #856404; background-color: #fff3cd; padding: 5px 8px; border-radius: 4px;">
+                            <strong>X/Y:</strong> X: ${task.x || '—'} | Y: ${task.y || '—'}
+                        </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+            
+            // Prendi X e Y dalla prima task (se esistono)
+            const firstTask = job.tasks[0] || {};
+            
+            // Renderizza dettaglio con TUTTE le task
+            const detailContent = document.getElementById('detailContent');
+            detailContent.innerHTML = `
+                <!-- Sezione X e Y in alto (dalla prima task) -->
+                <div class="detail-card xy-section">
+                    <div class="detail-title">
+                        <span>💰 COSTI E NOTE AGGIUNTIVE (Colonne X e Y)</span>
+                    </div>
+                    <div class="xy-grid">
+                        <div class="xy-item">
+                            <div class="detail-label">Colonna X (Costo intervento?)</div>
+                            <div class="detail-value">${firstTask.x || 'Non specificato'}</div>
+                        </div>
+                        <div class="xy-item">
+                            <div class="detail-label">Colonna Y (Note?)</div>
+                            <div class="detail-value">${firstTask.y || 'Nessuna nota'}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Informazioni generali con badge impianto cliccabile -->
+                <div class="detail-card">
+                    <div class="detail-title">
+                        <span>📋 INFORMAZIONI GENERALI</span>
+                        <span class="impianto-badge" onclick="copyToClipboard('${job.impianto}')" title="Clicca per copiare">
+                            📋 ${job.impianto}
+                        </span>
+                    </div>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <div class="detail-label">Job</div>
+                            <div class="detail-value">${job.job}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Data Intervento</div>
+                            <div class="detail-value">${formatDate(firstTask.scheduledDate)}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Impianto</div>
+                            <div class="detail-value">${job.impianto || 'N/D'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Indirizzo</div>
+                            <div class="detail-value">${job.indirizzo || 'N/D'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Cliente</div>
+                            <div class="detail-value">${job.cliente || 'N/D'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Amministratore</div>
+                            <div class="detail-value">${job.amministratore || 'N/D'}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- TUTTE LE TASK DEL JOB -->
+                <div class="detail-card">
+                    <div class="detail-title">
+                        <span>🔧 TASK ESEGUITE (${job.tasks.length})</span>
+                        <span>Totale: € ${costoTotale.toFixed(2)}</span>
+                    </div>
+                    
+                    <div class="tasks-container">
+                        ${tasksHtml}
+                        
+                        <div class="total-cost">
+                            TOTALE COMPLESSIVO: € ${costoTotale.toFixed(2)}
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Note generali (dalla prima task) -->
+                <div class="footer-info">
+                    <div><span>📝</span> Note: ${firstTask.note || 'Nessuna nota'}</div>
+                </div>
+            `;
+            
+            updateNavButtons();
+        }
+
+        // Navigazione tra job
+        function navigateJob(direction) {
+            const newIndex = selectedJobIndex + direction;
+            if (newIndex >= 0 && newIndex < filteredJobs.length) {
+                showJobDetail(newIndex);
+                
+                const listItems = document.querySelectorAll('.job-item');
+                if (listItems[newIndex]) {
+                    listItems[newIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                }
+            }
+        }
+
+        // Aggiorna stato bottoni navigazione
+        function updateNavButtons() {
+            document.getElementById('prevJob').disabled = selectedJobIndex <= 0;
+            document.getElementById('nextJob').disabled = selectedJobIndex >= filteredJobs.length - 1;
+        }
+
+        // Toggle CHECK per il job corrente
+        function toggleJobCheck() {
+            if (filteredJobs.length === 0) return;
+            
+            const job = filteredJobs[selectedJobIndex];
+            const currentState = checkMap.get(job.job) || false;
+            const newState = !currentState;
+            
+            checkMap.set(job.job, newState);
+            
+            const registerBtn = document.getElementById('registerBtn');
+            registerBtn.classList.toggle('registered', newState);
+            registerBtn.innerHTML = newState ? 
+                '<span>✅</span> Registrato' : 
+                '<span>⏳</span> Registra';
+            
+            renderJobList();
+            
+            showToast(newState ? '✅ Job registrato' : '⏳ Registrazione rimossa', 'success');
+        }
+
+        // Esporta Excel con colonna CHECK
+        function exportExcel() {
+            if (!workbook || allRows.length === 0) return;
+            
+            try {
+                const sheetName = document.getElementById('sheetSelector').value;
+                const sheet = workbook.Sheets[sheetName];
+                
+                const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                
+                let headerRow = -1;
+                for (let i = 0; i < data.length; i++) {
+                    if (data[i].some(cell => cell && cell.toString().includes('JobTask'))) {
+                        headerRow = i;
+                        break;
+                    }
+                }
+                
+                if (headerRow === -1) {
+                    showToast('❌ Impossibile trovare l\'header');
+                    return;
+                }
+                
+                const headers = data[headerRow];
+                let checkColIndex = headers.findIndex(h => h === 'CHECK');
+                
+                if (checkColIndex === -1) {
+                    checkColIndex = headers.length;
+                    headers.push('CHECK');
+                }
+                
+                for (let i = headerRow + 1; i < data.length; i++) {
+                    const row = data[i];
+                    if (!row || row.length === 0) continue;
+                    
+                    const jobId = row[3]; // Colonna D - JOB
+                    if (!jobId) continue;
+                    
+                    const isChecked = checkMap.get(jobId) || false;
+                    
+                    while (row.length <= checkColIndex) {
+                        row.push('');
+                    }
+                    
+                    row[checkColIndex] = isChecked ? 'OK' : '';
+                }
+                
+                const newWorkbook = XLSX.utils.book_new();
+                const newSheet = XLSX.utils.aoa_to_sheet(data);
+                XLSX.utils.book_append_sheet(newWorkbook, newSheet, sheetName);
+                
+                workbook.SheetNames.forEach(name => {
+                    if (name !== sheetName) {
+                        const otherSheet = workbook.Sheets[name];
+                        XLSX.utils.book_append_sheet(newWorkbook, otherSheet, name);
+                    }
+                });
+                
+                const fileName = `KAPPA_BOLLE_CHECK_${new Date().toISOString().slice(0,10)}.xlsx`;
+                XLSX.writeFile(newWorkbook, fileName);
+                
+                showToast('✅ File esportato con successo', 'success');
+                
+            } catch (error) {
+                console.error(error);
+                showToast('❌ Errore durante l\'esportazione');
+            }
+        }
+
+        // FUNZIONI STATISTICHE
+        function openStatsModal() {
+            if (jobs.length === 0) {
+                showToast('❌ Nessun dato da analizzare', 'error');
+                return;
+            }
+            
+            generateStats();
+            document.getElementById('statsModal').style.display = 'flex';
+        }
+
+        function closeStatsModal() {
+            document.getElementById('statsModal').style.display = 'none';
+        }
+
+        function generateStats() {
+            let totaleCosti = 0;
+            let totaleRegistrati = 0;
+            let jobRegistrati = 0;
+            let costiPerVenditore = new Map();
+            let costiPerVenditoreTipo = new Map();
+            
+            jobs.forEach(job => {
+                let costoTotaleJob = 0;
+                
+                job.tasks.forEach(task => {
+                    const costo = parseFloat(task.costo);
+                    if (!isNaN(costo)) {
+                        costoTotaleJob += costo;
+                    }
+                });
+                
+                totaleCosti += costoTotaleJob;
+                
+                const isChecked = checkMap.get(job.job) || false;
+                if (isChecked) {
+                    totaleRegistrati += costoTotaleJob;
+                    jobRegistrati++;
+                }
+                
+                job.venditori.forEach(venditore => {
+                    if (venditore) {
+                        const current = costiPerVenditore.get(venditore) || 0;
+                        costiPerVenditore.set(venditore, current + costoTotaleJob);
+                        
+                        job.lavori.forEach(tipo => {
+                            if (tipo) {
+                                const key = `${venditore}|${tipo}`;
+                                const currentTipo = costiPerVenditoreTipo.get(key) || 0;
+                                costiPerVenditoreTipo.set(key, currentTipo + costoTotaleJob);
+                            }
+                        });
+                    }
+                });
+            });
+            
+            const costiMancanti = totaleCosti - totaleRegistrati;
+            const jobTotali = jobs.length;
+            const jobMancanti = jobTotali - jobRegistrati;
+            
+            let html = `
+                <div class="stats-section">
+                    <h3>📊 Totali Generali</h3>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">Totale Costi</div>
+                            <div class="stat-value">€ ${totaleCosti.toFixed(2)}</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Registrati (OK)</div>
+                            <div class="stat-value">€ ${totaleRegistrati.toFixed(2)}</div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${(totaleRegistrati/totaleCosti*100) || 0}%"></div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Mancanti</div>
+                            <div class="stat-value">€ ${costiMancanti.toFixed(2)}</div>
+                            <small>${((costiMancanti/totaleCosti*100) || 0).toFixed(1)}%</small>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Job Totali</div>
+                            <div class="stat-value">${jobTotali}</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Job Registrati</div>
+                            <div class="stat-value">${jobRegistrati}</div>
+                            <small>${((jobRegistrati/jobTotali*100) || 0).toFixed(1)}%</small>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Job Mancanti</div>
+                            <div class="stat-value">${jobMancanti}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            html += `
+                <div class="stats-section">
+                    <h3>👤 Costi per Venditore</h3>
+                    <table class="stats-table">
+                        <thead>
+                            <tr>
+                                <th>Venditore</th>
+                                <th class="text-right">Totale Costi</th>
+                                <th class="text-right">% sul totale</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            const venditoriArray = Array.from(costiPerVenditore.entries())
+                .sort((a, b) => b[1] - a[1]);
+            
+            venditoriArray.forEach(([venditore, totale]) => {
+                const percentuale = (totale / totaleCosti * 100).toFixed(1);
+                html += `
+                    <tr>
+                        <td>${venditore}</td>
+                        <td class="text-right">€ ${totale.toFixed(2)}</td>
+                        <td class="text-right">${percentuale}%</td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            html += `
+                <div class="stats-section">
+                    <h3>🔧 Dettaglio per Venditore e Tipo Lavoro</h3>
+                    <table class="stats-table">
+                        <thead>
+                            <tr>
+                                <th>Venditore</th>
+                                <th>Tipo Lavoro</th>
+                                <th class="text-right">Totale Costi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            const dettaglioArray = Array.from(costiPerVenditoreTipo.entries())
+                .sort((a, b) => {
+                    const [keyA] = a[0].split('|');
+                    const [keyB] = b[0].split('|');
+                    if (keyA === keyB) return 0;
+                    return keyA.localeCompare(keyB);
+                });
+            
+            dettaglioArray.forEach(([key, totale]) => {
+                const [venditore, tipo] = key.split('|');
+                html += `
+                    <tr>
+                        <td>${venditore}</td>
+                        <td>${tipo}</td>
+                        <td class="text-right">€ ${totale.toFixed(2)}</td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            html += `
+                <div class="stats-section">
+                    <h3>📋 Job Mancanti da Registrare (costo > 0)</h3>
+                    <div class="job-mancanti-list">
+            `;
+            
+            let totaleMancantiConCosto = 0;
+            let countMancantiConCosto = 0;
+            
+            jobs.forEach(job => {
+                const isChecked = checkMap.get(job.job) || false;
+                if (isChecked) return;
+                
+                let costoTotaleJob = 0;
+                job.tasks.forEach(task => {
+                    const costo = parseFloat(task.costo);
+                    if (!isNaN(costo)) costoTotaleJob += costo;
+                });
+                
+                if (costoTotaleJob > 0) {
+                    totaleMancantiConCosto += costoTotaleJob;
+                    countMancantiConCosto++;
+                    
+                    const firstTask = job.tasks[0] || {};
+                    const data = formatDate(firstTask.scheduledDate);
+                    
+                    html += `
+                        <div class="job-mancanti-item">
+                            <div class="job-mancanti-info">
+                                <div class="job-mancanti-job">${job.job}</div>
+                                <div class="job-mancanti-details">${job.impianto} | ${data}</div>
+                            </div>
+                            <div class="job-mancanti-costo">€ ${costoTotaleJob.toFixed(2)}</div>
+                        </div>
+                    `;
+                }
+            });
+            
+            html += `
+                    </div>
+                    <div style="margin-top: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 6px; text-align: right; font-weight: 600;">
+                        TOTALE MANCANTE: € ${totaleMancantiConCosto.toFixed(2)} (${countMancantiConCosto} job)
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('statsContent').innerHTML = html;
+        }
+
+        function exportStatsPDF() {
+            showToast('📄 Funzione PDF in fase di sviluppo', 'info');
+        }
+
+        function exportStatsExcel() {
+            if (jobs.length === 0) return;
+            
+            try {
+                let totaleCosti = 0;
+                let totaleRegistrati = 0;
+                let costiPerVenditore = new Map();
+                let costiPerVenditoreTipo = new Map();
+                
+                jobs.forEach(job => {
+                    let costoTotaleJob = 0;
+                    job.tasks.forEach(task => {
+                        const costo = parseFloat(task.costo);
+                        if (!isNaN(costo)) costoTotaleJob += costo;
+                    });
+                    
+                    totaleCosti += costoTotaleJob;
+                    const isChecked = checkMap.get(job.job) || false;
+                    if (isChecked) totaleRegistrati += costoTotaleJob;
+                    
+                    job.venditori.forEach(venditore => {
+                        if (venditore) {
+                            const current = costiPerVenditore.get(venditore) || 0;
+                            costiPerVenditore.set(venditore, current + costoTotaleJob);
+                            
+                            job.lavori.forEach(tipo => {
+                                if (tipo) {
+                                    const key = `${venditore}|${tipo}`;
+                                    const currentTipo = costiPerVenditoreTipo.get(key) || 0;
+                                    costiPerVenditoreTipo.set(key, currentTipo + costoTotaleJob);
+                                }
+                            });
+                        }
+                    });
+                });
+                
+                const excelData = [
+                    ['STATISTICHE JOB', ''],
+                    ['Generato il', new Date().toLocaleString('it-IT')],
+                    [''],
+                    ['📊 TOTALI GENERALI'],
+                    ['Descrizione', 'Valore'],
+                    ['Totale Costi', `€ ${totaleCosti.toFixed(2)}`],
+                    ['Registrati (OK)', `€ ${totaleRegistrati.toFixed(2)}`],
+                    ['Mancanti', `€ ${(totaleCosti - totaleRegistrati).toFixed(2)}`],
+                    ['Job Totali', jobs.length],
+                    ['Job Registrati', jobs.filter(j => checkMap.get(j.job)).length],
+                    ['Job Mancanti', jobs.filter(j => !checkMap.get(j.job)).length],
+                    [''],
+                    ['👤 COSTI PER VENDITORE'],
+                    ['Venditore', 'Totale Costi', '% sul totale'],
+                    ...Array.from(costiPerVenditore.entries())
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([vend, tot]) => [vend, `€ ${tot.toFixed(2)}`, `${((tot/totaleCosti)*100).toFixed(1)}%`]),
+                    [''],
+                    ['🔧 DETTAGLIO VENDITORE × TIPO LAVORO'],
+                    ['Venditore', 'Tipo Lavoro', 'Totale Costi'],
+                    ...Array.from(costiPerVenditoreTipo.entries())
+                        .sort()
+                        .map(([key, tot]) => {
+                            const [vend, tipo] = key.split('|');
+                            return [vend, tipo, `€ ${tot.toFixed(2)}`];
+                        })
+                ];
+                
+                const wb = XLSX.utils.book_new();
+                const ws = XLSX.utils.aoa_to_sheet(excelData);
+                XLSX.utils.book_append_sheet(wb, ws, 'Statistiche');
+                
+                const fileName = `STATISTICHE_${new Date().toISOString().slice(0,10)}.xlsx`;
+                XLSX.writeFile(wb, fileName);
+                
+                showToast('✅ Statistiche esportate con successo', 'success');
+                
+            } catch (error) {
+                console.error(error);
+                showToast('❌ Errore durante l\'esportazione');
+            }
+        }
+
+        function exportMancantiExcel() {
+            if (jobs.length === 0) return;
+            
+            try {
+                const jobMancanti = jobs.filter(job => !checkMap.get(job.job));
+                const excelData = [
+                    ['JOB MANCANTI DA REGISTRARE (costo > 0)'],
+                    ['Generato il', new Date().toLocaleString('it-IT')],
+                    [''],
+                    ['Job', 'Impianto', 'Data', 'Costo Totale', 'Task', 'Venditori'],
+                ];
+                
+                let totaleMancanti = 0;
+                
+                jobMancanti.forEach(job => {
+                    let costoTotaleJob = 0;
+                    job.tasks.forEach(task => {
+                        const costo = parseFloat(task.costo);
+                        if (!isNaN(costo)) costoTotaleJob += costo;
+                    });
+                    
+                    if (costoTotaleJob > 0) {
+                        totaleMancanti += costoTotaleJob;
+                        const firstTask = job.tasks[0] || {};
+                        const data = formatDate(firstTask.scheduledDate);
+                        const venditori = Array.from(job.venditori).join(', ');
+                        
+                        excelData.push([
+                            job.job,
+                            job.impianto,
+                            data,
+                            `€ ${costoTotaleJob.toFixed(2)}`,
+                            job.tasks.length,
+                            venditori
+                        ]);
+                    }
+                });
+                
+                excelData.push([]);
+                excelData.push(['TOTALE MANCANTE', '', '', `€ ${totaleMancanti.toFixed(2)}`, '', '']);
+                
+                const wb = XLSX.utils.book_new();
+                const ws = XLSX.utils.aoa_to_sheet(excelData);
+                XLSX.utils.book_append_sheet(wb, ws, 'Job Mancanti');
+                
+                const fileName = `JOB_MANCANTI_${new Date().toISOString().slice(0,10)}.xlsx`;
+                XLSX.writeFile(wb, fileName);
+                
+                showToast('✅ Lista job mancanti esportata', 'success');
+                
+            } catch (error) {
+                console.error(error);
+                showToast('❌ Errore durante l\'esportazione');
+            }
+        }
+
+        // Event listeners
+        document.getElementById('fileInput').addEventListener('change', (e) => {
+            if (e.target.files.length > 0) handleFileUpload(e.target.files[0]);
+        });
+        
+        document.getElementById('sheetSelector').addEventListener('change', (e) => {
+            loadSheet(e.target.value);
+        });
+        
+        document.getElementById('exportBtn').addEventListener('click', exportExcel);
+        
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            if (filteredJobs.length === 0) return;
+            
+            if (e.altKey && e.key === 'ArrowLeft') {
+                e.preventDefault();
+                navigateJob(-1);
+            } else if (e.altKey && e.key === 'ArrowRight') {
+                e.preventDefault();
+                navigateJob(1);
+            } else if (e.altKey && e.key === 'r') {
+                e.preventDefault();
+                toggleJobCheck();
+            }
+        });
+    </script>
+</body>
+</html>
