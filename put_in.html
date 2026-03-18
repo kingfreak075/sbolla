@@ -1553,7 +1553,35 @@ function resetFilters() {
                         </div>
                     </div>
                 </div>
-                
+                <!-- Contract template in evidenza -->
+<div class="detail-card" style="padding: 8px 15px;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 0.8rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Contratto:</span>
+        <span style="font-weight: 700; font-size: 1.1rem; color: #0d6efd;">${job.tasks[0]?.contractTemplate || 'N/D'}</span>
+    </div>
+</div>
+
+<!-- LocalWorkPerformed con colori -->
+<div class="detail-card" style="padding: 8px 15px;">
+    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <span style="font-size: 0.8rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Lavori:</span>
+        ${Array.from(job.lavori).map(tipo => `
+            <span style="background-color: ${getWorkTypeColor(tipo)}; color: #1e2b3a; padding: 4px 10px; border-radius: 16px; font-size: 0.85rem; border: 1px solid #dee2e6;">
+                ${tipo}
+            </span>
+        `).join('')}
+    </div>
+</div>
+
+<!-- Venditore in evidenza -->
+<div class="detail-card" style="padding: 8px 15px;">
+    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <span style="font-size: 0.8rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Venditore:</span>
+        <span style="font-weight: 600; font-size: 1rem; color: #6f42c1; background-color: #f0e9fa; padding: 4px 12px; border-radius: 20px;">
+            ${job.tasks[0]?.venditore || 'N/D'}
+        </span>
+    </div>
+</div>
                 <!-- TUTTE LE TASK DEL JOB -->
                 <div class="detail-card">
                     <div class="detail-title">
@@ -1577,6 +1605,35 @@ function resetFilters() {
             `;
             
             updateNavButtons();
+
+// Aggiungi questa funzione per generare colori consistenti per ogni tipo di lavoro
+function getWorkTypeColor(workType) {
+    // Genera un colore pastello basato sul nome del tipo
+    if (!workType) return '#6c757d';
+    
+    // Colori predefiniti per tipi comuni
+    const colorMap = {
+        'Rip a consuntivo': '#ffc107',
+        'Reperibilità': '#dc3545',
+        'Normale': '#28a745',
+        'Manutenzione': '#17a2b8',
+        'Urgente': '#fd7e14'
+    };
+    
+    if (colorMap[workType]) return colorMap[workType];
+    
+    // Se non è nella mappa, genera un colore casuale ma stabile basato sul nome
+    let hash = 0;
+    for (let i = 0; i < workType.length; i++) {
+        hash = workType.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const hue = Math.abs(hash % 360);
+    return `hsl(${hue}, 70%, 85%)`; // Colore pastello
+}
+
+
+
+
         }
 
         // Navigazione tra job
