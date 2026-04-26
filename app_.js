@@ -32,12 +32,12 @@ const COLS = {
 };
 
 // Configurazione tariffe
-let pricingConfig = {
-    oa: 75.0,
-    om: 85.0,
-    sa: 90.0,
-    std: 65.0,
-    urgencyMult: 1.4,
+let pricingConfig = { 
+    oa: 75.0, 
+    om: 85.0, 
+    sa: 90.0, 
+    std: 65.0, 
+    urgencyMult: 1.4, 
     fixedFee: 0.0,
     rounding: 5
 };
@@ -81,7 +81,7 @@ console.log("✅ Variabili globali inizializzate");
 
 function getTuttiInterventi() {
     let tutti = [];
-
+    
     // Aggiungi storico
     if (window.storicoInterventi?.interventi) {
         tutti = tutti.concat(window.storicoInterventi.interventi.map(row => ({
@@ -92,12 +92,12 @@ function getTuttiInterventi() {
             _suggestedPrice: parseFloat(row['COSTO']) || 0
         })));
     }
-
+    
     // Aggiungi dati correnti
     if (appData.rawRows) {
         tutti = tutti.concat(appData.rawRows);
     }
-
+    
     console.log(`📚 Totale interventi: ${tutti.length} (storico: ${window.storicoInterventi?.interventi?.length || 0}, corrente: ${appData.rawRows?.length || 0})`);
     return tutti;
 }
@@ -121,7 +121,7 @@ function parseDate(raw) {
 
 function debounce(func, wait) {
     let timeout;
-    return function (...args) {
+    return function(...args) {
         clearTimeout(timeout);
         timeout = setTimeout(() => func(...args), wait);
     };
@@ -173,21 +173,21 @@ function calcolaMedieComponenti() {
     console.log("==========================================");
     console.log("🔍 INIZIO calcolaMedieComponenti");
     console.log("==========================================");
-
+    
     const stats = {};
     let righeProcessate = 0;
-
+    
     function processaRiga(row, fonte) {
         const codice = row[COLS.COMP_CODE] || row['ComponentCode (LocalComponent) (Component)'];
         const costo = row._costo || parseFloat(row['COSTO']);
         const categoria = row[COLS.CATEGORIA] || row['LocalComponentCategory'] || "";
         const descrizione = row[COLS.COMPONENTE] || row['LocalComponent'] || "";
-
+        
         if (codice && !isNaN(costo) && costo > 0) {
             if (!stats[codice]) {
-                stats[codice] = {
-                    somma: 0,
-                    conteggio: 0,
+                stats[codice] = { 
+                    somma: 0, 
+                    conteggio: 0, 
                     categoria: categoria,
                     descrizione: descrizione
                 };
@@ -195,12 +195,12 @@ function calcolaMedieComponenti() {
             stats[codice].somma += costo;
             stats[codice].conteggio++;
             righeProcessate++;
-
+            
             if (categoria && !stats[codice].categoria) stats[codice].categoria = categoria;
             if (descrizione && !stats[codice].descrizione) stats[codice].descrizione = descrizione;
         }
     }
-
+    
     // Processa storico
     if (window.storicoInterventi?.interventi) {
         console.log(`📚 Processo storico: ${window.storicoInterventi.interventi.length} righe`);
@@ -208,15 +208,15 @@ function calcolaMedieComponenti() {
     } else {
         console.log("⚠️ Nessuno storico disponibile");
     }
-
+    
     // Processa dati correnti
     if (appData.rawRows?.length) {
         console.log(`📄 Processo dati correnti: ${appData.rawRows.length} righe`);
         appData.rawRows.forEach(row => processaRiga(row, 'corrente'));
     }
-
+    
     console.log(`📊 Righe valide processate: ${righeProcessate}`);
-
+    
     const nuoveMedie = {};
     Object.entries(stats).forEach(([codice, data]) => {
         nuoveMedie[codice] = {
@@ -226,18 +226,18 @@ function calcolaMedieComponenti() {
             occorrenze: data.conteggio
         };
     });
-
+    
     console.log(`💰 Calcolate medie per ${Object.keys(nuoveMedie).length} codici`);
-
+    
     listinoPrezzi.medie = nuoveMedie;
     listinoPrezzi.lastUpdate = new Date().toISOString();
-
+    
     Object.keys(nuoveMedie).forEach(codice => {
         if (listinoPrezzi.prezzi[codice] === undefined) {
             listinoPrezzi.prezzi[codice] = nuoveMedie[codice].media;
         }
     });
-
+    
     salvaListino();
     console.log("✅ calcolaMedieComponenti completata");
     return nuoveMedie;
@@ -250,25 +250,25 @@ function calcolaMedieComponenti() {
 function calculateRowPrice(row) {
     let rate = pricingConfig.std;
     let logic = "Standard";
-
+    
     const c = (row[COLS.CONTRATTO] || "").toUpperCase();
     if (c.includes("OA")) rate = pricingConfig.oa;
     else if (c.includes("OM")) rate = pricingConfig.om;
     else if (c.includes("SA") || c.includes("P -")) rate = pricingConfig.sa;
-
+    
     let price = rate * (row._ore || 0);
-
+    
     const wt = (row[COLS.WORKTYPE] || "").toUpperCase();
     if (wt.includes("AA") || wt.includes("PERICOLO")) {
         price *= pricingConfig.urgencyMult;
         logic = "Urgenza";
     }
-
-    if (pricingConfig.fixedFee > 0 && (wt.includes("AA") || (row[COLS.WORK_PERFORMED] || "").includes("Reperibilità"))) {
+    
+    if (pricingConfig.fixedFee > 0 && (wt.includes("AA") || (row[COLS.WORK_PERFORMED]||"").includes("Reperibilità"))) {
         price += pricingConfig.fixedFee;
         logic += "+Fisso";
     }
-
+    
     price = arrotondaPrezzo(price, pricingConfig.rounding);
     row._suggestedPrice = Math.round(price * 100) / 100;
     row._logic = logic;
@@ -278,22 +278,22 @@ function calculateRowPrice(row) {
 // FUNZIONI DI SCELTA INIZIALE (GLOBALI)
 // ============================================
 
-window.applicaPrezziMedi = function () {
+window.applicaPrezziMedi = function() {
     console.log("==========================================");
     console.log("💰 FUNZIONE: applicaPrezziMedi()");
     console.log("==========================================");
     console.log("📊 appData.rawRows.length:", appData.rawRows.length);
     console.log("📊 storicoInterventi:", window.storicoInterventi ? "Presente" : "Assente");
-
+    
     let contatore = 0;
     let senzaCodice = 0;
     let senzaPrezzo = 0;
-
+    
     appData.rawRows.forEach((row, index) => {
         if (!row._isHistory) {
             const codice = row[COLS.COMP_CODE];
             const prezzoMedio = getPrezzoListino(codice);
-
+            
             if (!codice) {
                 senzaCodice++;
                 row._suggestedPrice = 0;
@@ -309,15 +309,15 @@ window.applicaPrezziMedi = function () {
             }
         }
     });
-
+    
     console.log(`✅ Righe con media: ${contatore}`);
     console.log(`⚠️ Senza codice: ${senzaCodice}`);
     console.log(`⚠️ Senza prezzo medio: ${senzaPrezzo}`);
-
+    
     Object.values(appData.jobGroups).forEach(g => {
         g.totalPrice = g.rows.reduce((sum, r) => sum + (r._suggestedPrice || 0), 0);
     });
-
+    
     prezziInizializzati = true;
     console.log("🚀 Chiamo initUI()...");
     initUI();
@@ -325,11 +325,11 @@ window.applicaPrezziMedi = function () {
     console.log("✅ applicaPrezziMedi() completata");
 };
 
-window.applicaPrezziVuoti = function () {
+window.applicaPrezziVuoti = function() {
     console.log("==========================================");
     console.log("0️⃣ FUNZIONE: applicaPrezziVuoti()");
     console.log("==========================================");
-
+    
     let contatore = 0;
     appData.rawRows.forEach(row => {
         if (!row._isHistory) {
@@ -338,26 +338,26 @@ window.applicaPrezziVuoti = function () {
             contatore++;
         }
     });
-
+    
     console.log(`✅ Azzerati ${contatore} interventi`);
-
+    
     Object.values(appData.jobGroups).forEach(g => {
         g.totalPrice = g.rows.reduce((sum, r) => sum + (r._suggestedPrice || 0), 0);
     });
-
+    
     prezziInizializzati = true;
     initUI();
     window.calculateAnalytics?.();
 };
 
-window.applicaPrezziDaJSON = function (sessionData) {
+window.applicaPrezziDaJSON = function(sessionData) {
     console.log("==========================================");
     console.log("📦 FUNZIONE: applicaPrezziDaJSON()");
     console.log("==========================================");
-
+    
     const savedPrices = sessionData.prices || {};
     let restoredCount = 0;
-
+    
     appData.rawRows.forEach((row, index) => {
         const key = row[COLS.JOB_ID] + "_" + index;
         if (!row._isHistory && savedPrices[key]) {
@@ -369,53 +369,53 @@ window.applicaPrezziDaJSON = function (sessionData) {
             row._logic = "Non presente in JSON";
         }
     });
-
+    
     console.log(`✅ Ripristinati ${restoredCount} prezzi`);
-
+    
     if (sessionData.listino) {
         listinoPrezzi = sessionData.listino;
         salvaListino();
         console.log("📋 Listino ripristinato");
     }
-
+    
     Object.values(appData.jobGroups).forEach(g => {
         g.totalPrice = g.rows.reduce((sum, r) => sum + (r._suggestedPrice || 0), 0);
     });
-
+    
     prezziInizializzati = true;
     initUI();
     window.calculateAnalytics?.();
 };
 
-window.mostraSceltaIniziale = function () {
+window.mostraSceltaIniziale = function() {
     console.log("📋 Apertura modale scelta iniziale");
-
+    
     const uploadOverlay = document.getElementById('upload-overlay');
     if (uploadOverlay) uploadOverlay.classList.add('hidden');
-
+    
     const totale = Object.keys(appData.jobGroups).length;
     let storici = 0;
     Object.values(appData.jobGroups).forEach(g => {
         if (g.isHistory) storici++;
     });
     const daPrezzare = totale - storici;
-
+    
     document.getElementById('scelta-nome-file').textContent = `File: ${appData.fileName || 'sconosciuto'}`;
     document.getElementById('scelta-totale').textContent = totale;
     document.getElementById('scelta-storici').textContent = storici;
     document.getElementById('scelta-da-prezzare').textContent = daPrezzare;
-
+    
     document.getElementById('scelta-iniziale-modal').classList.remove('hidden');
 };
 
-window.chiudiSceltaIniziale = function () {
+window.chiudiSceltaIniziale = function() {
     document.getElementById('scelta-iniziale-modal').classList.add('hidden');
 };
 
-window.confermaSceltaIniziale = function () {
+window.confermaSceltaIniziale = function() {
     const scelta = document.querySelector('input[name="scelta-prezzi"]:checked').value;
     console.log(`✅ Scelta effettuata: ${scelta}`);
-
+    
     if (scelta === 'vuoti') {
         window.applicaPrezziVuoti();
         chiudiSceltaIniziale();
@@ -427,21 +427,21 @@ window.confermaSceltaIniziale = function () {
     }
 };
 
-window.anteprimaJSON = function (input) {
+window.anteprimaJSON = function(input) {
     const file = input.files[0];
     if (!file) return;
-
+    
     console.log("📂 File JSON selezionato:", file.name);
-
+    
     const reader = new FileReader();
-    reader.onload = function (e) {
+    reader.onload = function(e) {
         try {
             const sessionData = JSON.parse(e.target.result);
             jsonCaricatoTemp = sessionData;
-
+            
             let prezziTrovati = 0;
             let prezziApplicabili = 0;
-
+            
             if (sessionData.prices) {
                 prezziTrovati = Object.keys(sessionData.prices).length;
                 appData.rawRows.forEach((row, index) => {
@@ -449,16 +449,16 @@ window.anteprimaJSON = function (input) {
                     if (sessionData.prices[key]) prezziApplicabili++;
                 });
             }
-
+            
             console.log(`📊 JSON: ${prezziTrovati} prezzi, ${prezziApplicabili} applicabili`);
-
+            
             const conferma = confirm(
                 `📄 File: ${file.name}\n` +
                 `Prezzi trovati: ${prezziTrovati}\n` +
                 `Prezzi applicabili: ${prezziApplicabili}\n\n` +
                 `Applicare questi prezzi?`
             );
-
+            
             if (conferma) {
                 window.applicaPrezziDaJSON(sessionData);
                 chiudiSceltaIniziale();
@@ -466,7 +466,7 @@ window.anteprimaJSON = function (input) {
                 jsonCaricatoTemp = null;
                 mostraSceltaIniziale();
             }
-
+            
         } catch (err) {
             alert("Errore nel caricamento del file JSON");
             console.error(err);
@@ -483,25 +483,25 @@ window.anteprimaJSON = function (input) {
 function handleFile(e) {
     const file = e.target.files[0];
     if (!file) return;
-
+    
     console.log("==========================================");
     console.log("📂 Caricamento file:", file.name);
     console.log("==========================================");
-
+    
     appData.fileName = file.name;
-
+    
     const loader = document.getElementById('loader');
-    if (loader) loader.classList.remove('hidden');
+    if(loader) loader.classList.remove('hidden');
     const btnOverlay = document.querySelector('#upload-overlay button');
-    if (btnOverlay) btnOverlay.classList.add('hidden');
-
+    if(btnOverlay) btnOverlay.classList.add('hidden');
+    
     const reader = new FileReader();
-    reader.onload = function (e) {
+    reader.onload = function(e) {
         const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+        const workbook = XLSX.read(data, {type: 'array', cellDates: true});
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
-
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, {defval: ""});
+        
         console.log(`📊 Righe lette: ${jsonData.length}`);
         setTimeout(() => processData(jsonData), 50);
     };
@@ -510,7 +510,7 @@ function handleFile(e) {
 
 function processData(rows) {
     console.log("🔄 Inizio processData()");
-
+    
     appData.rawRows = rows;
     appData.uniqueVenditori.clear();
     appData.uniqueWorkPerf.clear();
@@ -525,13 +525,13 @@ function processData(rows) {
         row._dataModifica = parseDate(row[COLS.DATA_MODIFICA]);
         row._jobDate = parseDate(row[COLS.JOB_DATE]);
         row._isHistory = (!isNaN(row._costo) && row._costo > 0);
-
+        
         // NON calcolare prezzi qui
-
-        if (row[COLS.VENDITORE]) appData.uniqueVenditori.add(row[COLS.VENDITORE]);
-        if (row[COLS.WORK_PERFORMED]) appData.uniqueWorkPerf.add(row[COLS.WORK_PERFORMED]);
-        if (row[COLS.CONTRATTO]) appData.uniqueContracts.add(row[COLS.CONTRATTO]);
-
+        
+        if(row[COLS.VENDITORE]) appData.uniqueVenditori.add(row[COLS.VENDITORE]);
+        if(row[COLS.WORK_PERFORMED]) appData.uniqueWorkPerf.add(row[COLS.WORK_PERFORMED]);
+        if(row[COLS.CONTRATTO]) appData.uniqueContracts.add(row[COLS.CONTRATTO]);
+        
         const jid = row[COLS.JOB_ID];
         if (!appData.jobGroups[jid]) {
             appData.jobGroups[jid] = {
@@ -544,26 +544,26 @@ function processData(rows) {
                 hasMultiple: false
             };
         }
-
+        
         const group = appData.jobGroups[jid];
         group.rows.push(row);
         group.totalMin += row._minuti;
         if (row._isHistory) group.isHistory = true;
     });
-
+    
     console.log(`📊 Gruppi creati: ${Object.keys(appData.jobGroups).length}`);
-
+    
     Object.values(appData.jobGroups).forEach(g => {
         g.hasMultiple = g.rows.length > 1;
         g.totalPrice = 0; // Tutti a zero inizialmente
     });
-
+    
     console.log("📈 Calcolo medie componenti...");
     calcolaMedieComponenti();
-
+    
     console.log("🖥️ Mostro scelta iniziale...");
     mostraSceltaIniziale();
-
+    
     // Aggiorna debug panel
     if (typeof window.aggiornaDebugPanel === 'function') {
         window.aggiornaDebugPanel();
@@ -576,20 +576,20 @@ function processData(rows) {
 
 function initUI() {
     console.log("🖥️ initUI()");
-
+    
     document.getElementById('sidebar').classList.remove('hidden');
     document.getElementById('main-content').classList.remove('hidden');
-
+    
     populateSelect('filter-venditore', appData.uniqueVenditori);
     populateSelect('filter-workperf', appData.uniqueWorkPerf);
     populateSelect('filter-contract', appData.uniqueContracts);
-
+    
     applyFilters();
 }
 
 function populateSelect(id, set) {
     const select = document.getElementById(id);
-    if (!select) return;
+    if(!select) return;
     select.innerHTML = '<option value="ALL">Tutti</option>';
     [...set].sort().forEach(val => {
         const opt = document.createElement('option');
@@ -603,34 +603,34 @@ function populateSelect(id, set) {
 // FILTRI E ORDINAMENTO
 // ============================================
 
-window.applyFilters = function () {
+window.applyFilters = function() {
     const text = document.getElementById('searchBox').value.toLowerCase();
     const venditore = document.getElementById('filter-venditore').value;
     const workPerf = document.getElementById('filter-workperf').value;
     const contract = document.getElementById('filter-contract').value;
     const showHistory = document.getElementById('toggle-history').checked;
-
+    
     const dateStartVal = document.getElementById('filter-date-start').value;
     const dateEndVal = document.getElementById('filter-date-end').value;
     const dateStart = dateStartVal ? new Date(dateStartVal) : null;
     const dateEnd = dateEndVal ? new Date(dateEndVal) : null;
-
+    
     appData.displayList = Object.values(appData.jobGroups).filter(g => {
         const r = g.masterRow;
-
+        
         if (!showHistory && g.isHistory) return false;
-
+        
         if (text) {
             const matchesJob = g.jobId.toLowerCase().includes(text);
             const matchesIndirizzo = (r[COLS.INDIRIZZO] || "").toLowerCase().includes(text);
             const matchesImpianto = (r[COLS.IMPIANTO] || "").toLowerCase().includes(text);
             if (!matchesJob && !matchesIndirizzo && !matchesImpianto) return false;
         }
-
+        
         if (venditore !== "ALL" && r[COLS.VENDITORE] !== venditore) return false;
         if (workPerf !== "ALL" && r[COLS.WORK_PERFORMED] !== workPerf) return false;
         if (contract !== "ALL" && r[COLS.CONTRATTO] !== contract) return false;
-
+        
         if (dateStart || dateEnd) {
             const d = r._jobDate;
             if (!d) return false;
@@ -651,24 +651,24 @@ window.applyFilters = function () {
         }
         return true;
     });
-
+    
     applySorting();
 };
 
-window.applySorting = function () {
+window.applySorting = function() {
     const sortMode = document.getElementById('sort-order').value;
-
+    
     appData.displayList.sort((a, b) => {
         const ra = a.masterRow;
         const rb = b.masterRow;
-
+        
         if (sortMode === 'date-desc') return (rb._jobDate || 0) - (ra._jobDate || 0);
         if (sortMode === 'date-asc') return (ra._jobDate || 0) - (rb._jobDate || 0);
-        if (sortMode === 'impianto-asc') return (ra[COLS.IMPIANTO] || "").localeCompare(rb[COLS.IMPIANTO] || "");
-        if (sortMode === 'addr-asc') return (ra[COLS.INDIRIZZO] || "").localeCompare(rb[COLS.INDIRIZZO] || "");
+        if (sortMode === 'impianto-asc') return (ra[COLS.IMPIANTO]||"").localeCompare(rb[COLS.IMPIANTO]||"");
+        if (sortMode === 'addr-asc') return (ra[COLS.INDIRIZZO]||"").localeCompare(rb[COLS.INDIRIZZO]||"");
         return 0;
     });
-
+    
     updateHeaderStats();
     renderTable();
 };
@@ -679,35 +679,35 @@ window.applySorting = function () {
 
 function renderTable() {
     const tbody = document.getElementById('pricing-table-body');
-    if (!tbody) return;
+    if(!tbody) return;
     tbody.innerHTML = "";
-
+    
     appData.displayList.slice(0, 100).forEach(group => {
         const tr = document.createElement('tr');
         const r = group.masterRow;
-
+        
         const wp = r[COLS.WORK_PERFORMED] || "";
         let wpClass = "text-slate-500";
         if (wp.includes("Reperibilità")) wpClass = "wp-reperibilita";
         else if (wp.includes("Normale")) wpClass = "wp-normale";
         else if (wp.includes("consuntivo")) wpClass = "wp-consuntivo";
-
+        
         const isLocked = group.hasMultiple || group.isHistory;
         const codiceComponente = r[COLS.COMP_CODE];
         const prezzoListino = getPrezzoListino(codiceComponente);
         const hasListino = !group.isHistory && !isLocked && prezzoListino !== null;
         const rowClass = hasListino ? 'hover:bg-indigo-50/30 border-l-2 border-indigo-200' : 'hover:bg-white';
         const inputClass = group.isHistory ? "price-input price-historical" : "price-input";
-
+        
         let folderIcon = "";
         if (group.hasMultiple) {
             folderIcon = `<button onclick="openDetails('${group.jobId}')" class="text-blue-600 hover:bg-blue-50 p-1 rounded font-bold transition" title="Modifica Multipla">📂</button>`;
         }
-
+        
         tr.className = rowClass + " border-b border-slate-200 transition-colors";
-
+        
         let prezzoCellContent = '';
-
+        
         if (!group.isHistory) {
             prezzoCellContent = '<div class="flex items-center gap-1 justify-end">';
             prezzoCellContent += `
@@ -715,7 +715,7 @@ function renderTable() {
                     class="hover:bg-slate-100 px-2 py-1.5 rounded border border-transparent hover:border-slate-300 transition text-sm font-bold ${hasListino ? '' : 'rounded-l-md'}"
                     title="Azzera Prezzo">0️⃣</button>
             `;
-
+            
             if (hasListino) {
                 const differenza = Math.abs(group.totalPrice - prezzoListino);
                 const giaApplicato = differenza < 0.01;
@@ -729,7 +729,7 @@ function renderTable() {
                     </button>
                 `;
             }
-
+            
             prezzoCellContent += `
                 <input type="number" 
                     class="${inputClass} ${hasListino ? 'rounded-r-md rounded-l-none border-l-0' : 'rounded-md'}" 
@@ -746,7 +746,7 @@ function renderTable() {
                 </div>
             `;
         }
-
+        
         tr.innerHTML = `
             <td class="px-4 py-3 align-top">
                 <div class="font-bold text-slate-800 text-xs">${group.jobId}</div>
@@ -782,15 +782,13 @@ function renderTable() {
                         <div id="tooltip-${codiceComponente?.replace(/\s/g, '')}" class="hidden absolute bottom-full right-0 mb-2 w-64 bg-white rounded-lg shadow-xl border border-slate-200 p-3 text-left z-50 text-xs">Caricamento...</div>
                     </div>
                     ${folderIcon}
-<button onclick="esportaJobPDF('${group.jobId}')" class="text-slate-400 hover:text-red-500 text-base transition transform hover:scale-110" title="Esporta PDF">📄</button>
-
                 </div>
             </td>
             <td class="px-4 py-3 align-top text-right">${prezzoCellContent}</td>
         `;
-
+        
         tbody.appendChild(tr);
-
+        
         // Riga anteprima impianto
         const stats = getImpiantoStats(r[COLS.IMPIANTO]);
         const trAnteprima = document.createElement('tr');
@@ -818,13 +816,13 @@ function renderTable() {
 function getImpiantoStats(impianto) {
     let totaleInterventi = 0;
     let spesaStorica = 0;
-
+    
     // Usa TUTTI gli interventi (storico + corrente)
     const tuttiInterventi = getTuttiInterventi();
-
+    
     // Raggruppa per jobId per non contare doppioni
     const jobVisti = new Set();
-
+    
     tuttiInterventi.forEach(row => {
         if (row[COLS.IMPIANTO] === impianto) {
             const jobId = row[COLS.JOB_ID];
@@ -832,7 +830,7 @@ function getImpiantoStats(impianto) {
                 jobVisti.add(jobId);
                 totaleInterventi++;
             }
-
+            
             // Spesa storica: considera solo gli storici
             const costo = parseFloat(row['COSTO']) || row._costo || 0;
             if (costo > 0) {
@@ -840,11 +838,11 @@ function getImpiantoStats(impianto) {
             }
         }
     });
-
+    
     const ticketMedio = totaleInterventi > 0 ? (spesaStorica / totaleInterventi).toFixed(2) : "0.00";
-
+    
     console.log(`📊 Stats impianto ${impianto}: ${totaleInterventi} interventi, spesa ${spesaStorica.toFixed(2)}`);
-
+    
     return {
         totaleInterventi,
         spesaStorica: spesaStorica.toFixed(2),
@@ -856,16 +854,16 @@ function getImpiantoStats(impianto) {
 // FUNZIONI DI SUPPORTO
 // ============================================
 
-window.cercaPerImpianto = function (codiceImpianto) {
+window.cercaPerImpianto = function(codiceImpianto) {
     if (!codiceImpianto) return;
     document.getElementById('searchBox').value = codiceImpianto;
     applyFilters();
     salvaRicercaCorrente();
 };
 
-window.setZeroPrice = function (jid) {
+window.setZeroPrice = function(jid) {
     const group = appData.jobGroups[jid];
-    if (!group) return;
+    if(!group) return;
     group.rows.forEach(r => { r._suggestedPrice = 0; r._logic = "Azzerato Manuale"; });
     group.totalPrice = 0;
     updateHeaderStats();
@@ -874,9 +872,9 @@ window.setZeroPrice = function (jid) {
     renderTable();
 };
 
-window.updateSingleJobPrice = function (jid, val) {
+window.updateSingleJobPrice = function(jid, val) {
     const group = appData.jobGroups[jid];
-    if (group && !group.hasMultiple) {
+    if(group && !group.hasMultiple) {
         group.masterRow._suggestedPrice = parseFloat(val);
         group.totalPrice = parseFloat(val);
         updateHeaderStats();
@@ -885,9 +883,9 @@ window.updateSingleJobPrice = function (jid, val) {
     }
 };
 
-window.updateTaskPrice = function (jid, idx, val) {
+window.updateTaskPrice = function(jid, idx, val) {
     const group = appData.jobGroups[jid];
-    if (group) {
+    if(group) {
         group.rows[idx]._suggestedPrice = parseFloat(val);
         group.totalPrice = group.rows.reduce((sum, r) => sum + (r._suggestedPrice || 0), 0);
         updateHeaderStats();
@@ -896,7 +894,7 @@ window.updateTaskPrice = function (jid, idx, val) {
     }
 };
 
-window.massAdjust = function (factor) {
+window.massAdjust = function(factor) {
     appData.displayList.forEach(group => {
         if (group.isHistory) return;
         group.rows.forEach(row => { row._suggestedPrice = (row._suggestedPrice || 0) * factor; });
@@ -908,7 +906,7 @@ window.massAdjust = function (factor) {
     saveState();
 };
 
-window.applicaPrezzoListino = function (jid, prezzo) {
+window.applicaPrezzoListino = function(jid, prezzo) {
     const group = appData.jobGroups[jid];
     if (!group || group.isHistory) return;
     group.totalPrice = prezzo;
@@ -950,7 +948,7 @@ function loadState(fileName) {
     }
 }
 
-window.downloadSession = function () {
+window.downloadSession = function() {
     const state = {};
     appData.rawRows.forEach((row, idx) => {
         if (!row._isHistory && row._suggestedPrice !== undefined) {
@@ -966,19 +964,19 @@ window.downloadSession = function () {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(sessionData));
     const link = document.createElement('a');
     link.href = dataStr;
-    link.download = "sessione_sbolla_" + new Date().toISOString().slice(0, 10) + ".json";
+    link.download = "sessione_sbolla_" + new Date().toISOString().slice(0,10) + ".json";
     link.click();
 };
 
-window.loadSessionFile = function (input) {
+window.loadSessionFile = function(input) {
     const file = input.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = function (e) {
+    reader.onload = function(e) {
         try {
             const sessionData = JSON.parse(e.target.result);
             if (sessionData.fileName !== appData.fileName) {
-                if (!confirm(`File diverso: ${sessionData.fileName}. Continuare?`)) return;
+                if(!confirm(`File diverso: ${sessionData.fileName}. Continuare?`)) return;
             }
             const savedPrices = sessionData.prices || {};
             let restoredCount = 0;
@@ -1014,7 +1012,7 @@ window.loadSessionFile = function (input) {
 // EXPORT EXCEL
 // ============================================
 
-window.exportExcel = function () {
+window.exportExcel = function() {
     const exportData = appData.rawRows.map(row => {
         if (row._isHistory) return row;
         return { ...row, "COSTO": (row._suggestedPrice || 0).toFixed(2), "NOTE_SMART_PRICING": `Logic: ${row._logic}` };
@@ -1025,7 +1023,7 @@ window.exportExcel = function () {
     XLSX.writeFile(wb, "Master_Prezzato.xlsx");
 };
 
-window.exportFiltered = function () {
+window.exportFiltered = function() {
     let filteredRows = [];
     appData.displayList.forEach(group => filteredRows.push(...group.rows));
     if (filteredRows.length === 0) { alert("Nessun dato"); return; }
@@ -1036,7 +1034,7 @@ window.exportFiltered = function () {
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Vista_Filtrata");
-    XLSX.writeFile(wb, `Sbolla_Filtro_${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.xlsx`);
+    XLSX.writeFile(wb, `Sbolla_Filtro_${new Date().toISOString().slice(0,19).replace(/:/g,"-")}.xlsx`);
 };
 
 // ============================================
@@ -1045,7 +1043,7 @@ window.exportFiltered = function () {
 
 function updateHeaderStats() {
     const total = appData.displayList.filter(g => !g.isHistory).reduce((sum, g) => sum + (g.totalPrice || 0), 0);
-    document.getElementById('header-total').innerText = "€ " + total.toLocaleString('it-IT', { maximumFractionDigits: 0 });
+    document.getElementById('header-total').innerText = "€ " + total.toLocaleString('it-IT', {maximumFractionDigits: 0});
     document.getElementById('row-count').innerText = appData.displayList.length.toLocaleString();
 }
 
@@ -1077,7 +1075,7 @@ function generaNomeRicerca(filtri) {
     return parti.length > 0 ? parti.join(" · ") : "Tutti gli interventi";
 }
 
-window.salvaRicercaCorrente = function () {
+window.salvaRicercaCorrente = function() {
     const filtro = {
         testo: document.getElementById('searchBox').value,
         venditore: document.getElementById('filter-venditore').value,
@@ -1129,17 +1127,17 @@ function aggiornaMenuRicerche() {
 // DEBUG PANEL
 // ============================================
 
-window.toggleDebugPanel = function () {
+window.toggleDebugPanel = function() {
     const panel = document.getElementById('debug-storico-panel');
     panel.classList.toggle('hidden');
     if (!panel.classList.contains('hidden')) aggiornaDebugPanel();
 };
 
-window.nascondiDebugPanel = function () {
+window.nascondiDebugPanel = function() {
     document.getElementById('debug-storico-panel').classList.add('hidden');
 };
 
-window.aggiornaDebugPanel = function () {
+window.aggiornaDebugPanel = function() {
     if (window.storicoInterventi?.interventi) {
         const interventi = window.storicoInterventi.interventi;
         let storici = 0, nuovi = 0;
@@ -1175,15 +1173,15 @@ window.aggiornaDebugPanel = function () {
     }
 };
 
-window.ricaricaStorico = function () {
+window.ricaricaStorico = function() {
     location.reload();
 };
 
-window.caricaStoricoFile = function (input) {
+window.caricaStoricoFile = function(input) {
     const file = input.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = function (e) {
+    reader.onload = function(e) {
         try {
             window.storicoInterventi = JSON.parse(e.target.result);
             alert(`Storico caricato: ${window.storicoInterventi.interventi.length} interventi`);
@@ -1202,9 +1200,9 @@ window.caricaStoricoFile = function (input) {
 // MODALI
 // ============================================
 
-window.openDetails = function (jid) {
+window.openDetails = function(jid) {
     const group = appData.jobGroups[jid];
-    if (!group) return;
+    if(!group) return;
     document.getElementById('modal-title').innerText = `Job: ${jid}`;
     document.getElementById('modal-subtitle').innerText = `${group.rows.length} righe - ${group.masterRow[COLS.INDIRIZZO]}`;
     const tbody = document.getElementById('modal-body');
@@ -1227,44 +1225,44 @@ window.openDetails = function (jid) {
     document.getElementById('details-modal').classList.remove('hidden');
 };
 
-window.closeDetails = function () {
+window.closeDetails = function() {
     document.getElementById('details-modal').classList.add('hidden');
     renderTable();
     updateHeaderStats();
 };
 
-window.openInfo = function (jid) {
+window.openInfo = function(jid) {
     console.log("==========================================");
     console.log("ℹ️ Apertura scheda tecnica per job:", jid);
     console.log("==========================================");
-
+    
     const group = appData.jobGroups[jid];
     if (!group) {
         console.error("❌ Gruppo non trovato:", jid);
         return;
     }
-
+    
     const r = group.masterRow;
     const impianto = r[COLS.IMPIANTO];
-
+    
     console.log("🏢 Impianto:", impianto);
-
+    
     // ============================================
     // Raccogli TUTTI gli interventi per QUESTO impianto (storico + corrente)
     // ============================================
     const interventiImpianto = [];
     const jobIdsImpianto = new Set();
-
+    
     // 1. PRENDI DALLO STORICO (se presente)
     if (window.storicoInterventi?.interventi) {
         console.log("📚 Processo storico:", window.storicoInterventi.interventi.length, "interventi totali");
-
+        
         window.storicoInterventi.interventi.forEach(row => {
             const rowImpianto = row[COLS.IMPIANTO] || row['Impiantodiriferimento (Job) (Job)'];
             if (rowImpianto === impianto) {
                 const jobId = row[COLS.JOB_ID] || row['Job'];
                 jobIdsImpianto.add(jobId);
-
+                
                 // Determina data
                 let data = null;
                 const dataRaw = row[COLS.JOB_DATE] || row['JobCompletedDate (Job) (Job)'];
@@ -1273,7 +1271,7 @@ window.openInfo = function (jid) {
                     else if (typeof dataRaw === 'number') data = new Date(Math.round((dataRaw - 25569) * 86400 * 1000));
                     else data = new Date(dataRaw);
                 }
-
+                
                 interventiImpianto.push({
                     jobId: jobId,
                     data: data,
@@ -1288,18 +1286,18 @@ window.openInfo = function (jid) {
             }
         });
     }
-
+    
     // 2. PRENDI DAL CORRENTE (appData.jobGroups)
     console.log("📄 Processo corrente:", Object.keys(appData.jobGroups).length, "gruppi");
-
+    
     Object.values(appData.jobGroups).forEach(g => {
         if (g.masterRow[COLS.IMPIANTO] === impianto) {
             jobIdsImpianto.add(g.jobId);
-
-            const componentiPrincipali = g.rows.slice(0, 2).map(row => row[COLS.COMPONENTE]).filter(c => c).join(", ");
+            
+            const componentiPrincipali = g.rows.slice(0,2).map(row => row[COLS.COMPONENTE]).filter(c => c).join(", ");
             const descrizioneBreve = g.rows[0]?.[COLS.DESCRIZIONE] || "";
-            const riassunto = componentiPrincipali || descrizioneBreve.substring(0, 30) + (descrizioneBreve.length > 30 ? "..." : "");
-
+            const riassunto = componentiPrincipali || descrizioneBreve.substring(0,30) + (descrizioneBreve.length > 30 ? "..." : "");
+            
             interventiImpianto.push({
                 jobId: g.jobId,
                 data: g.masterRow._jobDate,
@@ -1313,9 +1311,9 @@ window.openInfo = function (jid) {
             });
         }
     });
-
+    
     console.log(`📊 Trovati ${interventiImpianto.length} interventi per impianto ${impianto} (${jobIdsImpianto.size} job unici)`);
-
+    
     // ============================================
     // CALCOLA KPI
     // ============================================
@@ -1325,9 +1323,9 @@ window.openInfo = function (jid) {
         .reduce((sum, i) => sum + i.costoOriginale, 0);
     const ticketMedio = totaleInterventi > 0 ? (spesaStorica / totaleInterventi).toFixed(2) : "0.00";
     const interventiInCorso = interventiImpianto.filter(i => !i.isHistory).length;
-
+    
     console.log(`📈 KPI: totale=${totaleInterventi}, spesa=${spesaStorica.toFixed(2)}, ticket=${ticketMedio}, inCorso=${interventiInCorso}`);
-
+    
     // ============================================
     // CONTEGGI PER TIPOLOGIA
     // ============================================
@@ -1335,27 +1333,27 @@ window.openInfo = function (jid) {
         Normale: interventiImpianto.filter(i => i.workPerformed.includes("Normale")).length,
         Reperibilità: interventiImpianto.filter(i => i.workPerformed.includes("Reperibilità")).length,
         Consuntivo: interventiImpianto.filter(i => i.workPerformed.includes("consuntivo")).length,
-        Altro: interventiImpianto.filter(i =>
-            !i.workPerformed.includes("Normale") &&
-            !i.workPerformed.includes("Reperibilità") &&
+        Altro: interventiImpianto.filter(i => 
+            !i.workPerformed.includes("Normale") && 
+            !i.workPerformed.includes("Reperibilità") && 
             !i.workPerformed.includes("consuntivo")
         ).length
     };
-
+    
     // ============================================
     // TIMELINE (ordinata per data)
     // ============================================
     const timeline = [...interventiImpianto]
         .sort((a, b) => (b.data || 0) - (a.data || 0))
         .slice(0, 30);
-
+    
     // ============================================
     // FUNZIONI DI AGGIORNAMENTO PREZZO
     // ============================================
     const aggiornaPrezzo = (nuovoPrezzo) => {
         console.log(`💰 Aggiorno prezzo job ${jid} da ${group.totalPrice} a ${nuovoPrezzo}`);
         if (group.isHistory) return;
-
+        
         if (group.totalPrice > 0) {
             const rapporto = nuovoPrezzo / group.totalPrice;
             group.rows.forEach(row => {
@@ -1368,7 +1366,7 @@ window.openInfo = function (jid) {
                 row._suggestedPrice = prezzoPerRiga;
             });
         }
-
+        
         group.totalPrice = nuovoPrezzo;
         updateHeaderStats();
         if (typeof window.calculateAnalytics === 'function') window.calculateAnalytics();
@@ -1376,7 +1374,7 @@ window.openInfo = function (jid) {
         renderTable();
         openInfo(jid); // Ricarica il modale
     };
-
+    
     const aggiornaPrezzoZero = () => {
         console.log(`0️⃣ Azzero prezzo job ${jid}`);
         if (group.isHistory) return;
@@ -1391,10 +1389,10 @@ window.openInfo = function (jid) {
         renderTable();
         openInfo(jid);
     };
-
+    
     window.aggiornaPrezzo = aggiornaPrezzo;
     window.aggiornaPrezzoZero = aggiornaPrezzoZero;
-
+    
     // ============================================
     // GENERA LISTA COMPONENTI DEL JOB CORRENTE
     // ============================================
@@ -1434,17 +1432,17 @@ window.openInfo = function (jid) {
             </div>
         </li>
     `}).join("");
-
+    
     // ============================================
     // GENERA TIMELINE HTML
     // ============================================
     const timelineHtml = timeline.map(i => {
         const dataFormattata = i.data ? formatDateItalian(i.data) : "Data sconosciuta";
-        const badgeClass = i.isHistory
-            ? "bg-slate-100 text-slate-600 border-slate-200"
+        const badgeClass = i.isHistory 
+            ? "bg-slate-100 text-slate-600 border-slate-200" 
             : "bg-blue-100 text-blue-700 border-blue-200 animate-pulse";
         const stato = i.isHistory ? "STORICO" : "IN CORSO";
-
+        
         return `
         <div class="py-2 px-3 border-b border-slate-100 last:border-0 hover:bg-slate-50 transition">
             <div class="flex items-start justify-between gap-2">
@@ -1462,16 +1460,16 @@ window.openInfo = function (jid) {
                             <span class="bg-slate-100 px-1.5 py-0.5 rounded">${i.workPerformed || 'N/D'}</span>
                             ${i.rows > 1 ? `<span class="ml-2 bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">${i.rows} task</span>` : ''}
                         </div>
-                        ${i.isHistory
-                ? `<span class="text-xs font-mono font-bold text-emerald-600">€ ${i.costoOriginale.toFixed(2)}</span>`
-                : `<span class="text-xs font-mono text-blue-400">€ ${(i.prezzoAttuale || 0).toFixed(2)}</span>`
-            }
+                        ${i.isHistory 
+                            ? `<span class="text-xs font-mono font-bold text-emerald-600">€ ${i.costoOriginale.toFixed(2)}</span>` 
+                            : `<span class="text-xs font-mono text-blue-400">€ ${(i.prezzoAttuale || 0).toFixed(2)}</span>`
+                        }
                     </div>
                 </div>
             </div>
         </div>
     `}).join("");
-
+    
     // ============================================
     // COSTRUISCI HTML COMPLETO
     // ============================================
@@ -1485,7 +1483,7 @@ window.openInfo = function (jid) {
             </div>
             <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                 <div class="text-[10px] text-slate-400 uppercase font-bold">Spesa Storica</div>
-                <div class="text-2xl font-bold text-emerald-600 font-mono">€ ${spesaStorica.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                <div class="text-2xl font-bold text-emerald-600 font-mono">€ ${spesaStorica.toLocaleString('it-IT', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
             </div>
             <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                 <div class="text-[10px] text-slate-400 uppercase font-bold">Ticket Medio</div>
@@ -1603,8 +1601,8 @@ window.openInfo = function (jid) {
                 <div class="bg-white p-4 rounded-xl border border-slate-200">
                     <h4 class="font-bold text-slate-700 mb-3 text-sm flex items-center gap-2">
                         🔧 Componenti (${group.rows.length})
-                        ${group.hasMultiple && !group.isHistory ?
-            '<span class="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">Modifica direttamente qui sotto</span>' : ''}
+                        ${group.hasMultiple && !group.isHistory ? 
+                            '<span class="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">Modifica direttamente qui sotto</span>' : ''}
                     </h4>
                     <ul class="text-xs space-y-3 max-h-40 overflow-y-auto pr-2">
                         ${compList}
@@ -1620,21 +1618,21 @@ window.openInfo = function (jid) {
             </div>
         </div>
     `;
-
+    
     // ============================================
     // INSERISCI HTML E MOSTRA MODALE
     // ============================================
     document.getElementById('info-modal-content').innerHTML = html;
-
+    
     // Allarga il modale
     const modal = document.getElementById('info-modal').querySelector('.max-w-3xl');
     if (modal) {
         modal.classList.remove('max-w-3xl');
         modal.classList.add('max-w-6xl');
     }
-
+    
     document.getElementById('info-modal').classList.remove('hidden');
-
+    
     console.log("✅ Scheda tecnica visualizzata");
 };
 
@@ -1642,14 +1640,14 @@ window.openInfo = function (jid) {
 // STATISTICHE CODICE (TOOLTIP)
 // ============================================
 
-window.mostraStatisticheCodice = function (codice, elemento) {
+window.mostraStatisticheCodice = function(codice, elemento) {
     if (!codice) return;
     const tooltipId = `tooltip-${codice.replace(/\s/g, '')}`;
     const tooltip = document.getElementById(tooltipId);
     if (!tooltip) return;
-
+    
     const stats = calcolaStatisticheCodice(codice);
-
+    
     tooltip.innerHTML = `
         <div class="text-xs">
             <div class="font-bold text-amber-600 mb-2 flex items-center gap-1"><span>📊</span> Statistiche ${codice}</div>
@@ -1660,7 +1658,7 @@ window.mostraStatisticheCodice = function (codice, elemento) {
             </div>
         </div>
     `;
-
+    
     tooltip.classList.remove('hidden');
     setTimeout(() => tooltip.classList.add('hidden'), 3000);
 };
@@ -1672,20 +1670,20 @@ function calcolaStatisticheCodice(codice) {
             prezzi.push(row._suggestedPrice);
         }
     });
-
+    
     if (prezzi.length === 0) {
         return { ultimiPrezzi: 'Nessun dato', media: '0', max: '0', modale: '0', frequenza: 0 };
     }
-
+    
     const ultimi = prezzi.slice(-5).reverse().map(p => `€ ${p}`).join(', ');
     const media = (prezzi.reduce((a, b) => a + b, 0) / prezzi.length).toFixed(2);
     const max = Math.max(...prezzi).toFixed(2);
-
+    
     const frequenze = {};
     prezzi.forEach(p => frequenze[p] = (frequenze[p] || 0) + 1);
     let modale = prezzi[0], maxFreq = 0;
     Object.entries(frequenze).forEach(([p, f]) => { if (f > maxFreq) { modale = p; maxFreq = f; } });
-
+    
     return { ultimiPrezzi: ultimi, media, max, modale, frequenza: maxFreq };
 }
 
@@ -1693,18 +1691,18 @@ function calcolaStatisticheCodice(codice) {
 // LISTINO MODALE
 // ============================================
 
-window.apriListinoModal = function () {
+window.apriListinoModal = function() {
     const tbody = document.getElementById('listino-table-body');
     const statsDiv = document.getElementById('listino-stats');
     if (!tbody) return;
-
+    
     const medie = listinoPrezzi.medie || {};
     const codici = Object.keys(medie).sort();
-
+    
     if (statsDiv) {
         statsDiv.innerHTML = `<span class="font-bold text-indigo-600">${codici.length}</span> codici unici trovati <span class="ml-4 text-xs bg-slate-100 px-2 py-1 rounded">Ultimo calcolo: ${listinoPrezzi.lastUpdate ? new Date(listinoPrezzi.lastUpdate).toLocaleString() : 'Mai'}</span>`;
     }
-
+    
     tbody.innerHTML = '';
     codici.forEach(codice => {
         const data = medie[codice];
@@ -1717,7 +1715,7 @@ window.apriListinoModal = function () {
         tr.innerHTML = `
             <td class="px-4 py-3 font-mono font-bold text-slate-700">${codice}</td>
             <td class="px-4 py-3 text-slate-500 text-xs">${data.categoria || 'N/D'}</td>
-            <td class="px-4 py-3 text-slate-600 text-xs max-w-[250px]" title="${data.descrizione || ''}">${(data.descrizione || 'Nessuna descrizione').substring(0, 50)}${(data.descrizione || '').length > 50 ? '...' : ''}</td>
+            <td class="px-4 py-3 text-slate-600 text-xs max-w-[250px]" title="${data.descrizione || ''}">${(data.descrizione || 'Nessuna descrizione').substring(0,50)}${(data.descrizione||'').length > 50 ? '...' : ''}</td>
             <td class="px-4 py-3 text-right font-mono text-xs text-slate-400">${data.occorrenze || 0}</td>
             <td class="px-4 py-3 text-right font-mono font-bold text-slate-600">€ ${prezzoMedio}</td>
             <td class="px-4 py-3 text-right">
@@ -1732,11 +1730,11 @@ window.apriListinoModal = function () {
     document.getElementById('listino-modal').classList.remove('hidden');
 };
 
-window.chiudiListinoModal = function () {
+window.chiudiListinoModal = function() {
     document.getElementById('listino-modal').classList.add('hidden');
 };
 
-window.salvaListinoDaModal = function () {
+window.salvaListinoDaModal = function() {
     const inputs = document.querySelectorAll('.listino-input');
     const nuoviPrezzi = {};
     inputs.forEach(input => {
@@ -1751,7 +1749,7 @@ window.salvaListinoDaModal = function () {
     alert(`Listino salvato! ${Object.keys(nuoviPrezzi).length} prezzi aggiornati.`);
 };
 
-window.ricalcolaMedie = function () {
+window.ricalcolaMedie = function() {
     calcolaMedieComponenti();
     apriListinoModal();
 };
@@ -1760,7 +1758,7 @@ window.ricalcolaMedie = function () {
 // EXPORT/IMPORT LISTINO EXCEL
 // ============================================
 
-window.esportaListinoExcel = function () {
+window.esportaListinoExcel = function() {
     const dati = [];
     const codici = Object.keys(listinoPrezzi.medie).sort();
     codici.forEach(codice => {
@@ -1777,14 +1775,14 @@ window.esportaListinoExcel = function () {
     const ws = XLSX.utils.json_to_sheet(dati);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Listino");
-    XLSX.writeFile(wb, `Listino_Componenti_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(wb, `Listino_Componenti_${new Date().toISOString().slice(0,10)}.xlsx`);
 };
 
-window.importaListinoExcel = function (input) {
+window.importaListinoExcel = function(input) {
     const file = input.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = function (e) {
+    reader.onload = function(e) {
         try {
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, { type: 'array' });
@@ -1818,7 +1816,7 @@ window.importaListinoExcel = function (input) {
 // SETTINGS
 // ============================================
 
-window.toggleSettings = function () {
+window.toggleSettings = function() {
     const modal = document.getElementById('settings-modal');
     if (modal.classList.contains('hidden')) {
         document.getElementById('cfg-oa').value = pricingConfig.oa;
@@ -1830,16 +1828,16 @@ window.toggleSettings = function () {
     modal.classList.toggle('hidden');
 };
 
-window.saveSettings = function () {
+window.saveSettings = function() {
     pricingConfig.oa = parseFloat(document.getElementById('cfg-oa').value);
     pricingConfig.om = parseFloat(document.getElementById('cfg-om').value);
     pricingConfig.sa = parseFloat(document.getElementById('cfg-sa').value);
     pricingConfig.urgencyMult = parseFloat(document.getElementById('cfg-urg').value);
     pricingConfig.rounding = parseInt(document.getElementById('cfg-rounding').value);
-
-    appData.rawRows.forEach(row => { if (!row._isHistory) calculateRowPrice(row); });
-    Object.values(appData.jobGroups).forEach(g => { if (!g.isHistory) g.totalPrice = g.rows.reduce((sum, r) => sum + (r._suggestedPrice || 0), 0); });
-
+    
+    appData.rawRows.forEach(row => { if(!row._isHistory) calculateRowPrice(row); });
+    Object.values(appData.jobGroups).forEach(g => { if(!g.isHistory) g.totalPrice = g.rows.reduce((sum, r) => sum + (r._suggestedPrice || 0), 0); });
+    
     localStorage.setItem("SP_ROUNDING", pricingConfig.rounding);
     toggleSettings();
     applyFilters();
@@ -1852,11 +1850,11 @@ window.saveSettings = function () {
 // MENU SETTINGS
 // ============================================
 
-window.toggleSettingsMenu = function () {
+window.toggleSettingsMenu = function() {
     document.getElementById('settings-menu').classList.toggle('hidden');
 };
 
-document.addEventListener('click', function (e) {
+document.addEventListener('click', function(e) {
     const menu = document.getElementById('settings-menu');
     const container = document.getElementById('settings-menu-container');
     if (menu && !menu.classList.contains('hidden') && !container.contains(e.target)) {
@@ -1868,17 +1866,17 @@ document.addEventListener('click', function (e) {
 // UTILITIES
 // ============================================
 
-window.switchTab = function (t) {
-    document.getElementById('main-content').classList.toggle('hidden', t !== 'pricing');
-    document.getElementById('view-analytics').classList.toggle('hidden', t !== 'analytics');
+window.switchTab = function(t) {
+    document.getElementById('main-content').classList.toggle('hidden', t!=='pricing');
+    document.getElementById('view-analytics').classList.toggle('hidden', t!=='analytics');
     document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
-    document.getElementById('tab-btn-' + t).classList.add('active');
+    document.getElementById('tab-btn-'+t).classList.add('active');
     if (t === 'analytics' && typeof window.aggiornaSezioneAnalisi === 'function') {
         window.aggiornaSezioneAnalisi();
     }
 };
 
-window.resetFilters = function () {
+window.resetFilters = function() {
     document.getElementById('searchBox').value = "";
     document.getElementById('filter-venditore').value = "ALL";
     document.getElementById('filter-workperf').value = "ALL";
@@ -1893,7 +1891,7 @@ window.resetFilters = function () {
 // ANALYTICS (base, il resto in analisi.js)
 // ============================================
 
-window.calculateAnalytics = function () {
+window.calculateAnalytics = function() {
     // Delega a analisi.js se presente
     if (typeof window.aggiornaSezioneAnalisi === 'function') {
         window.aggiornaSezioneAnalisi();
@@ -1907,20 +1905,20 @@ window.calculateAnalytics = function () {
 // Inizializzazione al caricamento del DOM
 document.addEventListener('DOMContentLoaded', () => {
     console.log("🚀 DOM caricato, inizializzo app.js...");
-
+    
     const fileInput = document.getElementById('fileInput');
-    if (fileInput) fileInput.addEventListener('change', handleFile);
-
+    if(fileInput) fileInput.addEventListener('change', handleFile);
+    
     const searchBox = document.getElementById('searchBox');
-    if (searchBox) searchBox.addEventListener('keyup', debounce(applyFilters, 300));
-
+    if(searchBox) searchBox.addEventListener('keyup', debounce(applyFilters, 300));
+    
     caricaListino();
     caricaStoricoRicerche();
     aggiornaMenuRicerche();
-
+    
     const savedRounding = localStorage.getItem("SP_ROUNDING");
     if (savedRounding) pricingConfig.rounding = parseInt(savedRounding);
-
+    
     // Verifica se lo storico è già stato caricato dallo script iniziale
     if (window.storicoInterventi) {
         console.log("📚 Storico già disponibile:", window.storicoInterventi.interventi.length, "interventi");
@@ -1938,511 +1936,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }, 1000);
     }
-
+    
     console.log("✅ app.js inizializzato");
 });
-
-// ============================================
-// NUOVE FUNZIONI: CARICA SOLO STORICO + CARICA EXCEL AGGIUNTIVO
-// ============================================
-
-// Variabile per tracciare se siamo in modalità solo storico
-window.soloStoricoMode = false;
-
-window.caricaSoloStorico = function () {
-    console.log("==========================================");
-    console.log("📚 FUNZIONE: caricaSoloStorico()");
-    console.log("==========================================");
-
-    // Verifica se lo storico è disponibile
-    if (!window.storicoInterventi || !window.storicoInterventi.interventi) {
-        alert("❌ Nessuno storico disponibile. Carica prima un file sbolla.json usando il pulsante '📚 Storico'");
-        return;
-    }
-
-    // Nascondi l'overlay
-    const uploadOverlay = document.getElementById('upload-overlay');
-    if (uploadOverlay) uploadOverlay.classList.add('hidden');
-
-    // Imposta modalità solo storico
-    window.soloStoricoMode = true;
-
-    // Prepara i dati dagli interventi storici
-    const storicoRows = window.storicoInterventi.interventi.map((row, index) => {
-        // Calcola minuti dal tempo lavoro (se presente)
-        let minuti = 0;
-        const tempoRaw = row['Tempo Lavoro (Job) (Job)'] || row['Tempo Lavoro (Job) (Job)'];
-        if (tempoRaw) {
-            minuti = parseInt(tempoRaw) || 0;
-        }
-
-        // Data job
-        let jobDate = null;
-        const dateRaw = row['JobCompletedDate (Job) (Job)'] || row['JobCompletedDate (Job) (Job)'];
-        if (dateRaw) {
-            if (dateRaw instanceof Date) jobDate = dateRaw;
-            else if (typeof dateRaw === 'number') jobDate = new Date(Math.round((dateRaw - 25569) * 86400 * 1000));
-            else jobDate = new Date(dateRaw);
-        }
-
-        return {
-            ...row,
-            _id: index,
-            _costo: parseFloat(row['COSTO']) || 0,
-            _minuti: minuti,
-            _ore: minuti / 60,
-            _jobDate: jobDate,
-            _isHistory: true,  // Marca come storico
-            _suggestedPrice: parseFloat(row['COSTO']) || 0,
-            _logic: "Storico",
-            _soloStorico: true
-        };
-    });
-
-    console.log(`📊 Caricati ${storicoRows.length} interventi dallo storico`);
-
-    if (storicoRows.length === 0) {
-        alert("⚠️ Nessun intervento valido trovato nello storico");
-        return;
-    }
-
-    // Popola appData
-    appData.rawRows = storicoRows;
-    appData.uniqueVenditori.clear();
-    appData.uniqueWorkPerf.clear();
-    appData.uniqueContracts.clear();
-    appData.jobGroups = {};
-    appData.fileName = "SOLO_STORICO_" + (window.storicoInterventi.fileName || "sbolla.json");
-
-    // Crea i gruppi per job
-    storicoRows.forEach((row, index) => {
-        const jid = row['Job'] || row['Job'] || `STORICO_${index}`;
-        if (!appData.jobGroups[jid]) {
-            appData.jobGroups[jid] = {
-                jobId: jid,
-                rows: [],
-                totalMin: 0,
-                totalPrice: 0,
-                masterRow: row,
-                isHistory: true,
-                hasMultiple: false,
-                isSoloStorico: true
-            };
-        }
-
-        const group = appData.jobGroups[jid];
-        group.rows.push(row);
-        group.totalMin += row._minuti;
-        group.totalPrice += (row._suggestedPrice || 0);
-    });
-
-    // Calcola totali
-    Object.values(appData.jobGroups).forEach(g => {
-        g.hasMultiple = g.rows.length > 1;
-    });
-
-    // Raccogli unique values per filtri
-    storicoRows.forEach(row => {
-        if (row['Venditore (LocalUnitId) (Impianto)']) appData.uniqueVenditori.add(row['Venditore (LocalUnitId) (Impianto)']);
-        if (row['LocalWorkPerformed']) appData.uniqueWorkPerf.add(row['LocalWorkPerformed']);
-        if (row['Contract template (LocalUnitId) (Impianto)']) appData.uniqueContracts.add(row['Contract template (LocalUnitId) (Impianto)']);
-    });
-
-    // Calcola medie componenti
-    calcolaMedieComponenti();
-
-    // Mostra pulsante "Carica Excel" nell'header
-    const btnCaricaExcel = document.getElementById('btn-carica-excel');
-    if (btnCaricaExcel) btnCaricaExcel.classList.remove('hidden');
-
-    // Inizializza UI
-    initUI();
-
-    // Aggiorna debug panel
-    if (typeof window.aggiornaDebugPanel === 'function') {
-        window.aggiornaDebugPanel();
-    }
-
-    console.log("✅ Modalità solo storico attivata");
-};
-
-window.apriCaricaExcel = function () {
-    console.log("==========================================");
-    console.log("➕ FUNZIONE: apriCaricaExcel()");
-    console.log("==========================================");
-
-    // Crea un input file temporaneo
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.xlsx, .xls, .csv';
-    input.onchange = function (e) {
-        const file = e.target.files[0];
-        if (file) {
-            window.caricaExcelAggiuntivo(file);
-        }
-    };
-    input.click();
-};
-
-window.caricaExcelAggiuntivo = function (file) {
-    console.log("📂 Caricamento Excel aggiuntivo:", file.name);
-
-    const reader = new FileReader();
-    reader.onload = function (e) {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
-
-        console.log(`📊 Righe lette dal nuovo Excel: ${jsonData.length}`);
-
-        // Processa i nuovi dati e AGGIUNGILI a quelli esistenti
-        window.processAggiuntivoData(jsonData, file.name);
-    };
-    reader.readAsArrayBuffer(file);
-};
-
-window.processAggiuntivoData = function (rows, fileName) {
-    console.log("🔄 Inizio processAggiuntivoData()");
-
-    // Identifica i job già esistenti per evitare duplicati
-    const existingJobIds = new Set(Object.keys(appData.jobGroups));
-
-    let nuoviCount = 0;
-    let skipCount = 0;
-
-    // Prepara le nuove righe
-    const newRows = [];
-
-    rows.forEach((row, index) => {
-        const jid = row[COLS.JOB_ID];
-
-        // Se il job esiste già, salta (evita duplicati)
-        if (existingJobIds.has(jid)) {
-            skipCount++;
-            return;
-        }
-
-        // Processa la nuova riga
-        const processedRow = {
-            ...row,
-            _id: appData.rawRows.length + index,
-            _costo: parseFloat(row[COLS.COSTO]),
-            _minuti: parseInt(row[COLS.TEMPO]) || 0,
-            _ore: (parseInt(row[COLS.TEMPO]) || 0) / 60,
-            _dataModifica: parseDate(row[COLS.DATA_MODIFICA]),
-            _jobDate: parseDate(row[COLS.JOB_DATE]),
-            _isHistory: false,  // I nuovi job NON sono storici
-            _suggestedPrice: 0,
-            _logic: "Nuovo da Excel"
-        };
-
-        newRows.push(processedRow);
-        nuoviCount++;
-
-        // Aggiungi a unique sets per filtri
-        if (row[COLS.VENDITORE]) appData.uniqueVenditori.add(row[COLS.VENDITORE]);
-        if (row[COLS.WORK_PERFORMED]) appData.uniqueWorkPerf.add(row[COLS.WORK_PERFORMED]);
-        if (row[COLS.CONTRATTO]) appData.uniqueContracts.add(row[COLS.CONTRATTO]);
-
-        // Crea o aggiorna il gruppo
-        if (!appData.jobGroups[jid]) {
-            appData.jobGroups[jid] = {
-                jobId: jid,
-                rows: [],
-                totalMin: 0,
-                totalPrice: 0,
-                masterRow: processedRow,
-                isHistory: false,
-                hasMultiple: false,
-                isSoloStorico: false
-            };
-        }
-
-        const group = appData.jobGroups[jid];
-        group.rows.push(processedRow);
-        group.totalMin += processedRow._minuti;
-        group.totalPrice += processedRow._suggestedPrice;
-    });
-
-    // Aggiorna hasMultiple per i nuovi gruppi
-    Object.values(appData.jobGroups).forEach(g => {
-        g.hasMultiple = g.rows.length > 1;
-    });
-
-    // Aggiungi le nuove righe a rawRows
-    appData.rawRows.push(...newRows);
-
-    console.log(`✅ Aggiunti ${nuoviCount} nuovi interventi, saltati ${skipCount} duplicati`);
-
-    // Ricalcola medie componenti con i nuovi dati
-    calcolaMedieComponenti();
-
-    // Aggiorna i filtri (popola i select con i nuovi valori)
-    populateSelect('filter-venditore', appData.uniqueVenditori);
-    populateSelect('filter-workperf', appData.uniqueWorkPerf);
-    populateSelect('filter-contract', appData.uniqueContracts);
-
-    // Applica filtri e renderizza
-    applyFilters();
-
-    // Mostra notifica
-    mostraNotificaAggiuntiva(`✅ Aggiunti ${nuoviCount} nuovi interventi`, 'success');
-
-    console.log("✅ processAggiuntivoData completato");
-};
-
-function mostraNotificaAggiuntiva(testo, tipo) {
-    const notifica = document.createElement('div');
-    notifica.className = `fixed bottom-4 right-4 z-50 bg-white rounded-lg shadow-xl border p-4 max-w-sm animate-slide-up ${tipo === 'success' ? 'border-emerald-200' : 'border-amber-200'
-        }`;
-    notifica.innerHTML = `
-        <div class="flex items-start gap-3">
-            <span class="text-2xl">${tipo === 'success' ? '✅' : '⚠️'}</span>
-            <div>
-                <h4 class="font-bold ${tipo === 'success' ? 'text-emerald-600' : 'text-amber-600'}">${testo}</h4>
-                <p class="text-xs text-slate-500 mt-1">I nuovi job hanno prezzo € 0 di default</p>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(notifica);
-    setTimeout(() => {
-        if (notifica) notifica.remove();
-    }, 4000);
-}
-
-// Override della funzione renderTable per gestire i prezzi readonly in modalità solo storico
-// AGGIUNGI QUESTA FUNZIONE (NON SOSTITUIRE LA ESISTENTE - È UN OVERRIDE)
-const originalRenderTable = window.renderTable;
-window.renderTable = function () {
-    // Se siamo in modalità solo storico, assicuriamoci che tutti i prezzi siano readonly
-    if (window.soloStoricoMode) {
-        // Forza tutti i gruppi come history per disabilitare i campi
-        Object.values(appData.jobGroups).forEach(g => {
-            g.isHistory = true;
-            g.isSoloStorico = true;
-        });
-    }
-    // Chiama la funzione originale
-    originalRenderTable();
-};
-
-// Aggiungi funzione per chiudere modalità solo storico (opzionale)
-window.esciModalitaSoloStorico = function () {
-    if (confirm("Vuoi uscire dalla modalità solo storico? I dati non salvati andranno persi.")) {
-        window.soloStoricoMode = false;
-        // Ricarica la pagina per resettare tutto
-        location.reload();
-    }
-};
-
-// ============================================
-// NUOVE FUNZIONI: ESPORTAZIONE PDF SINGOLO JOB
-// ============================================
-
-window.esportaJobPDF = function (jid) {
-    console.log("📄 Esportazione PDF per job:", jid);
-
-    const group = appData.jobGroups[jid];
-    if (!group) {
-        console.error("Job non trovato:", jid);
-        return;
-    }
-
-    const row = group.masterRow;
-
-    // Prepara i dati per il PDF
-    const jobData = {
-        id: jid,
-        data: formatDateItalian(row._jobDate),
-        impianto: row[COLS.IMPIANTO] || "N/D",
-        indirizzo: row[COLS.INDIRIZZO] || "N/D",
-        venditore: row[COLS.VENDITORE] || "N/D",
-        contratto: row[COLS.CONTRATTO] || "N/D",
-        tipoIntervento: row[COLS.WORK_PERFORMED] || "N/D",
-        durataMinuti: group.totalMin,
-        durataOre: (group.totalMin / 60).toFixed(1),
-        prezzoTotale: group.totalPrice || 0,
-        cliente: row[COLS.CLIENTE] || "N/D",
-        amministratore: row[COLS.AMMINISTRATORE] || "N/D",
-        tecnico: row[COLS.TECNICO] || "N/D",
-        componenti: []
-    };
-
-    // Raccogli i componenti
-    group.rows.forEach((r, idx) => {
-        jobData.componenti.push({
-            codice: r[COLS.COMP_CODE] || "N/D",
-            componente: r[COLS.COMPONENTE] || "N/D",
-            categoria: r[COLS.CATEGORIA] || "N/D",
-            descrizione: r[COLS.DESCRIZIONE] || "N/D",
-            quantita: r[COLS.QUANTITA] || 1,
-            prezzo: r._suggestedPrice || 0
-        });
-    });
-
-    // Genera il PDF
-    generaPDF(jobData);
-};
-
-function generaPDF(jobData) {
-    // Usa jsPDF con window.jspdf
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 15;
-    let y = margin;
-
-    // ========== INTESTAZIONE ==========
-    doc.setFontSize(20);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(37, 99, 235); // blue-600
-    doc.text("Sbolla Manager", margin, y);
-
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(100, 116, 139); // slate-500
-    doc.text("Report Intervento", margin, y + 7);
-
-    // Riga separatrice
-    y += 12;
-    doc.setDrawColor(203, 213, 225);
-    doc.line(margin, y, pageWidth - margin, y);
-    y += 8;
-
-    // ========== DATI JOB ==========
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(15, 23, 42);
-    doc.text(`Job: ${jobData.id}`, margin, y);
-    y += 6;
-
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(71, 85, 105);
-
-    // Griglia dati job
-    const jobFields = [
-        ["Data intervento:", jobData.data],
-        ["Impianto:", jobData.impianto],
-        ["Indirizzo:", jobData.indirizzo],
-        ["Venditore:", jobData.venditore],
-        ["Cliente:", jobData.cliente],
-        ["Amministratore:", jobData.amministratore],
-        ["Tecnico:", jobData.tecnico],
-        ["Contratto:", jobData.contratto],
-        ["Tipo intervento:", jobData.tipoIntervento],
-        ["Durata:", `${jobData.durataMinuti}' (${jobData.durataOre} ore)`],
-    ];
-
-    let col1X = margin;
-    let col2X = margin + 45;
-    let rowHeight = 5;
-
-    jobFields.forEach((field, idx) => {
-        const yPos = y + (idx * rowHeight);
-        if (yPos > 260) {
-            doc.addPage();
-            y = margin;
-        }
-        doc.setFont("helvetica", "bold");
-        doc.text(field[0], col1X, yPos);
-        doc.setFont("helvetica", "normal");
-        doc.text(field[1], col2X, yPos);
-    });
-
-    y += jobFields.length * rowHeight + 5;
-
-    // ========== TABELLA COMPONENTI ==========
-    if (y > 250) {
-        doc.addPage();
-        y = margin;
-    }
-
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(15, 23, 42);
-    doc.text("Componenti", margin, y);
-    y += 5;
-
-    // Prepara i dati per la tabella
-    const tableData = jobData.componenti.map(comp => [
-        comp.codice,
-        comp.componente.length > 30 ? comp.componente.substring(0, 27) + "..." : comp.componente,
-        comp.quantita,
-        `€ ${comp.prezzo.toFixed(2)}`
-    ]);
-
-    // Usa autoTable
-    doc.autoTable({
-        startY: y,
-        head: [["Codice", "Componente", "Qtà", "Prezzo"]],
-        body: tableData,
-        theme: 'striped',
-        headStyles: {
-            fillColor: [59, 130, 246],
-            textColor: 255,
-            fontStyle: 'bold',
-            fontSize: 9
-        },
-        bodyStyles: {
-            fontSize: 8
-        },
-        columnStyles: {
-            0: { cellWidth: 30 },
-            1: { cellWidth: 80 },
-            2: { cellWidth: 15, halign: 'center' },
-            3: { cellWidth: 25, halign: 'right' }
-        },
-        margin: { left: margin, right: margin },
-        didDrawPage: function (data) {
-            // Footer su ogni pagina
-            const pageCount = doc.internal.getNumberOfPages();
-            for (let i = 1; i <= pageCount; i++) {
-                doc.setPage(i);
-                doc.setFontSize(8);
-                doc.setTextColor(148, 163, 184);
-                doc.text(
-                    `Documento generato il ${new Date().toLocaleString('it-IT')}`,
-                    margin,
-                    doc.internal.pageSize.getHeight() - 10
-                );
-                doc.text(
-                    `Pagina ${i} di ${pageCount}`,
-                    pageWidth - margin - 20,
-                    doc.internal.pageSize.getHeight() - 10
-                );
-            }
-        }
-    });
-
-    // Ottieni l'Y finale dopo la tabella
-    let finalY = doc.lastAutoTable.finalY + 8;
-
-    // ========== TOTALE ==========
-    if (finalY > 270) {
-        doc.addPage();
-        finalY = margin;
-    }
-
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(16, 185, 129);
-    doc.text(`TOTALE: € ${jobData.prezzoTotale.toFixed(2)}`, pageWidth - margin - 40, finalY);
-
-    // ========== NOTE ==========
-    finalY += 10;
-    if (finalY < 270) {
-        doc.setFontSize(8);
-        doc.setFont("helvetica", "italic");
-        doc.setTextColor(148, 163, 184);
-        doc.text("* Questo documento è stato generato automaticamente da Sbolla Manager", margin, doc.internal.pageSize.getHeight() - 15);
-    }
-
-    // Salva il PDF
-    doc.save(`Job_${jobData.id}_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.pdf`);
-}
 
 // ============================================
 // ESPOSIZIONE FUNZIONI GLOBALI
@@ -2536,20 +2032,20 @@ window.switchTab = switchTab;
 // Inizializzazione al caricamento del DOM
 document.addEventListener('DOMContentLoaded', () => {
     console.log("🚀 DOM caricato, inizializzo app.js...");
-
+    
     const fileInput = document.getElementById('fileInput');
-    if (fileInput) fileInput.addEventListener('change', handleFile);
-
+    if(fileInput) fileInput.addEventListener('change', handleFile);
+    
     const searchBox = document.getElementById('searchBox');
-    if (searchBox) searchBox.addEventListener('keyup', debounce(applyFilters, 300));
-
+    if(searchBox) searchBox.addEventListener('keyup', debounce(applyFilters, 300));
+    
     caricaListino();
     caricaStoricoRicerche();
     aggiornaMenuRicerche();
-
+    
     const savedRounding = localStorage.getItem("SP_ROUNDING");
     if (savedRounding) pricingConfig.rounding = parseInt(savedRounding);
-
+    
     // Controlla se c'è un file storico da caricare (già gestito nello script iniziale)
     console.log("✅ app.js inizializzato");
 });
