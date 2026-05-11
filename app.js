@@ -1,0 +1,2323 @@
+// ============================================
+// Sbolla Manager v3.0 - Core Application
+// ============================================
+
+console.log("==========================================");
+console.log("📦 app.js caricato");
+console.log("==========================================");
+
+// ============================================
+// CONFIGURAZIONE E COSTANTI
+// ============================================
+const COLS = {
+    COSTO: "COSTO",
+    TEMPO: "Tempo Lavoro (Job) (Job)",
+    CONTRATTO: "Contract template (LocalUnitId) (Impianto)",
+    WORKTYPE: "WorkType (Job) (Job)",
+    JOB_DATE: "JobCompletedDate (Job) (Job)",
+    JOB_ID: "Job",
+    IMPIANTO: "Impiantodiriferimento (Job) (Job)",
+    COMPONENTE: "LocalComponent",
+    CATEGORIA: "LocalComponentCategory",
+    DESCRIZIONE: "TaskDescription",
+    INDIRIZZO: "Indrizzo Edificio (LocalUnitId) (Impianto)",
+    TECNICO: "LocalEmployeeId (Job) (Job)",
+    VENDITORE: "Venditore (LocalUnitId) (Impianto)",
+    DATA_MODIFICA: "(Non modificare) Data modifica",
+    WORK_PERFORMED: "LocalWorkPerformed",
+    CLIENTE: "Cliente (Job) (Job)",
+    AMMINISTRATORE: "Amministratore (LocalUnitId) (Impianto)",
+    QUANTITA: "Quantity",
+    COMP_CODE: "ComponentCode (LocalComponent) (Component)"
+};
+
+// Configurazione tariffe
+let pricingConfig = {
+    oa: 75.0,
+    om: 85.0,
+    sa: 90.0,
+    std: 65.0,
+    urgencyMult: 1.4,
+    fixedFee: 0.0,
+    rounding: 5
+};
+
+// Listino prezzi
+let listinoPrezzi = {
+    prezzi: {},
+    medie: {},
+    lastUpdate: null
+};
+
+// Storico ricerche
+let storicoRicerche = [];
+let jsonCaricatoTemp = null;
+let prezziInizializzati = false;
+
+// Stato Applicazione
+let appData = {
+    rawRows: [],
+    jobGroups: {},
+    displayList: [],
+    uniqueVenditori: new Set(),
+    uniqueWorkPerf: new Set(),
+    uniqueContracts: new Set(),
+    analytics: {},
+    fileName: ""
+};
+
+// Mesi in Italiano
+const MONTHS_IT = ["GEN", "FEB", "MAR", "APR", "MAG", "GIU", "LUG", "AGO", "SET", "OTT", "NOV", "DIC"];
+
+console.log("✅ Variabili globali inizializzate");
+
+// ============================================
+// FUNZIONI DI UTILITÀ
+// ============================================
+
+// ============================================
+// FUNZIONE PER OTTENERE TUTTI GLI INTERVENTI (storico + correnti)
+// ============================================
+
+function getTuttiInterventi() {
+    let tutti = [];
+
+    // Aggiungi storico
+    if (window.storicoInterventi?.interventi) {
+        tutti = tutti.concat(window.storicoInterventi.interventi.map(row => ({
+            ...row,
+            _isHistory: true,
+            _costo: parseFloat(row['COSTO']) || 0,
+            _jobDate: parseDate(row[COLS.JOB_DATE] || row['JobCompletedDate (Job) (Job)']),
+            _suggestedPrice: parseFloat(row['COSTO']) || 0
+        })));
+    }
+
+    // Aggiungi dati correnti
+    if (appData.rawRows) {
+        tutti = tutti.concat(appData.rawRows);
+    }
+
+    console.log(`📚 Totale interventi: ${tutti.length} (storico: ${window.storicoInterventi?.interventi?.length || 0}, corrente: ${appData.rawRows?.length || 0})`);
+    return tutti;
+}
+
+
+function formatDateItalian(dateObj) {
+    if (!dateObj || isNaN(dateObj)) return "-";
+    const d = dateObj.getDate().toString().padStart(2, '0');
+    const m = MONTHS_IT[dateObj.getMonth()];
+    const y = dateObj.getFullYear();
+    return `${d}-${m}-${y}`;
+}
+
+function parseDate(raw) {
+    if (!raw) return null;
+    if (raw instanceof Date) return raw;
+    if (typeof raw === 'number') return new Date(Math.round((raw - 25569) * 86400 * 1000));
+    const d = new Date(raw);
+    return isNaN(d) ? null : d;
+}
+
+function debounce(func, wait) {
+    let timeout;
+    return function (...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func(...args), wait);
+    };
+}
+
+function arrotondaPrezzo(importo, step = 5) {
+    if (step <= 1) return Math.round(importo * 100) / 100;
+    return Math.ceil(importo / step) * step;
+}
+
+// ============================================
+// GESTIONE LISTINO
+// ============================================
+
+function caricaListino() {
+    console.log("📂 Caricamento listino da localStorage...");
+    const saved = localStorage.getItem("SP_LISTINO_PREZZI");
+    if (saved) {
+        try {
+            listinoPrezzi = JSON.parse(saved);
+            console.log("✅ Listino caricato:", Object.keys(listinoPrezzi.prezzi).length, "prezzi personalizzati");
+        } catch (e) {
+            console.error("❌ Errore caricamento listino:", e);
+            listinoPrezzi = { prezzi: {}, medie: {}, lastUpdate: null };
+        }
+    } else {
+        console.log("ℹ️ Nessun listino salvato");
+        listinoPrezzi = { prezzi: {}, medie: {}, lastUpdate: null };
+    }
+}
+
+function salvaListino() {
+    localStorage.setItem("SP_LISTINO_PREZZI", JSON.stringify(listinoPrezzi));
+    console.log("💾 Listino salvato:", Object.keys(listinoPrezzi.prezzi).length, "prezzi");
+}
+
+function getPrezzoListino(codice) {
+    if (!codice) return null;
+    const personalizzato = listinoPrezzi.prezzi?.[codice];
+    const media = listinoPrezzi.medie?.[codice]?.media;
+    return personalizzato ?? media ?? null;
+}
+
+function getCategoriaPerCodice(codice) {
+    return listinoPrezzi.medie?.[codice]?.categoria || '';
+}
+
+function calcolaMedieComponenti() {
+    console.log("==========================================");
+    console.log("🔍 INIZIO calcolaMedieComponenti");
+    console.log("==========================================");
+
+    const stats = {};
+    let righeProcessate = 0;
+
+    function processaRiga(row, fonte) {
+        const codice = row[COLS.COMP_CODE] || row['ComponentCode (LocalComponent) (Component)'];
+        const costo = row._costo || parseFloat(row['COSTO']);
+        const categoria = row[COLS.CATEGORIA] || row['LocalComponentCategory'] || "";
+        const descrizione = row[COLS.COMPONENTE] || row['LocalComponent'] || "";
+
+        if (codice && !isNaN(costo) && costo > 0) {
+            if (!stats[codice]) {
+                stats[codice] = {
+                    somma: 0,
+                    conteggio: 0,
+                    categoria: categoria,
+                    descrizione: descrizione
+                };
+            }
+            stats[codice].somma += costo;
+            stats[codice].conteggio++;
+            righeProcessate++;
+
+            if (categoria && !stats[codice].categoria) stats[codice].categoria = categoria;
+            if (descrizione && !stats[codice].descrizione) stats[codice].descrizione = descrizione;
+        }
+    }
+
+    // Processa storico
+    if (window.storicoInterventi?.interventi) {
+        console.log(`📚 Processo storico: ${window.storicoInterventi.interventi.length} righe`);
+        window.storicoInterventi.interventi.forEach(row => processaRiga(row, 'storico'));
+    } else {
+        console.log("⚠️ Nessuno storico disponibile");
+    }
+
+    // Processa dati correnti
+    if (appData.rawRows?.length) {
+        console.log(`📄 Processo dati correnti: ${appData.rawRows.length} righe`);
+        appData.rawRows.forEach(row => processaRiga(row, 'corrente'));
+    }
+
+    console.log(`📊 Righe valide processate: ${righeProcessate}`);
+
+    const nuoveMedie = {};
+    Object.entries(stats).forEach(([codice, data]) => {
+        nuoveMedie[codice] = {
+            media: data.conteggio > 0 ? Math.round((data.somma / data.conteggio) * 100) / 100 : 0,
+            categoria: data.categoria || 'N/D',
+            descrizione: data.descrizione || 'Nessuna descrizione',
+            occorrenze: data.conteggio
+        };
+    });
+
+    console.log(`💰 Calcolate medie per ${Object.keys(nuoveMedie).length} codici`);
+
+    listinoPrezzi.medie = nuoveMedie;
+    listinoPrezzi.lastUpdate = new Date().toISOString();
+
+    Object.keys(nuoveMedie).forEach(codice => {
+        if (listinoPrezzi.prezzi[codice] === undefined) {
+            listinoPrezzi.prezzi[codice] = nuoveMedie[codice].media;
+        }
+    });
+
+    salvaListino();
+    console.log("✅ calcolaMedieComponenti completata");
+    return nuoveMedie;
+}
+
+// ============================================
+// FUNZIONI DI PRICING
+// ============================================
+
+function calculateRowPrice(row) {
+    let rate = pricingConfig.std;
+    let logic = "Standard";
+
+    const c = (row[COLS.CONTRATTO] || "").toUpperCase();
+    if (c.includes("OA")) rate = pricingConfig.oa;
+    else if (c.includes("OM")) rate = pricingConfig.om;
+    else if (c.includes("SA") || c.includes("P -")) rate = pricingConfig.sa;
+
+    let price = rate * (row._ore || 0);
+
+    const wt = (row[COLS.WORKTYPE] || "").toUpperCase();
+    if (wt.includes("AA") || wt.includes("PERICOLO")) {
+        price *= pricingConfig.urgencyMult;
+        logic = "Urgenza";
+    }
+
+    if (pricingConfig.fixedFee > 0 && (wt.includes("AA") || (row[COLS.WORK_PERFORMED] || "").includes("Reperibilità"))) {
+        price += pricingConfig.fixedFee;
+        logic += "+Fisso";
+    }
+
+    price = arrotondaPrezzo(price, pricingConfig.rounding);
+    row._suggestedPrice = Math.round(price * 100) / 100;
+    row._logic = logic;
+}
+
+// ============================================
+// FUNZIONI DI SCELTA INIZIALE (GLOBALI)
+// ============================================
+
+window.applicaPrezziMedi = function () {
+    console.log("==========================================");
+    console.log("💰 FUNZIONE: applicaPrezziMedi()");
+    console.log("==========================================");
+    console.log("📊 appData.rawRows.length:", appData.rawRows.length);
+    console.log("📊 storicoInterventi:", window.storicoInterventi ? "Presente" : "Assente");
+
+    let contatore = 0;
+    let senzaCodice = 0;
+    let senzaPrezzo = 0;
+
+    appData.rawRows.forEach((row, index) => {
+        if (!row._isHistory) {
+            const codice = row[COLS.COMP_CODE];
+            const prezzoMedio = getPrezzoListino(codice);
+
+            if (!codice) {
+                senzaCodice++;
+                row._suggestedPrice = 0;
+                row._logic = "Senza codice";
+            } else if (!prezzoMedio) {
+                senzaPrezzo++;
+                row._suggestedPrice = 0;
+                row._logic = "Nessuna media";
+            } else {
+                contatore++;
+                row._suggestedPrice = prezzoMedio;
+                row._logic = "Media storica";
+            }
+        }
+    });
+
+    console.log(`✅ Righe con media: ${contatore}`);
+    console.log(`⚠️ Senza codice: ${senzaCodice}`);
+    console.log(`⚠️ Senza prezzo medio: ${senzaPrezzo}`);
+
+    Object.values(appData.jobGroups).forEach(g => {
+        g.totalPrice = g.rows.reduce((sum, r) => sum + (r._suggestedPrice || 0), 0);
+    });
+
+    prezziInizializzati = true;
+    console.log("🚀 Chiamo initUI()...");
+    initUI();
+    window.calculateAnalytics?.();
+    console.log("✅ applicaPrezziMedi() completata");
+};
+
+window.applicaPrezziVuoti = function () {
+    console.log("==========================================");
+    console.log("0️⃣ FUNZIONE: applicaPrezziVuoti()");
+    console.log("==========================================");
+
+    let contatore = 0;
+    appData.rawRows.forEach(row => {
+        if (!row._isHistory) {
+            row._suggestedPrice = 0;
+            row._logic = "Da definire";
+            contatore++;
+        }
+    });
+
+    console.log(`✅ Azzerati ${contatore} interventi`);
+
+    Object.values(appData.jobGroups).forEach(g => {
+        g.totalPrice = g.rows.reduce((sum, r) => sum + (r._suggestedPrice || 0), 0);
+    });
+
+    prezziInizializzati = true;
+    initUI();
+    window.calculateAnalytics?.();
+};
+
+window.applicaPrezziDaJSON = function (sessionData) {
+    console.log("==========================================");
+    console.log("📦 FUNZIONE: applicaPrezziDaJSON()");
+    console.log("==========================================");
+
+    const savedPrices = sessionData.prices || {};
+    let restoredCount = 0;
+
+    appData.rawRows.forEach((row, index) => {
+        const key = row[COLS.JOB_ID] + "_" + index;
+        if (!row._isHistory && savedPrices[key]) {
+            row._suggestedPrice = savedPrices[key];
+            row._logic = "Recuperato JSON";
+            restoredCount++;
+        } else if (!row._isHistory && !savedPrices[key]) {
+            row._suggestedPrice = 0;
+            row._logic = "Non presente in JSON";
+        }
+    });
+
+    console.log(`✅ Ripristinati ${restoredCount} prezzi`);
+
+    if (sessionData.listino) {
+        listinoPrezzi = sessionData.listino;
+        salvaListino();
+        console.log("📋 Listino ripristinato");
+    }
+
+    Object.values(appData.jobGroups).forEach(g => {
+        g.totalPrice = g.rows.reduce((sum, r) => sum + (r._suggestedPrice || 0), 0);
+    });
+
+    prezziInizializzati = true;
+    initUI();
+    window.calculateAnalytics?.();
+};
+
+window.mostraSceltaIniziale = function () {
+    console.log("📋 Apertura modale scelta iniziale");
+
+    const uploadOverlay = document.getElementById('upload-overlay');
+    if (uploadOverlay) uploadOverlay.classList.add('hidden');
+
+    const totale = Object.keys(appData.jobGroups).length;
+    let storici = 0;
+    Object.values(appData.jobGroups).forEach(g => {
+        if (g.isHistory) storici++;
+    });
+    const daPrezzare = totale - storici;
+
+    document.getElementById('scelta-nome-file').textContent = `File: ${appData.fileName || 'sconosciuto'}`;
+    document.getElementById('scelta-totale').textContent = totale;
+    document.getElementById('scelta-storici').textContent = storici;
+    document.getElementById('scelta-da-prezzare').textContent = daPrezzare;
+
+    document.getElementById('scelta-iniziale-modal').classList.remove('hidden');
+};
+
+window.chiudiSceltaIniziale = function () {
+    document.getElementById('scelta-iniziale-modal').classList.add('hidden');
+};
+
+window.confermaSceltaIniziale = function () {
+    const scelta = document.querySelector('input[name="scelta-prezzi"]:checked').value;
+    console.log(`✅ Scelta effettuata: ${scelta}`);
+
+    if (scelta === 'vuoti') {
+        window.applicaPrezziVuoti();
+        chiudiSceltaIniziale();
+    } else if (scelta === 'json') {
+        document.getElementById('json-scelta-input').click();
+    } else if (scelta === 'medi') {
+        window.applicaPrezziMedi();
+        chiudiSceltaIniziale();
+    }
+};
+
+window.anteprimaJSON = function (input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    console.log("📂 File JSON selezionato:", file.name);
+
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        try {
+            const sessionData = JSON.parse(e.target.result);
+            jsonCaricatoTemp = sessionData;
+
+            let prezziTrovati = 0;
+            let prezziApplicabili = 0;
+
+            if (sessionData.prices) {
+                prezziTrovati = Object.keys(sessionData.prices).length;
+                appData.rawRows.forEach((row, index) => {
+                    const key = row[COLS.JOB_ID] + "_" + index;
+                    if (sessionData.prices[key]) prezziApplicabili++;
+                });
+            }
+
+            console.log(`📊 JSON: ${prezziTrovati} prezzi, ${prezziApplicabili} applicabili`);
+
+            const conferma = confirm(
+                `📄 File: ${file.name}\n` +
+                `Prezzi trovati: ${prezziTrovati}\n` +
+                `Prezzi applicabili: ${prezziApplicabili}\n\n` +
+                `Applicare questi prezzi?`
+            );
+
+            if (conferma) {
+                window.applicaPrezziDaJSON(sessionData);
+                chiudiSceltaIniziale();
+            } else {
+                jsonCaricatoTemp = null;
+                mostraSceltaIniziale();
+            }
+
+        } catch (err) {
+            alert("Errore nel caricamento del file JSON");
+            console.error(err);
+        }
+    };
+    reader.readAsText(file);
+    input.value = '';
+};
+
+// ============================================
+// GESTIONE FILE EXCEL
+// ============================================
+
+function handleFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    console.log("==========================================");
+    console.log("📂 Caricamento file:", file.name);
+    console.log("==========================================");
+
+    appData.fileName = file.name;
+
+    const loader = document.getElementById('loader');
+    if (loader) loader.classList.remove('hidden');
+    const btnOverlay = document.querySelector('#upload-overlay button');
+    if (btnOverlay) btnOverlay.classList.add('hidden');
+
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+        console.log(`📊 Righe lette: ${jsonData.length}`);
+        setTimeout(() => processData(jsonData), 50);
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+function processData(rows) {
+    console.log("🔄 Inizio processData()");
+
+    appData.rawRows = rows;
+    appData.uniqueVenditori.clear();
+    appData.uniqueWorkPerf.clear();
+    appData.uniqueContracts.clear();
+    appData.jobGroups = {};
+
+    rows.forEach((row, index) => {
+        row._id = index;
+        row._costo = parseFloat(row[COLS.COSTO]);
+        row._minuti = parseInt(row[COLS.TEMPO]) || 0;
+        row._ore = row._minuti / 60;
+        row._dataModifica = parseDate(row[COLS.DATA_MODIFICA]);
+        row._jobDate = parseDate(row[COLS.JOB_DATE]);
+        row._isHistory = (!isNaN(row._costo) && row._costo > 0);
+
+        // NON calcolare prezzi qui
+
+        if (row[COLS.VENDITORE]) appData.uniqueVenditori.add(row[COLS.VENDITORE]);
+        if (row[COLS.WORK_PERFORMED]) appData.uniqueWorkPerf.add(row[COLS.WORK_PERFORMED]);
+        if (row[COLS.CONTRATTO]) appData.uniqueContracts.add(row[COLS.CONTRATTO]);
+
+        const jid = row[COLS.JOB_ID];
+        if (!appData.jobGroups[jid]) {
+            appData.jobGroups[jid] = {
+                jobId: jid,
+                rows: [],
+                totalMin: 0,
+                totalPrice: 0,
+                masterRow: row,
+                isHistory: row._isHistory,
+                hasMultiple: false
+            };
+        }
+
+        const group = appData.jobGroups[jid];
+        group.rows.push(row);
+        group.totalMin += row._minuti;
+        if (row._isHistory) group.isHistory = true;
+    });
+
+    console.log(`📊 Gruppi creati: ${Object.keys(appData.jobGroups).length}`);
+
+    Object.values(appData.jobGroups).forEach(g => {
+        g.hasMultiple = g.rows.length > 1;
+        g.totalPrice = 0; // Tutti a zero inizialmente
+    });
+
+    console.log("📈 Calcolo medie componenti...");
+    calcolaMedieComponenti();
+
+    console.log("🖥️ Mostro scelta iniziale...");
+    mostraSceltaIniziale();
+
+    // Aggiorna debug panel
+    if (typeof window.aggiornaDebugPanel === 'function') {
+        window.aggiornaDebugPanel();
+    }
+}
+
+// ============================================
+// FUNZIONI UI
+// ============================================
+
+function initUI() {
+    console.log("🖥️ initUI()");
+
+    document.getElementById('sidebar').classList.remove('hidden');
+    document.getElementById('main-content').classList.remove('hidden');
+
+    populateSelect('filter-venditore', appData.uniqueVenditori);
+    populateSelect('filter-workperf', appData.uniqueWorkPerf);
+    populateSelect('filter-contract', appData.uniqueContracts);
+
+    applyFilters();
+}
+
+function populateSelect(id, set) {
+    const select = document.getElementById(id);
+    if (!select) return;
+    select.innerHTML = '<option value="ALL">Tutti</option>';
+    [...set].sort().forEach(val => {
+        const opt = document.createElement('option');
+        opt.value = val;
+        opt.innerText = val;
+        select.appendChild(opt);
+    });
+}
+
+// ============================================
+// FILTRI E ORDINAMENTO
+// ============================================
+
+window.applyFilters = function () {
+    const text = document.getElementById('searchBox').value.toLowerCase();
+    const venditore = document.getElementById('filter-venditore').value;
+    const workPerf = document.getElementById('filter-workperf').value;
+    const contract = document.getElementById('filter-contract').value;
+    const showHistory = document.getElementById('toggle-history').checked;
+
+    const dateStartVal = document.getElementById('filter-date-start').value;
+    const dateEndVal = document.getElementById('filter-date-end').value;
+    const dateStart = dateStartVal ? new Date(dateStartVal) : null;
+    const dateEnd = dateEndVal ? new Date(dateEndVal) : null;
+
+    appData.displayList = Object.values(appData.jobGroups).filter(g => {
+        const r = g.masterRow;
+
+        if (!showHistory && g.isHistory) return false;
+
+        if (text) {
+            const matchesJob = g.jobId.toLowerCase().includes(text);
+            const matchesIndirizzo = (r[COLS.INDIRIZZO] || "").toLowerCase().includes(text);
+            const matchesImpianto = (r[COLS.IMPIANTO] || "").toLowerCase().includes(text);
+            if (!matchesJob && !matchesIndirizzo && !matchesImpianto) return false;
+        }
+
+        if (venditore !== "ALL" && r[COLS.VENDITORE] !== venditore) return false;
+        if (workPerf !== "ALL" && r[COLS.WORK_PERFORMED] !== workPerf) return false;
+        if (contract !== "ALL" && r[COLS.CONTRATTO] !== contract) return false;
+
+        if (dateStart || dateEnd) {
+            const d = r._jobDate;
+            if (!d) return false;
+            const dataIntervento = new Date(d);
+            dataIntervento.setHours(0, 0, 0, 0);
+            if (dateStart) {
+                const start = new Date(dateStart);
+                start.setHours(0, 0, 0, 0);
+                if (dataIntervento < start) return false;
+            }
+            if (dateEnd) {
+                const end = new Date(dateEnd);
+                end.setHours(23, 59, 59, 999);
+                const dataInterventoFine = new Date(d);
+                dataInterventoFine.setHours(23, 59, 59, 999);
+                if (dataInterventoFine > end) return false;
+            }
+        }
+        return true;
+    });
+
+    applySorting();
+};
+
+window.applySorting = function () {
+    const sortMode = document.getElementById('sort-order').value;
+
+    appData.displayList.sort((a, b) => {
+        const ra = a.masterRow;
+        const rb = b.masterRow;
+
+        if (sortMode === 'date-desc') return (rb._jobDate || 0) - (ra._jobDate || 0);
+        if (sortMode === 'date-asc') return (ra._jobDate || 0) - (rb._jobDate || 0);
+        if (sortMode === 'impianto-asc') return (ra[COLS.IMPIANTO] || "").localeCompare(rb[COLS.IMPIANTO] || "");
+        if (sortMode === 'addr-asc') return (ra[COLS.INDIRIZZO] || "").localeCompare(rb[COLS.INDIRIZZO] || "");
+        return 0;
+    });
+
+    updateHeaderStats();
+    renderTable();
+};
+
+// ============================================
+// RENDERING TABELLA
+// ============================================
+
+function renderTable() {
+    const tbody = document.getElementById('pricing-table-body');
+    if (!tbody) return;
+    tbody.innerHTML = "";
+
+    appData.displayList.slice(0, 100).forEach(group => {
+        const tr = document.createElement('tr');
+        const r = group.masterRow;
+
+        const wp = r[COLS.WORK_PERFORMED] || "";
+        let wpClass = "text-slate-500";
+        if (wp.includes("Reperibilità")) wpClass = "wp-reperibilita";
+        else if (wp.includes("Normale")) wpClass = "wp-normale";
+        else if (wp.includes("consuntivo")) wpClass = "wp-consuntivo";
+
+        const isLocked = group.hasMultiple || group.isHistory;
+        const codiceComponente = r[COLS.COMP_CODE];
+        const prezzoListino = getPrezzoListino(codiceComponente);
+        const hasListino = !group.isHistory && !isLocked && prezzoListino !== null;
+        const rowClass = hasListino ? 'hover:bg-indigo-50/30 border-l-2 border-indigo-200' : 'hover:bg-white';
+        const inputClass = group.isHistory ? "price-input price-historical" : "price-input";
+
+        let folderIcon = "";
+        if (group.hasMultiple) {
+            folderIcon = `<button onclick="openDetails('${group.jobId}')" class="text-blue-600 hover:bg-blue-50 p-1 rounded font-bold transition" title="Modifica Multipla">📂</button>`;
+        }
+
+        tr.className = rowClass + " border-b border-slate-200 transition-colors";
+
+        let prezzoCellContent = '';
+
+        if (!group.isHistory) {
+            prezzoCellContent = '<div class="flex items-center gap-1 justify-end">';
+            prezzoCellContent += `
+                <button onclick="setZeroPrice('${group.jobId}')" 
+                    class="hover:bg-slate-100 px-2 py-1.5 rounded border border-transparent hover:border-slate-300 transition text-sm font-bold ${hasListino ? '' : 'rounded-l-md'}"
+                    title="Azzera Prezzo">0️⃣</button>
+            `;
+
+            if (hasListino) {
+                const differenza = Math.abs(group.totalPrice - prezzoListino);
+                const giaApplicato = differenza < 0.01;
+                prezzoCellContent += `
+                    <button onclick="applicaPrezzoListino('${group.jobId}', ${prezzoListino})" 
+                        class="flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2 py-1.5 rounded-l-md border border-indigo-200 transition text-xs font-medium"
+                        title="Codice: ${codiceComponente} - Prezzo listino: € ${prezzoListino}">
+                        <span class="text-sm">💡</span>
+                        <span class="font-mono font-bold">${prezzoListino}€</span>
+                        ${!giaApplicato ? '<span class="ml-1 w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>' : ''}
+                    </button>
+                `;
+            }
+
+            prezzoCellContent += `
+                <input type="number" 
+                    class="${inputClass} ${hasListino ? 'rounded-r-md rounded-l-none border-l-0' : 'rounded-md'}" 
+                    value="${group.totalPrice.toFixed(2)}"
+                    onchange="updateSingleJobPrice('${group.jobId}', this.value)"
+                    step="0.01"
+                    style="min-width: 90px; width: auto; max-width: 110px;">
+            `;
+            prezzoCellContent += '</div>';
+        } else {
+            prezzoCellContent = `
+                <div class="flex items-center gap-1 justify-end">
+                    <input type="number" class="${inputClass} rounded-md" value="${group.totalPrice.toFixed(2)}" disabled step="0.01" style="min-width: 90px;">
+                </div>
+            `;
+        }
+
+        tr.innerHTML = `
+            <td class="px-4 py-3 align-top">
+                <div class="font-bold text-slate-800 text-xs">${group.jobId}</div>
+                <div class="text-[11px] text-slate-500 mt-1 uppercase font-mono tracking-tight">${formatDateItalian(r._jobDate)}</div>
+            </td>
+            <td class="px-4 py-3 align-top">
+                <button onclick="cercaPerImpianto('${r[COLS.IMPIANTO]}')" 
+                    class="text-xs font-mono bg-slate-100 hover:bg-indigo-100 px-2 py-1 rounded w-fit text-slate-600 hover:text-indigo-700 border border-slate-200 hover:border-indigo-300 transition-all cursor-pointer">
+                    ${r[COLS.IMPIANTO]}
+                </button>
+            </td>
+            <td class="px-4 py-3 align-top">
+                <div class="text-sm font-extrabold text-slate-900 leading-tight tracking-tight">${r[COLS.INDIRIZZO]}</div>
+                <div class="text-[11px] text-slate-400 mt-1 flex items-center gap-1"><span class="text-xs">👤</span> ${r[COLS.VENDITORE] || "N.D."}</div>
+            </td>
+            <td class="px-4 py-3 align-top">
+                <span class="text-[10px] font-bold text-slate-500 bg-slate-50 border px-1 rounded uppercase tracking-tighter">${r[COLS.CONTRATTO]}</span>
+            </td>
+            <td class="px-4 py-3 align-top">
+                <div class="text-xs ${wpClass} uppercase tracking-wide font-bold mb-1">${wp}</div>
+                <div class="text-sm font-medium text-slate-700 leading-tight mb-1" title="${r[COLS.COMPONENTE]}">${r[COLS.COMPONENTE] || 'N/D'}</div>
+                ${codiceComponente ? `<div class="inline-block bg-indigo-100 text-indigo-800 font-mono font-bold text-sm px-2 py-0.5 rounded-md border border-indigo-200 mt-1">${codiceComponente}</div>` : ''}
+            </td>
+            <td class="px-4 py-3 align-top text-center">
+                <span class="text-xs font-mono font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">${group.totalMin}'</span>
+            </td>
+            <td class="px-4 py-3 align-top text-center">
+                <div class="flex justify-center items-center gap-2">
+                    <button onclick="openInfo('${group.jobId}')" class="text-slate-400 hover:text-blue-600 text-base transition transform hover:scale-110" title="Scheda Tecnica">ℹ️</button>
+                    <div class="relative group">
+                        <button class="text-slate-400 hover:text-amber-500 text-base transition transform hover:scale-110" 
+                                onmouseenter="mostraStatisticheCodice('${codiceComponente}', this)" title="Statistiche prezzo">📣</button>
+                        <div id="tooltip-${codiceComponente?.replace(/\s/g, '')}" class="hidden absolute bottom-full right-0 mb-2 w-64 bg-white rounded-lg shadow-xl border border-slate-200 p-3 text-left z-50 text-xs">Caricamento...</div>
+                    </div>
+                    ${folderIcon}
+<button onclick="esportaJobPDF('${group.jobId}')" class="text-slate-400 hover:text-red-500 text-base transition transform hover:scale-110" title="Esporta PDF">📄</button>
+
+                </div>
+            </td>
+            <td class="px-4 py-3 align-top text-right">${prezzoCellContent}</td>
+        `;
+
+        tbody.appendChild(tr);
+
+        // Riga anteprima impianto
+        const stats = getImpiantoStats(r[COLS.IMPIANTO]);
+        const trAnteprima = document.createElement('tr');
+        trAnteprima.className = "bg-indigo-50/30 text-[10px] border-b border-indigo-200";
+        trAnteprima.innerHTML = `
+            <td colspan="8" class="px-4 py-2">
+                <div class="flex items-center justify-between text-slate-600">
+                    <div class="flex items-center gap-2"><span class="text-indigo-400">└</span><span class="font-medium">Impianto ${r[COLS.IMPIANTO]}</span></div>
+                    <div class="flex items-center gap-4">
+                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-400"></span>Spesa storica: <span class="font-bold text-emerald-600">€ ${stats.spesaStorica}</span></span>
+                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-blue-400"></span>Ticket medio: <span class="font-bold text-blue-600">€ ${stats.ticketMedio}</span></span>
+                        <span class="text-slate-400 text-[9px]">(${stats.totaleInterventi} int.)</span>
+                    </div>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(trAnteprima);
+    });
+}
+
+// ============================================
+// STATISTICHE IMPIANTO
+// ============================================
+
+function getImpiantoStats(impianto) {
+    let totaleInterventi = 0;
+    let spesaStorica = 0;
+
+    // Usa TUTTI gli interventi (storico + corrente)
+    const tuttiInterventi = getTuttiInterventi();
+
+    // Raggruppa per jobId per non contare doppioni
+    const jobVisti = new Set();
+
+    tuttiInterventi.forEach(row => {
+        if (row[COLS.IMPIANTO] === impianto) {
+            const jobId = row[COLS.JOB_ID];
+            if (!jobVisti.has(jobId)) {
+                jobVisti.add(jobId);
+                totaleInterventi++;
+            }
+
+            // Spesa storica: considera solo gli storici
+            const costo = parseFloat(row['COSTO']) || row._costo || 0;
+            if (costo > 0) {
+                spesaStorica += costo;
+            }
+        }
+    });
+
+    const ticketMedio = totaleInterventi > 0 ? (spesaStorica / totaleInterventi).toFixed(2) : "0.00";
+
+    console.log(`📊 Stats impianto ${impianto}: ${totaleInterventi} interventi, spesa ${spesaStorica.toFixed(2)}`);
+
+    return {
+        totaleInterventi,
+        spesaStorica: spesaStorica.toFixed(2),
+        ticketMedio
+    };
+}
+
+// ============================================
+// FUNZIONI DI SUPPORTO
+// ============================================
+
+window.cercaPerImpianto = function (codiceImpianto) {
+    if (!codiceImpianto) return;
+    document.getElementById('searchBox').value = codiceImpianto;
+    applyFilters();
+    salvaRicercaCorrente();
+};
+
+window.setZeroPrice = function (jid) {
+    const group = appData.jobGroups[jid];
+    if (!group) return;
+    group.rows.forEach(r => { r._suggestedPrice = 0; r._logic = "Azzerato Manuale"; });
+    group.totalPrice = 0;
+    updateHeaderStats();
+    window.calculateAnalytics?.();
+    saveState();
+    renderTable();
+};
+
+window.updateSingleJobPrice = function (jid, val) {
+    const group = appData.jobGroups[jid];
+    if (group && !group.hasMultiple) {
+        group.masterRow._suggestedPrice = parseFloat(val);
+        group.totalPrice = parseFloat(val);
+        updateHeaderStats();
+        window.calculateAnalytics?.();
+        saveState();
+    }
+};
+
+window.updateTaskPrice = function (jid, idx, val) {
+    const group = appData.jobGroups[jid];
+    if (group) {
+        group.rows[idx]._suggestedPrice = parseFloat(val);
+        group.totalPrice = group.rows.reduce((sum, r) => sum + (r._suggestedPrice || 0), 0);
+        updateHeaderStats();
+        window.calculateAnalytics?.();
+        saveState();
+    }
+};
+
+window.massAdjust = function (factor) {
+    appData.displayList.forEach(group => {
+        if (group.isHistory) return;
+        group.rows.forEach(row => { row._suggestedPrice = (row._suggestedPrice || 0) * factor; });
+        group.totalPrice = group.rows.reduce((sum, r) => sum + (r._suggestedPrice || 0), 0);
+    });
+    renderTable();
+    updateHeaderStats();
+    window.calculateAnalytics?.();
+    saveState();
+};
+
+window.applicaPrezzoListino = function (jid, prezzo) {
+    const group = appData.jobGroups[jid];
+    if (!group || group.isHistory) return;
+    group.totalPrice = prezzo;
+    group.rows.forEach(row => { row._suggestedPrice = prezzo / group.rows.length; });
+    updateHeaderStats();
+    window.calculateAnalytics?.();
+    saveState();
+    renderTable();
+};
+
+// ============================================
+// GESTIONE STATO E PERSISTENZA
+// ============================================
+
+function saveState() {
+    if (!appData.fileName) return;
+    const state = {};
+    appData.rawRows.forEach((row, idx) => {
+        if (!row._isHistory && row._suggestedPrice !== undefined) {
+            state[row[COLS.JOB_ID] + "_" + idx] = row._suggestedPrice;
+        }
+    });
+    const fullState = { prices: state, listino: listinoPrezzi, timestamp: new Date().toISOString() };
+    localStorage.setItem("SP_FULL_STATE_" + appData.fileName, JSON.stringify(fullState));
+}
+
+function loadState(fileName) {
+    const saved = localStorage.getItem("SP_FULL_STATE_" + fileName);
+    if (!saved) return null;
+    try {
+        const fullState = JSON.parse(saved);
+        if (fullState.listino) {
+            listinoPrezzi = fullState.listino;
+            salvaListino();
+        }
+        return fullState.prices || null;
+    } catch (e) {
+        return null;
+    }
+}
+
+window.downloadSession = function () {
+    const state = {};
+    appData.rawRows.forEach((row, idx) => {
+        if (!row._isHistory && row._suggestedPrice !== undefined) {
+            state[row[COLS.JOB_ID] + "_" + idx] = row._suggestedPrice;
+        }
+    });
+    const sessionData = {
+        fileName: appData.fileName,
+        timestamp: new Date().toISOString(),
+        prices: state,
+        listino: listinoPrezzi
+    };
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(sessionData));
+    const link = document.createElement('a');
+    link.href = dataStr;
+    link.download = "sessione_sbolla_" + new Date().toISOString().slice(0, 10) + ".json";
+    link.click();
+};
+
+window.loadSessionFile = function (input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        try {
+            const sessionData = JSON.parse(e.target.result);
+            if (sessionData.fileName !== appData.fileName) {
+                if (!confirm(`File diverso: ${sessionData.fileName}. Continuare?`)) return;
+            }
+            const savedPrices = sessionData.prices || {};
+            let restoredCount = 0;
+            appData.rawRows.forEach((row, index) => {
+                const key = row[COLS.JOB_ID] + "_" + index;
+                if (!row._isHistory && savedPrices[key]) {
+                    row._suggestedPrice = savedPrices[key];
+                    row._logic = "Recuperato JSON";
+                    restoredCount++;
+                }
+            });
+            if (sessionData.listino) {
+                listinoPrezzi = sessionData.listino;
+                salvaListino();
+            }
+            Object.values(appData.jobGroups).forEach(g => {
+                g.totalPrice = g.rows.reduce((sum, r) => sum + (r._suggestedPrice || 0), 0);
+            });
+            saveState();
+            applyFilters();
+            window.calculateAnalytics?.();
+            renderTable();
+            alert(`Sessione caricata! ${restoredCount} prezzi ripristinati.`);
+        } catch (err) {
+            alert("Errore nel caricamento");
+        }
+    };
+    reader.readAsText(file);
+    input.value = '';
+};
+
+// ============================================
+// EXPORT EXCEL
+// ============================================
+
+window.exportExcel = function () {
+    const exportData = appData.rawRows.map(row => {
+        if (row._isHistory) return row;
+        return { ...row, "COSTO": (row._suggestedPrice || 0).toFixed(2), "NOTE_SMART_PRICING": `Logic: ${row._logic}` };
+    });
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Export_Prezzato");
+    XLSX.writeFile(wb, "Master_Prezzato.xlsx");
+};
+
+window.exportFiltered = function () {
+    let filteredRows = [];
+    appData.displayList.forEach(group => filteredRows.push(...group.rows));
+    if (filteredRows.length === 0) { alert("Nessun dato"); return; }
+    const exportData = filteredRows.map(row => {
+        if (row._isHistory) return row;
+        return { ...row, "COSTO": (row._suggestedPrice || 0).toFixed(2), "NOTE_SMART_PRICING": `Logic: ${row._logic}` };
+    });
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Vista_Filtrata");
+    XLSX.writeFile(wb, `Sbolla_Filtro_${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.xlsx`);
+};
+
+// ============================================
+// HEADER STATS
+// ============================================
+
+function updateHeaderStats() {
+    const total = appData.displayList.filter(g => !g.isHistory).reduce((sum, g) => sum + (g.totalPrice || 0), 0);
+    document.getElementById('header-total').innerText = "€ " + total.toLocaleString('it-IT', { maximumFractionDigits: 0 });
+    document.getElementById('row-count').innerText = appData.displayList.length.toLocaleString();
+}
+
+// ============================================
+// STORICO RICERCHE
+// ============================================
+
+function caricaStoricoRicerche() {
+    const saved = localStorage.getItem("SP_STORICO_RICERCHE");
+    if (saved) { try { storicoRicerche = JSON.parse(saved); } catch (e) { storicoRicerche = []; } }
+}
+
+function salvaStoricoRicerche() {
+    localStorage.setItem("SP_STORICO_RICERCHE", JSON.stringify(storicoRicerche));
+}
+
+function generaNomeRicerca(filtri) {
+    const parti = [];
+    if (filtri.testo) parti.push(`"${filtri.testo}"`);
+    if (filtri.venditore && filtri.venditore !== "ALL") parti.push(filtri.venditore);
+    if (filtri.contratto && filtri.contratto !== "ALL") parti.push(filtri.contratto);
+    if (filtri.tipo && filtri.tipo !== "ALL") parti.push(filtri.tipo);
+    if (filtri.dataInizio || filtri.dataFine) {
+        const inizio = filtri.dataInizio ? filtri.dataInizio.split('-').reverse().join('/') : '...';
+        const fine = filtri.dataFine ? filtri.dataFine.split('-').reverse().join('/') : '...';
+        parti.push(`${inizio}→${fine}`);
+    }
+    if (!filtri.mostraStorico) parti.push("no storico");
+    return parti.length > 0 ? parti.join(" · ") : "Tutti gli interventi";
+}
+
+window.salvaRicercaCorrente = function () {
+    const filtro = {
+        testo: document.getElementById('searchBox').value,
+        venditore: document.getElementById('filter-venditore').value,
+        contratto: document.getElementById('filter-contract').value,
+        tipo: document.getElementById('filter-workperf').value,
+        dataInizio: document.getElementById('filter-date-start').value,
+        dataFine: document.getElementById('filter-date-end').value,
+        mostraStorico: document.getElementById('toggle-history').checked,
+        timestamp: new Date().toISOString()
+    };
+    filtro.nome = generaNomeRicerca(filtro);
+    storicoRicerche = [filtro, ...storicoRicerche].slice(0, 10);
+    salvaStoricoRicerche();
+    aggiornaMenuRicerche();
+};
+
+function applicaRicerca(filtro) {
+    document.getElementById('searchBox').value = filtro.testo || '';
+    document.getElementById('filter-venditore').value = filtro.venditore || 'ALL';
+    document.getElementById('filter-contract').value = filtro.contratto || 'ALL';
+    document.getElementById('filter-workperf').value = filtro.tipo || 'ALL';
+    document.getElementById('filter-date-start').value = filtro.dataInizio || '';
+    document.getElementById('filter-date-end').value = filtro.dataFine || '';
+    document.getElementById('toggle-history').checked = filtro.mostraStorico || false;
+    applyFilters();
+}
+
+function aggiornaMenuRicerche() {
+    const container = document.getElementById('ricerche-salvate');
+    if (!container) return;
+    container.innerHTML = '';
+    storicoRicerche.forEach((ricerca, index) => {
+        const btn = document.createElement('button');
+        btn.className = 'w-full text-left bg-slate-50 hover:bg-slate-100 text-slate-600 rounded px-2 py-1.5 text-[10px] transition flex items-center justify-between group';
+        btn.onclick = () => applicaRicerca(ricerca);
+        const data = new Date(ricerca.timestamp);
+        const oggi = new Date();
+        const diffGiorni = Math.floor((oggi - data) / (1000 * 60 * 60 * 24));
+        let dataLabel = diffGiorni === 0 ? 'oggi' : diffGiorni === 1 ? 'ieri' : `${diffGiorni} gg fa`;
+        btn.innerHTML = `<span class="truncate flex-1" title="${ricerca.nome}">${ricerca.nome}</span><span class="text-slate-400 text-[8px] ml-1">${dataLabel}</span>`;
+        container.appendChild(btn);
+    });
+    if (storicoRicerche.length === 0) {
+        container.innerHTML = '<div class="text-slate-400 text-[10px] text-center py-2">Nessuna ricerca salvata</div>';
+    }
+}
+
+// ============================================
+// DEBUG PANEL
+// ============================================
+
+window.toggleDebugPanel = function () {
+    const panel = document.getElementById('debug-storico-panel');
+    panel.classList.toggle('hidden');
+    if (!panel.classList.contains('hidden')) aggiornaDebugPanel();
+};
+
+window.nascondiDebugPanel = function () {
+    document.getElementById('debug-storico-panel').classList.add('hidden');
+};
+
+window.aggiornaDebugPanel = function () {
+    if (window.storicoInterventi?.interventi) {
+        const interventi = window.storicoInterventi.interventi;
+        let storici = 0, nuovi = 0;
+        const codiciUnici = new Set();
+        interventi.forEach(row => {
+            const costo = parseFloat(row['COSTO']);
+            if (!isNaN(costo) && costo > 0) storici++; else nuovi++;
+            const codice = row[COLS?.COMP_CODE || 'ComponentCode (LocalComponent) (Component)'];
+            if (codice) codiciUnici.add(codice);
+        });
+        document.getElementById('debug-totale').textContent = interventi.length;
+        document.getElementById('debug-storici').textContent = storici;
+        document.getElementById('debug-nuovi').textContent = nuovi;
+        document.getElementById('debug-codici').textContent = codiciUnici.size;
+        document.getElementById('debug-data').textContent = new Date(window.storicoInterventi.timestamp).toLocaleString('it-IT');
+        document.getElementById('debug-nomefile').textContent = window.storicoInterventi.fileName || 'Sconosciuto';
+        document.getElementById('debug-stats').classList.remove('hidden');
+        document.getElementById('debug-file').classList.remove('hidden');
+        document.getElementById('debug-status').innerHTML = '<div class="text-emerald-600 flex items-center gap-1"><span>✅</span> Storico caricato</div>';
+    } else {
+        document.getElementById('debug-status').innerHTML = '<div class="text-amber-600 flex items-center gap-1"><span>⚠️</span> Nessuno storico</div>';
+        document.getElementById('debug-stats').classList.add('hidden');
+        document.getElementById('debug-file').classList.add('hidden');
+    }
+    if (appData.fileName) {
+        let correntiStorici = 0, correntiNuovi = 0;
+        Object.values(appData.jobGroups).forEach(g => { if (g.isHistory) correntiStorici++; else correntiNuovi++; });
+        document.getElementById('debug-corrente-nome').textContent = appData.fileName;
+        document.getElementById('debug-corrente-stats').innerHTML = `${correntiNuovi} da prezzare · ${correntiStorici} storici`;
+        document.getElementById('debug-corrente').classList.remove('hidden');
+    } else {
+        document.getElementById('debug-corrente').classList.add('hidden');
+    }
+};
+
+window.ricaricaStorico = function () {
+    location.reload();
+};
+
+window.caricaStoricoFile = function (input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        try {
+            window.storicoInterventi = JSON.parse(e.target.result);
+            alert(`Storico caricato: ${window.storicoInterventi.interventi.length} interventi`);
+            aggiornaDebugPanel();
+            calcolaMedieComponenti();
+            renderTable();
+        } catch (err) {
+            alert("Errore nel caricamento");
+        }
+    };
+    reader.readAsText(file);
+    input.value = '';
+};
+
+// ============================================
+// MODALI
+// ============================================
+
+window.openDetails = function (jid) {
+    const group = appData.jobGroups[jid];
+    if (!group) return;
+    document.getElementById('modal-title').innerText = `Job: ${jid}`;
+    document.getElementById('modal-subtitle').innerText = `${group.rows.length} righe - ${group.masterRow[COLS.INDIRIZZO]}`;
+    const tbody = document.getElementById('modal-body');
+    tbody.innerHTML = "";
+    group.rows.forEach((row, idx) => {
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-50 border-b border-slate-100";
+        tr.innerHTML = `
+            <td class="px-4 py-3 text-center"><button onclick="openInfo('${jid}')" class="text-slate-300 hover:text-blue-500">ℹ️</button></td>
+            <td class="px-4 py-3"><div class="font-bold text-xs text-slate-700">${row[COLS.COMPONENTE]}</div><div class="text-[10px] text-slate-400 uppercase">${row[COLS.CATEGORIA]}</div></td>
+            <td class="px-4 py-3"><div class="text-xs text-slate-600">${row[COLS.DESCRIZIONE]}</div><div class="text-[10px] text-slate-400 italic">Tecnico: ${row[COLS.TECNICO]}</div></td>
+            <td class="px-4 py-3 text-center text-xs font-bold">${row[COLS.QUANTITA]}</td>
+            <td class="px-4 py-3 text-center text-xs font-mono bg-slate-50 rounded">${row._minuti}'</td>
+            <td class="px-4 py-3 text-right">
+                <input type="number" class="price-input border border-slate-300 p-1.5" value="${row._suggestedPrice?.toFixed(2) || '0.00'}" ${group.isHistory ? 'disabled' : ''} onchange="updateTaskPrice('${jid}', ${idx}, this.value)">
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+    document.getElementById('details-modal').classList.remove('hidden');
+};
+
+window.closeDetails = function () {
+    document.getElementById('details-modal').classList.add('hidden');
+    renderTable();
+    updateHeaderStats();
+};
+
+window.openInfo = function (jid) {
+  console.log("ℹ️ openInfo()", jid);
+
+  const COL_JOBTASK = "(Non modificare) JobTask";
+  const group = appData.jobGroups[jid];
+  if (!group) return;
+
+  const r = group.masterRow;
+  const impianto = r[COLS.IMPIANTO];
+
+  // =====================================================
+  // 1️⃣ MAP JOB -> INTERVENTI (DEDUP PER JobTask)
+  // =====================================================
+  const map = new Map();
+
+  // ---------- STORICO ----------
+  if (window.storicoInterventi?.interventi) {
+    window.storicoInterventi.interventi.forEach(row => {
+      const imp = row[COLS.IMPIANTO] || row["Impiantodiriferimento (Job) (Job)"];
+      if (imp !== impianto) return;
+
+      const jobId = row[COLS.JOB_ID] || row["Job"];
+      const jobTask = row[COL_JOBTASK];
+      if (!jobId || !jobTask) return;
+
+      // init job
+      if (!map.has(jobId)) {
+        map.set(jobId, {
+          jobId,
+          data: parseDate(row[COLS.JOB_DATE] || row["JobCompletedDate (Job) (Job)"]),
+          workPerformed: row[COLS.WORK_PERFORMED] || "",
+          isHistory: true,
+          prezzoTotale: 0,
+          rows: 0,
+          componenti: [],
+          _taskSeen: new Set()
+        });
+      }
+
+      const j = map.get(jobId);
+
+      // ❌ DUPLICATO REALE → IGNORA
+      if (j._taskSeen.has(jobTask)) return;
+
+      // ✅ PRIMO INGRESSO
+      j._taskSeen.add(jobTask);
+      j.rows += 1;
+      j.prezzoTotale += parseFloat(row["COSTO"]) || 0;
+
+      const comp = row[COLS.COMPONENTE] || row["LocalComponent"];
+      if (comp) j.componenti.push(comp);
+    });
+  }
+
+  // ---------- CORRENTE ----------
+  Object.values(appData.jobGroups).forEach(g => {
+    if (g.masterRow[COLS.IMPIANTO] !== impianto) return;
+
+    if (!map.has(g.jobId)) {
+      map.set(g.jobId, {
+        jobId: g.jobId,
+        data: g.masterRow._jobDate,
+        workPerformed: g.masterRow[COLS.WORK_PERFORMED] || "",
+        isHistory: g.isHistory,
+        prezzoTotale: g.totalPrice || 0,
+        rows: g.rows.length,
+        componenti: g.rows.map(r => r[COLS.COMPONENTE]).filter(Boolean),
+        _taskSeen: null
+      });
+    }
+  });
+
+  // =====================================================
+  // 2️⃣ DA MAP A ARRAY + ORDINAMENTO
+  // =====================================================
+  const interventi = Array.from(map.values())
+    .map(j => {
+      delete j._taskSeen;
+      return {
+        ...j,
+        componenti: j.componenti.join(" · ")
+      };
+    })
+    .sort((a, b) => {
+      const da = a.data instanceof Date ? a.data.getTime() : 0;
+      const db = b.data instanceof Date ? b.data.getTime() : 0;
+      return db - da;
+    })
+    .slice(0, 30);
+
+  // =====================================================
+  // 3️⃣ RAGGRUPPA PER MESE / ANNO
+  // =====================================================
+  const gruppi = {};
+  interventi.forEach(i => {
+    if (!i.data) return;
+    const key = `${i.data.getFullYear()}-${i.data.getMonth()}`;
+    if (!gruppi[key]) {
+      gruppi[key] = {
+        titolo: `${MONTHS_IT[i.data.getMonth()]} ${i.data.getFullYear()}`,
+        items: []
+      };
+    }
+    gruppi[key].items.push(i);
+  });
+
+  // =====================================================
+  // 4️⃣ HTML TIMELINE
+  // =====================================================
+  const timelineHtml = Object.values(gruppi).map(g => `
+    <div class="mb-5">
+      <div class="text-[11px] font-bold text-slate-600 uppercase mb-2">
+        ${g.titolo} (${g.items.length})
+      </div>
+
+      ${g.items.map(i => {
+        const badge = i.isHistory
+          ? "bg-slate-100 text-slate-600 border-slate-200"
+          : "bg-blue-100 text-blue-700 border-blue-200 animate-pulse";
+
+        return `
+          <div class="py-2 px-3 border-b border-slate-100 hover:bg-slate-50">
+            <div class="flex justify-between gap-4">
+              <div>
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-xs font-mono text-slate-400">
+                    ${formatDateItalian(i.data)}
+                  </span>
+                  <span class="text-xs font-bold text-slate-700">
+                    ${i.jobId}
+                  </span>
+                  <span class="text-[10px] px-2 py-0.5 rounded-full border ${badge}">
+                    ${i.isHistory ? "STORICO" : "IN CORSO"}
+                  </span>
+                </div>
+
+                <div class="text-[11px] text-slate-600 line-clamp-2">
+                  🔧 ${i.componenti || "N/D"}
+                </div>
+
+                <div class="text-[10px] text-slate-400 mt-1">
+                  <span class="bg-slate-100 px-1.5 py-0.5 rounded">
+                    ${i.workPerformed || "N/D"}
+                  </span>
+                  ${i.rows > 1 ? `<span class="ml-2 bg-blue-50 px-1.5 rounded">${i.rows} task</span>` : ""}
+                </div>
+              </div>
+
+              <div class="text-xs font-mono font-bold ${i.isHistory ? "text-emerald-600" : "text-blue-500"}">
+                € ${i.prezzoTotale.toFixed(2)}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `).join("");
+
+  // =====================================================
+  // 5️⃣ INIEZIONE MODALE
+  // =====================================================
+  document.getElementById("info-modal-content").innerHTML = `
+    <div class="p-4">
+      <h3 class="font-bold text-slate-700 mb-4">📅 Timeline Interventi</h3>
+      ${timelineHtml || "<p class='text-slate-400 text-xs'>Nessun intervento</p>"}
+    </div>
+  `;
+
+  document.getElementById("info-modal").classList.remove("hidden");
+};
+
+// ============================================
+// STATISTICHE CODICE (TOOLTIP)
+// ============================================
+
+window.mostraStatisticheCodice = function (codice, elemento) {
+    if (!codice) return;
+    const tooltipId = `tooltip-${codice.replace(/\s/g, '')}`;
+    const tooltip = document.getElementById(tooltipId);
+    if (!tooltip) return;
+
+    const stats = calcolaStatisticheCodice(codice);
+
+    tooltip.innerHTML = `
+        <div class="text-xs">
+            <div class="font-bold text-amber-600 mb-2 flex items-center gap-1"><span>📊</span> Statistiche ${codice}</div>
+            <div class="space-y-2">
+                <div><div class="text-slate-400 text-[10px]">Ultimi 5 prezzi</div><div class="font-mono text-slate-700">${stats.ultimiPrezzi}</div></div>
+                <div class="grid grid-cols-2 gap-2"><div><div class="text-slate-400 text-[10px]">Media</div><div class="font-bold text-blue-600">€ ${stats.media}</div></div><div><div class="text-slate-400 text-[10px]">Max</div><div class="font-bold text-emerald-600">€ ${stats.max}</div></div></div>
+                <div><div class="text-slate-400 text-[10px]">Più frequente</div><div class="font-medium">€ ${stats.modale} (${stats.frequenza} volte)</div></div>
+            </div>
+        </div>
+    `;
+
+    tooltip.classList.remove('hidden');
+    setTimeout(() => tooltip.classList.add('hidden'), 3000);
+};
+
+function calcolaStatisticheCodice(codice) {
+    const prezzi = [];
+    appData.rawRows.forEach(row => {
+        if (row[COLS.COMP_CODE] === codice && (row._suggestedPrice || 0) > 0) {
+            prezzi.push(row._suggestedPrice);
+        }
+    });
+
+    if (prezzi.length === 0) {
+        return { ultimiPrezzi: 'Nessun dato', media: '0', max: '0', modale: '0', frequenza: 0 };
+    }
+
+    const ultimi = prezzi.slice(-5).reverse().map(p => `€ ${p}`).join(', ');
+    const media = (prezzi.reduce((a, b) => a + b, 0) / prezzi.length).toFixed(2);
+    const max = Math.max(...prezzi).toFixed(2);
+
+    const frequenze = {};
+    prezzi.forEach(p => frequenze[p] = (frequenze[p] || 0) + 1);
+    let modale = prezzi[0], maxFreq = 0;
+    Object.entries(frequenze).forEach(([p, f]) => { if (f > maxFreq) { modale = p; maxFreq = f; } });
+
+    return { ultimiPrezzi: ultimi, media, max, modale, frequenza: maxFreq };
+}
+
+// ============================================
+// LISTINO MODALE
+// ============================================
+
+window.apriListinoModal = function () {
+    const tbody = document.getElementById('listino-table-body');
+    const statsDiv = document.getElementById('listino-stats');
+    if (!tbody) return;
+
+    const medie = listinoPrezzi.medie || {};
+    const codici = Object.keys(medie).sort();
+
+    if (statsDiv) {
+        statsDiv.innerHTML = `<span class="font-bold text-indigo-600">${codici.length}</span> codici unici trovati <span class="ml-4 text-xs bg-slate-100 px-2 py-1 rounded">Ultimo calcolo: ${listinoPrezzi.lastUpdate ? new Date(listinoPrezzi.lastUpdate).toLocaleString() : 'Mai'}</span>`;
+    }
+
+    tbody.innerHTML = '';
+    codici.forEach(codice => {
+        const data = medie[codice];
+        if (!data) return;
+        const prezzoPersonalizzato = listinoPrezzi.prezzi[codice] || '';
+        const prezzoMedio = data.media ? data.media.toFixed(2) : '0.00';
+        const isPersonalizzato = prezzoPersonalizzato && data.media && Math.abs(parseFloat(prezzoPersonalizzato) - data.media) > 0.01;
+        const tr = document.createElement('tr');
+        tr.className = `hover:bg-slate-50 ${isPersonalizzato ? 'bg-indigo-50/50' : ''}`;
+        tr.innerHTML = `
+            <td class="px-4 py-3 font-mono font-bold text-slate-700">${codice}</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">${data.categoria || 'N/D'}</td>
+            <td class="px-4 py-3 text-slate-600 text-xs max-w-[250px]" title="${data.descrizione || ''}">${(data.descrizione || 'Nessuna descrizione').substring(0, 50)}${(data.descrizione || '').length > 50 ? '...' : ''}</td>
+            <td class="px-4 py-3 text-right font-mono text-xs text-slate-400">${data.occorrenze || 0}</td>
+            <td class="px-4 py-3 text-right font-mono font-bold text-slate-600">€ ${prezzoMedio}</td>
+            <td class="px-4 py-3 text-right">
+                <div class="flex items-center gap-2 justify-end">
+                    <input type="number" class="listino-input w-28 text-right border border-slate-300 rounded-lg px-3 py-1.5 font-mono text-sm focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400" data-codice="${codice}" value="${prezzoPersonalizzato}" placeholder="${prezzoMedio}" step="0.01" min="0">
+                    <button onclick="this.closest('tr').querySelector('.listino-input').value = '${prezzoMedio}'" class="text-xs text-indigo-400 hover:text-indigo-600 transition px-2 py-1 rounded hover:bg-indigo-50" title="Reset alla media">↩️</button>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+    document.getElementById('listino-modal').classList.remove('hidden');
+};
+
+window.chiudiListinoModal = function () {
+    document.getElementById('listino-modal').classList.add('hidden');
+};
+
+window.salvaListinoDaModal = function () {
+    const inputs = document.querySelectorAll('.listino-input');
+    const nuoviPrezzi = {};
+    inputs.forEach(input => {
+        const codice = input.dataset.codice;
+        const valore = parseFloat(input.value);
+        if (!isNaN(valore) && valore >= 0) nuoviPrezzi[codice] = valore;
+    });
+    listinoPrezzi.prezzi = nuoviPrezzi;
+    salvaListino();
+    chiudiListinoModal();
+    renderTable();
+    alert(`Listino salvato! ${Object.keys(nuoviPrezzi).length} prezzi aggiornati.`);
+};
+
+window.ricalcolaMedie = function () {
+    calcolaMedieComponenti();
+    apriListinoModal();
+};
+
+// ============================================
+// EXPORT/IMPORT LISTINO EXCEL
+// ============================================
+
+window.esportaListinoExcel = function () {
+    const dati = [];
+    const codici = Object.keys(listinoPrezzi.medie).sort();
+    codici.forEach(codice => {
+        const media = listinoPrezzi.medie[codice] || {};
+        dati.push({
+            'Codice': codice,
+            'Categoria': media.categoria || '',
+            'Descrizione': media.descrizione || '',
+            'Occorrenze': media.occorrenze || 0,
+            'Prezzo Medio (€)': media.media || 0,
+            'Prezzo Listino (€)': listinoPrezzi.prezzi[codice] || media.media || 0
+        });
+    });
+    const ws = XLSX.utils.json_to_sheet(dati);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Listino");
+    XLSX.writeFile(wb, `Listino_Componenti_${new Date().toISOString().slice(0, 10)}.xlsx`);
+};
+
+window.importaListinoExcel = function (input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet);
+            let importati = 0;
+            jsonData.forEach(row => {
+                const codice = row['Codice'];
+                const prezzoListino = parseFloat(row['Prezzo Listino (€)']);
+                if (codice && !isNaN(prezzoListino) && prezzoListino >= 0) {
+                    listinoPrezzi.prezzi[codice] = prezzoListino;
+                    importati++;
+                }
+            });
+            if (importati > 0) {
+                salvaListino();
+                renderTable();
+                alert(`✅ Importati ${importati} prezzi.`);
+            } else {
+                alert("⚠️ Nessun prezzo valido.");
+            }
+        } catch (err) {
+            alert("Errore nel caricamento");
+        }
+    };
+    reader.readAsArrayBuffer(file);
+    input.value = '';
+};
+
+// ============================================
+// SETTINGS
+// ============================================
+
+window.toggleSettings = function () {
+    const modal = document.getElementById('settings-modal');
+    if (modal.classList.contains('hidden')) {
+        document.getElementById('cfg-oa').value = pricingConfig.oa;
+        document.getElementById('cfg-om').value = pricingConfig.om;
+        document.getElementById('cfg-sa').value = pricingConfig.sa;
+        document.getElementById('cfg-urg').value = pricingConfig.urgencyMult;
+        document.getElementById('cfg-rounding').value = pricingConfig.rounding || 5;
+    }
+    modal.classList.toggle('hidden');
+};
+
+window.saveSettings = function () {
+    pricingConfig.oa = parseFloat(document.getElementById('cfg-oa').value);
+    pricingConfig.om = parseFloat(document.getElementById('cfg-om').value);
+    pricingConfig.sa = parseFloat(document.getElementById('cfg-sa').value);
+    pricingConfig.urgencyMult = parseFloat(document.getElementById('cfg-urg').value);
+    pricingConfig.rounding = parseInt(document.getElementById('cfg-rounding').value);
+
+    appData.rawRows.forEach(row => { if (!row._isHistory) calculateRowPrice(row); });
+    Object.values(appData.jobGroups).forEach(g => { if (!g.isHistory) g.totalPrice = g.rows.reduce((sum, r) => sum + (r._suggestedPrice || 0), 0); });
+
+    localStorage.setItem("SP_ROUNDING", pricingConfig.rounding);
+    toggleSettings();
+    applyFilters();
+    window.calculateAnalytics?.();
+    saveState();
+    alert("Prezzi ricalcolati con arrotondamento a " + pricingConfig.rounding + "€");
+};
+
+// ============================================
+// MENU SETTINGS
+// ============================================
+
+window.toggleSettingsMenu = function () {
+    document.getElementById('settings-menu').classList.toggle('hidden');
+};
+
+document.addEventListener('click', function (e) {
+    const menu = document.getElementById('settings-menu');
+    const container = document.getElementById('settings-menu-container');
+    if (menu && !menu.classList.contains('hidden') && !container.contains(e.target)) {
+        menu.classList.add('hidden');
+    }
+});
+
+// ============================================
+// UTILITIES
+// ============================================
+
+window.switchTab = function (t) {
+    document.getElementById('main-content').classList.toggle('hidden', t !== 'pricing');
+    document.getElementById('view-analytics').classList.toggle('hidden', t !== 'analytics');
+    document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+    document.getElementById('tab-btn-' + t).classList.add('active');
+    if (t === 'analytics' && typeof window.aggiornaSezioneAnalisi === 'function') {
+        window.aggiornaSezioneAnalisi();
+    }
+};
+
+window.resetFilters = function () {
+    document.getElementById('searchBox').value = "";
+    document.getElementById('filter-venditore').value = "ALL";
+    document.getElementById('filter-workperf').value = "ALL";
+    document.getElementById('filter-contract').value = "ALL";
+    document.getElementById('filter-date-start').value = "";
+    document.getElementById('filter-date-end').value = "";
+    document.getElementById('toggle-history').checked = false;
+    applyFilters();
+};
+
+// ============================================
+// ANALYTICS (base, il resto in analisi.js)
+// ============================================
+
+window.calculateAnalytics = function () {
+    // Delega a analisi.js se presente
+    if (typeof window.aggiornaSezioneAnalisi === 'function') {
+        window.aggiornaSezioneAnalisi();
+    }
+};
+
+// ============================================
+// INIZIALIZZAZIONE
+// ============================================
+
+// Inizializzazione al caricamento del DOM
+document.addEventListener('DOMContentLoaded', () => {
+    console.log("🚀 DOM caricato, inizializzo app.js...");
+
+    const fileInput = document.getElementById('fileInput');
+    if (fileInput) fileInput.addEventListener('change', handleFile);
+
+    const searchBox = document.getElementById('searchBox');
+    if (searchBox) searchBox.addEventListener('keyup', debounce(applyFilters, 300));
+
+    caricaListino();
+    caricaStoricoRicerche();
+    aggiornaMenuRicerche();
+
+    const savedRounding = localStorage.getItem("SP_ROUNDING");
+    if (savedRounding) pricingConfig.rounding = parseInt(savedRounding);
+
+    // Verifica se lo storico è già stato caricato dallo script iniziale
+    if (window.storicoInterventi) {
+        console.log("📚 Storico già disponibile:", window.storicoInterventi.interventi.length, "interventi");
+        // Ricalcola medie con lo storico
+        setTimeout(() => {
+            calcolaMedieComponenti();
+        }, 100);
+    } else {
+        console.log("⏳ In attesa del caricamento storico...");
+        // Prova a ricontrollare dopo 1 secondo
+        setTimeout(() => {
+            if (window.storicoInterventi) {
+                console.log("📚 Storico ora disponibile");
+                calcolaMedieComponenti();
+            }
+        }, 1000);
+    }
+
+    console.log("✅ app.js inizializzato");
+});
+
+// ============================================
+// NUOVE FUNZIONI: CARICA SOLO STORICO + CARICA EXCEL AGGIUNTIVO
+// ============================================
+
+// Variabile per tracciare se siamo in modalità solo storico
+window.soloStoricoMode = false;
+
+window.caricaSoloStorico = function () {
+    console.log("==========================================");
+    console.log("📚 FUNZIONE: caricaSoloStorico()");
+    console.log("==========================================");
+
+    // Verifica se lo storico è disponibile
+    if (!window.storicoInterventi || !window.storicoInterventi.interventi) {
+        alert("❌ Nessuno storico disponibile. Carica prima un file sbolla.json usando il pulsante '📚 Storico'");
+        return;
+    }
+
+    // Nascondi l'overlay
+    const uploadOverlay = document.getElementById('upload-overlay');
+    if (uploadOverlay) uploadOverlay.classList.add('hidden');
+
+    // Imposta modalità solo storico
+    window.soloStoricoMode = true;
+
+    // Prepara i dati dagli interventi storici
+    const storicoRows = window.storicoInterventi.interventi.map((row, index) => {
+        // Calcola minuti dal tempo lavoro (se presente)
+        let minuti = 0;
+        const tempoRaw = row['Tempo Lavoro (Job) (Job)'] || row['Tempo Lavoro (Job) (Job)'];
+        if (tempoRaw) {
+            minuti = parseInt(tempoRaw) || 0;
+        }
+
+        // Data job
+        let jobDate = null;
+        const dateRaw = row['JobCompletedDate (Job) (Job)'] || row['JobCompletedDate (Job) (Job)'];
+        if (dateRaw) {
+            if (dateRaw instanceof Date) jobDate = dateRaw;
+            else if (typeof dateRaw === 'number') jobDate = new Date(Math.round((dateRaw - 25569) * 86400 * 1000));
+            else jobDate = new Date(dateRaw);
+        }
+
+        return {
+            ...row,
+            _id: index,
+            _costo: parseFloat(row['COSTO']) || 0,
+            _minuti: minuti,
+            _ore: minuti / 60,
+            _jobDate: jobDate,
+            _isHistory: true,  // Marca come storico
+            _suggestedPrice: parseFloat(row['COSTO']) || 0,
+            _logic: "Storico",
+            _soloStorico: true
+        };
+    });
+
+    console.log(`📊 Caricati ${storicoRows.length} interventi dallo storico`);
+
+    if (storicoRows.length === 0) {
+        alert("⚠️ Nessun intervento valido trovato nello storico");
+        return;
+    }
+
+    // Popola appData
+    appData.rawRows = storicoRows;
+    appData.uniqueVenditori.clear();
+    appData.uniqueWorkPerf.clear();
+    appData.uniqueContracts.clear();
+    appData.jobGroups = {};
+    appData.fileName = "SOLO_STORICO_" + (window.storicoInterventi.fileName || "sbolla.json");
+
+    // Crea i gruppi per job
+    storicoRows.forEach((row, index) => {
+        const jid = row['Job'] || row['Job'] || `STORICO_${index}`;
+        if (!appData.jobGroups[jid]) {
+            appData.jobGroups[jid] = {
+                jobId: jid,
+                rows: [],
+                totalMin: 0,
+                totalPrice: 0,
+                masterRow: row,
+                isHistory: true,
+                hasMultiple: false,
+                isSoloStorico: true
+            };
+        }
+
+        const group = appData.jobGroups[jid];
+        group.rows.push(row);
+        group.totalMin += row._minuti;
+        group.totalPrice += (row._suggestedPrice || 0);
+    });
+
+    // Calcola totali
+    Object.values(appData.jobGroups).forEach(g => {
+        g.hasMultiple = g.rows.length > 1;
+    });
+
+    // Raccogli unique values per filtri
+    storicoRows.forEach(row => {
+        if (row['Venditore (LocalUnitId) (Impianto)']) appData.uniqueVenditori.add(row['Venditore (LocalUnitId) (Impianto)']);
+        if (row['LocalWorkPerformed']) appData.uniqueWorkPerf.add(row['LocalWorkPerformed']);
+        if (row['Contract template (LocalUnitId) (Impianto)']) appData.uniqueContracts.add(row['Contract template (LocalUnitId) (Impianto)']);
+    });
+
+    // Calcola medie componenti
+    calcolaMedieComponenti();
+
+    // Mostra pulsante "Carica Excel" nell'header
+    const btnCaricaExcel = document.getElementById('btn-carica-excel');
+    if (btnCaricaExcel) btnCaricaExcel.classList.remove('hidden');
+
+    // Inizializza UI
+    initUI();
+
+    // Aggiorna debug panel
+    if (typeof window.aggiornaDebugPanel === 'function') {
+        window.aggiornaDebugPanel();
+    }
+
+    console.log("✅ Modalità solo storico attivata");
+};
+
+window.apriCaricaExcel = function () {
+    console.log("==========================================");
+    console.log("➕ FUNZIONE: apriCaricaExcel()");
+    console.log("==========================================");
+
+    // Crea un input file temporaneo
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.xlsx, .xls, .csv';
+    input.onchange = function (e) {
+        const file = e.target.files[0];
+        if (file) {
+            window.caricaExcelAggiuntivo(file);
+        }
+    };
+    input.click();
+};
+
+window.caricaExcelAggiuntivo = function (file) {
+    console.log("📂 Caricamento Excel aggiuntivo:", file.name);
+
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+        console.log(`📊 Righe lette dal nuovo Excel: ${jsonData.length}`);
+
+        // Processa i nuovi dati e AGGIUNGILI a quelli esistenti
+        window.processAggiuntivoData(jsonData, file.name);
+    };
+    reader.readAsArrayBuffer(file);
+};
+
+window.processAggiuntivoData = function (rows, fileName) {
+    console.log("🔄 Inizio processAggiuntivoData()");
+
+    // Identifica i job già esistenti per evitare duplicati
+    const existingJobIds = new Set(Object.keys(appData.jobGroups));
+
+    let nuoviCount = 0;
+    let skipCount = 0;
+
+    // Prepara le nuove righe
+    const newRows = [];
+
+    rows.forEach((row, index) => {
+        const jid = row[COLS.JOB_ID];
+
+        // Se il job esiste già, salta (evita duplicati)
+        if (existingJobIds.has(jid)) {
+            skipCount++;
+            return;
+        }
+
+        // Processa la nuova riga
+        const processedRow = {
+            ...row,
+            _id: appData.rawRows.length + index,
+            _costo: parseFloat(row[COLS.COSTO]),
+            _minuti: parseInt(row[COLS.TEMPO]) || 0,
+            _ore: (parseInt(row[COLS.TEMPO]) || 0) / 60,
+            _dataModifica: parseDate(row[COLS.DATA_MODIFICA]),
+            _jobDate: parseDate(row[COLS.JOB_DATE]),
+            _isHistory: false,  // I nuovi job NON sono storici
+            _suggestedPrice: 0,
+            _logic: "Nuovo da Excel"
+        };
+
+        newRows.push(processedRow);
+        nuoviCount++;
+
+        // Aggiungi a unique sets per filtri
+        if (row[COLS.VENDITORE]) appData.uniqueVenditori.add(row[COLS.VENDITORE]);
+        if (row[COLS.WORK_PERFORMED]) appData.uniqueWorkPerf.add(row[COLS.WORK_PERFORMED]);
+        if (row[COLS.CONTRATTO]) appData.uniqueContracts.add(row[COLS.CONTRATTO]);
+
+        // Crea o aggiorna il gruppo
+        if (!appData.jobGroups[jid]) {
+            appData.jobGroups[jid] = {
+                jobId: jid,
+                rows: [],
+                totalMin: 0,
+                totalPrice: 0,
+                masterRow: processedRow,
+                isHistory: false,
+                hasMultiple: false,
+                isSoloStorico: false
+            };
+        }
+
+        const group = appData.jobGroups[jid];
+        group.rows.push(processedRow);
+        group.totalMin += processedRow._minuti;
+        group.totalPrice += processedRow._suggestedPrice;
+    });
+
+    // Aggiorna hasMultiple per i nuovi gruppi
+    Object.values(appData.jobGroups).forEach(g => {
+        g.hasMultiple = g.rows.length > 1;
+    });
+
+    // Aggiungi le nuove righe a rawRows
+    appData.rawRows.push(...newRows);
+
+    console.log(`✅ Aggiunti ${nuoviCount} nuovi interventi, saltati ${skipCount} duplicati`);
+
+    // Ricalcola medie componenti con i nuovi dati
+    calcolaMedieComponenti();
+
+    // Aggiorna i filtri (popola i select con i nuovi valori)
+    populateSelect('filter-venditore', appData.uniqueVenditori);
+    populateSelect('filter-workperf', appData.uniqueWorkPerf);
+    populateSelect('filter-contract', appData.uniqueContracts);
+
+    // Applica filtri e renderizza
+    applyFilters();
+
+    // Mostra notifica
+    mostraNotificaAggiuntiva(`✅ Aggiunti ${nuoviCount} nuovi interventi`, 'success');
+
+    console.log("✅ processAggiuntivoData completato");
+};
+
+function mostraNotificaAggiuntiva(testo, tipo) {
+    const notifica = document.createElement('div');
+    notifica.className = `fixed bottom-4 right-4 z-50 bg-white rounded-lg shadow-xl border p-4 max-w-sm animate-slide-up ${tipo === 'success' ? 'border-emerald-200' : 'border-amber-200'
+        }`;
+    notifica.innerHTML = `
+        <div class="flex items-start gap-3">
+            <span class="text-2xl">${tipo === 'success' ? '✅' : '⚠️'}</span>
+            <div>
+                <h4 class="font-bold ${tipo === 'success' ? 'text-emerald-600' : 'text-amber-600'}">${testo}</h4>
+                <p class="text-xs text-slate-500 mt-1">I nuovi job hanno prezzo € 0 di default</p>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(notifica);
+    setTimeout(() => {
+        if (notifica) notifica.remove();
+    }, 4000);
+}
+
+// Override della funzione renderTable per gestire i prezzi readonly in modalità solo storico
+// AGGIUNGI QUESTA FUNZIONE (NON SOSTITUIRE LA ESISTENTE - È UN OVERRIDE)
+const originalRenderTable = window.renderTable;
+window.renderTable = function () {
+    // Se siamo in modalità solo storico, assicuriamoci che tutti i prezzi siano readonly
+    if (window.soloStoricoMode) {
+        // Forza tutti i gruppi come history per disabilitare i campi
+        Object.values(appData.jobGroups).forEach(g => {
+            g.isHistory = true;
+            g.isSoloStorico = true;
+        });
+    }
+    // Chiama la funzione originale
+    originalRenderTable();
+};
+
+// Aggiungi funzione per chiudere modalità solo storico (opzionale)
+window.esciModalitaSoloStorico = function () {
+    if (confirm("Vuoi uscire dalla modalità solo storico? I dati non salvati andranno persi.")) {
+        window.soloStoricoMode = false;
+        // Ricarica la pagina per resettare tutto
+        location.reload();
+    }
+};
+
+// ============================================
+// NUOVE FUNZIONI: ESPORTAZIONE PDF SINGOLO JOB
+// ============================================
+
+window.esportaJobPDF = function (jid) {
+    console.log("📄 Esportazione PDF per job:", jid);
+
+    const group = appData.jobGroups[jid];
+    if (!group) {
+        console.error("Job non trovato:", jid);
+        return;
+    }
+
+    const row = group.masterRow;
+
+    // Prepara i dati per il PDF
+    const jobData = {
+        id: jid,
+        data: formatDateItalian(row._jobDate),
+        impianto: row[COLS.IMPIANTO] || "N/D",
+        indirizzo: row[COLS.INDIRIZZO] || "N/D",
+        venditore: row[COLS.VENDITORE] || "N/D",
+        contratto: row[COLS.CONTRATTO] || "N/D",
+        tipoIntervento: row[COLS.WORK_PERFORMED] || "N/D",
+        durataMinuti: group.totalMin,
+        durataOre: (group.totalMin / 60).toFixed(1),
+        prezzoTotale: group.totalPrice || 0,
+        cliente: row[COLS.CLIENTE] || "N/D",
+        amministratore: row[COLS.AMMINISTRATORE] || "N/D",
+        tecnico: row[COLS.TECNICO] || "N/D",
+        componenti: []
+    };
+
+    // Raccogli i componenti
+    group.rows.forEach((r, idx) => {
+        jobData.componenti.push({
+            codice: r[COLS.COMP_CODE] || "N/D",
+            componente: r[COLS.COMPONENTE] || "N/D",
+            categoria: r[COLS.CATEGORIA] || "N/D",
+            descrizione: r[COLS.DESCRIZIONE] || "N/D",
+            quantita: r[COLS.QUANTITA] || 1,
+            prezzo: r._suggestedPrice || 0
+        });
+    });
+
+    // Genera il PDF
+    generaPDF(jobData);
+};
+
+function generaPDF(jobData) {
+    // Usa jsPDF con window.jspdf
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 15;
+    let y = margin;
+
+    // ========== INTESTAZIONE ==========
+    doc.setFontSize(20);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(37, 99, 235); // blue-600
+    doc.text("Sbolla Manager", margin, y);
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(100, 116, 139); // slate-500
+    doc.text("Report Intervento", margin, y + 7);
+
+    // Riga separatrice
+    y += 12;
+    doc.setDrawColor(203, 213, 225);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 8;
+
+    // ========== DATI JOB ==========
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(15, 23, 42);
+    doc.text(`Job: ${jobData.id}`, margin, y);
+    y += 6;
+
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(71, 85, 105);
+
+    // Griglia dati job
+    const jobFields = [
+        ["Data intervento:", jobData.data],
+        ["Impianto:", jobData.impianto],
+        ["Indirizzo:", jobData.indirizzo],
+        ["Venditore:", jobData.venditore],
+        ["Cliente:", jobData.cliente],
+        ["Amministratore:", jobData.amministratore],
+        ["Tecnico:", jobData.tecnico],
+        ["Contratto:", jobData.contratto],
+        ["Tipo intervento:", jobData.tipoIntervento],
+        ["Durata:", `${jobData.durataMinuti}' (${jobData.durataOre} ore)`],
+    ];
+
+    let col1X = margin;
+    let col2X = margin + 45;
+    let rowHeight = 5;
+
+    jobFields.forEach((field, idx) => {
+        const yPos = y + (idx * rowHeight);
+        if (yPos > 260) {
+            doc.addPage();
+            y = margin;
+        }
+        doc.setFont("helvetica", "bold");
+        doc.text(field[0], col1X, yPos);
+        doc.setFont("helvetica", "normal");
+        doc.text(field[1], col2X, yPos);
+    });
+
+    y += jobFields.length * rowHeight + 5;
+
+    // ========== TABELLA COMPONENTI ==========
+    if (y > 250) {
+        doc.addPage();
+        y = margin;
+    }
+
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(15, 23, 42);
+    doc.text("Componenti", margin, y);
+    y += 5;
+
+    // Prepara i dati per la tabella
+    const tableData = jobData.componenti.map(comp => [
+        comp.codice,
+        comp.componente.length > 30 ? comp.componente.substring(0, 27) + "..." : comp.componente,
+        comp.quantita,
+        `€ ${comp.prezzo.toFixed(2)}`
+    ]);
+
+    // Usa autoTable
+    doc.autoTable({
+        startY: y,
+        head: [["Codice", "Componente", "Qtà", "Prezzo"]],
+        body: tableData,
+        theme: 'striped',
+        headStyles: {
+            fillColor: [59, 130, 246],
+            textColor: 255,
+            fontStyle: 'bold',
+            fontSize: 9
+        },
+        bodyStyles: {
+            fontSize: 8
+        },
+        columnStyles: {
+            0: { cellWidth: 30 },
+            1: { cellWidth: 80 },
+            2: { cellWidth: 15, halign: 'center' },
+            3: { cellWidth: 25, halign: 'right' }
+        },
+        margin: { left: margin, right: margin },
+        didDrawPage: function (data) {
+            // Footer su ogni pagina
+            const pageCount = doc.internal.getNumberOfPages();
+            for (let i = 1; i <= pageCount; i++) {
+                doc.setPage(i);
+                doc.setFontSize(8);
+                doc.setTextColor(148, 163, 184);
+                doc.text(
+                    `Documento generato il ${new Date().toLocaleString('it-IT')}`,
+                    margin,
+                    doc.internal.pageSize.getHeight() - 10
+                );
+                doc.text(
+                    `Pagina ${i} di ${pageCount}`,
+                    pageWidth - margin - 20,
+                    doc.internal.pageSize.getHeight() - 10
+                );
+            }
+        }
+    });
+
+    // Ottieni l'Y finale dopo la tabella
+    let finalY = doc.lastAutoTable.finalY + 8;
+
+    // ========== TOTALE ==========
+    if (finalY > 270) {
+        doc.addPage();
+        finalY = margin;
+    }
+
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(16, 185, 129);
+    doc.text(`TOTALE: € ${jobData.prezzoTotale.toFixed(2)}`, pageWidth - margin - 40, finalY);
+
+    // ========== NOTE ==========
+    finalY += 10;
+    if (finalY < 270) {
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "italic");
+        doc.setTextColor(148, 163, 184);
+        doc.text("* Questo documento è stato generato automaticamente da Sbolla Manager", margin, doc.internal.pageSize.getHeight() - 15);
+    }
+
+    // Salva il PDF
+    doc.save(`Job_${jobData.id}_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.pdf`);
+}
+
+// ============================================
+// ESPOSIZIONE FUNZIONI GLOBALI
+// ============================================
+
+// Funzioni principali
+window.handleFile = handleFile;
+window.processData = processData;
+window.initUI = initUI;
+window.renderTable = renderTable;
+window.applyFilters = applyFilters;
+window.applySorting = applySorting;
+window.updateHeaderStats = updateHeaderStats;
+window.saveState = saveState;
+window.loadState = loadState;
+
+// Funzioni di pricing
+window.calculateRowPrice = calculateRowPrice;
+window.applicaPrezzoListino = applicaPrezzoListino;
+window.setZeroPrice = setZeroPrice;
+window.updateSingleJobPrice = updateSingleJobPrice;
+window.updateTaskPrice = updateTaskPrice;
+window.massAdjust = massAdjust;
+window.arrotondaPrezzo = arrotondaPrezzo;
+
+// Funzioni listino
+window.getPrezzoListino = getPrezzoListino;
+window.getCategoriaPerCodice = getCategoriaPerCodice;
+window.calcolaMedieComponenti = calcolaMedieComponenti;
+window.salvaListino = salvaListino;
+window.caricaListino = caricaListino;
+window.apriListinoModal = apriListinoModal;
+window.chiudiListinoModal = chiudiListinoModal;
+window.salvaListinoDaModal = salvaListinoDaModal;
+window.ricalcolaMedie = ricalcolaMedie;
+window.esportaListino = esportaListino;
+window.importaListinoFile = importaListinoFile;
+window.esportaListinoExcel = esportaListinoExcel;
+window.importaListinoExcel = importaListinoExcel;
+
+// Funzioni scelta iniziale
+window.mostraSceltaIniziale = mostraSceltaIniziale;
+window.chiudiSceltaIniziale = chiudiSceltaIniziale;
+window.confermaSceltaIniziale = confermaSceltaIniziale;
+window.anteprimaJSON = anteprimaJSON;
+window.applicaPrezziMedi = applicaPrezziMedi;
+window.applicaPrezziVuoti = applicaPrezziVuoti;
+window.applicaPrezziDaJSON = applicaPrezziDaJSON;
+
+// Funzioni modali
+window.openDetails = openDetails;
+window.closeDetails = closeDetails;
+window.openInfo = openInfo;
+window.toggleSettings = toggleSettings;
+window.saveSettings = saveSettings;
+window.toggleSettingsMenu = toggleSettingsMenu;
+
+// Funzioni statistiche
+window.getImpiantoStats = getImpiantoStats;
+window.mostraStatisticheCodice = mostraStatisticheCodice;
+window.calcolaStatisticheCodice = calcolaStatisticheCodice;
+
+// Funzioni ricerca e filtri
+window.cercaPerImpianto = cercaPerImpianto;
+window.resetFilters = resetFilters;
+window.salvaRicercaCorrente = salvaRicercaCorrente;
+window.aggiornaMenuRicerche = aggiornaMenuRicerche;
+window.caricaStoricoRicerche = caricaStoricoRicerche;
+window.salvaStoricoRicerche = salvaStoricoRicerche;
+
+// Funzioni export
+window.exportExcel = exportExcel;
+window.exportFiltered = exportFiltered;
+window.downloadSession = downloadSession;
+window.loadSessionFile = loadSessionFile;
+
+// Funzioni debug
+window.toggleDebugPanel = toggleDebugPanel;
+window.nascondiDebugPanel = nascondiDebugPanel;
+window.aggiornaDebugPanel = aggiornaDebugPanel;
+window.ricaricaStorico = ricaricaStorico;
+window.caricaStoricoFile = caricaStoricoFile;
+window.getTuttiInterventi = getTuttiInterventi;
+
+// Funzioni utility
+window.formatDateItalian = formatDateItalian;
+window.parseDate = parseDate;
+window.debounce = debounce;
+window.switchTab = switchTab;
+
+// Inizializzazione al caricamento del DOM
+document.addEventListener('DOMContentLoaded', () => {
+    console.log("🚀 DOM caricato, inizializzo app.js...");
+
+    const fileInput = document.getElementById('fileInput');
+    if (fileInput) fileInput.addEventListener('change', handleFile);
+
+    const searchBox = document.getElementById('searchBox');
+    if (searchBox) searchBox.addEventListener('keyup', debounce(applyFilters, 300));
+
+    caricaListino();
+    caricaStoricoRicerche();
+    aggiornaMenuRicerche();
+
+    const savedRounding = localStorage.getItem("SP_ROUNDING");
+    if (savedRounding) pricingConfig.rounding = parseInt(savedRounding);
+
+    // Controlla se c'è un file storico da caricare (già gestito nello script iniziale)
+    console.log("✅ app.js inizializzato");
+});
+
+console.log("✅ Tutte le funzioni di app.js esposte globalmente");
