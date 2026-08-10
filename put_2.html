@@ -46,7 +46,6 @@
             color: var(--text-primary);
         }
 
-        /* ── TOP BAR ── */
         .topbar {
             background: var(--navy);
             padding: 0 20px;
@@ -161,14 +160,12 @@
         .status-pill.loading { background: rgba(26,127,212,0.25); color: #93c5fd; border-color: rgba(26,127,212,0.4); }
         .status-pill.warning { background: rgba(180,83,9,0.25); color: #fcd34d; border-color: rgba(180,83,9,0.4); }
 
-        /* ── MAIN LAYOUT ── */
         .main-container {
             display: flex;
             flex: 1;
             overflow: hidden;
         }
 
-        /* ── SIDEBAR ── */
         .sidebar {
             width: 280px;
             min-width: 240px;
@@ -217,7 +214,6 @@
             font-family: var(--mono);
         }
 
-        /* Filters */
         .filters-section {
             padding: 12px;
             background: var(--navy-mid);
@@ -273,7 +269,6 @@
         }
         .reset-btn:hover { background: var(--navy-light); color: white; }
 
-        /* Job List */
         .jobs-list {
             flex: 1;
             overflow-y: auto;
@@ -362,7 +357,6 @@
             box-shadow: 0 0 0 2px rgba(180,83,9,0.25);
         }
 
-        /* ── CONTENT PANEL ── */
         .content-panel {
             flex: 1;
             display: flex;
@@ -492,7 +486,6 @@
         }
         .register-btn.active.dv:hover { background: #fde68a; }
 
-        /* Content Body */
         .content-body {
             flex: 1;
             overflow-y: auto;
@@ -520,7 +513,6 @@
         .empty-state h3 { font-size: 0.95rem; font-weight: 600; color: var(--text-secondary); }
         .empty-state p { font-size: 0.82rem; }
 
-        /* Cards */
         .card {
             background: var(--surface);
             border: 1px solid var(--border-light);
@@ -557,14 +549,12 @@
 
         .card-body { padding: 14px; }
 
-        /* Info grid */
         .info-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 10px;
         }
 
-        .info-item {}
         .info-item.full { grid-column: span 2; }
 
         .info-label {
@@ -587,7 +577,6 @@
             word-break: break-word;
         }
 
-        /* Highlight cards */
         .highlight-row {
             display: flex; flex-wrap: wrap; gap: 8px;
             margin-bottom: 12px;
@@ -627,7 +616,6 @@
             margin: 2px;
         }
 
-        /* XY Section */
         .xy-card {
             border-left: 3px solid var(--accent);
         }
@@ -641,7 +629,6 @@
             font-weight: 600;
         }
 
-        /* Tasks */
         .task-item {
             background: var(--surface-2);
             border: 1px solid var(--border-light);
@@ -743,7 +730,6 @@
             color: var(--text-muted);
         }
 
-        /* ── TOAST ── */
         .toast {
             position: fixed;
             bottom: 24px; right: 24px;
@@ -767,7 +753,6 @@
         .toast.warning { background: #4a3a0d; border-left: 3px solid #b45309; }
         .toast.info    { background: #0d2a4a; border-left: 3px solid var(--accent); }
 
-        /* ── MODAL ── */
         .modal-overlay {
             position: fixed; inset: 0;
             background: rgba(10,18,30,0.7);
@@ -845,7 +830,6 @@
         .modal-btn-close { background: var(--surface-3); color: var(--text-secondary); border: 1px solid var(--border); }
         .modal-btn-close:hover { background: var(--border); }
 
-        /* Stats */
         .stats-section { margin-bottom: 28px; }
 
         .stats-section-title {
@@ -974,7 +958,6 @@
 
         .missing-total span:last-child { font-family: var(--mono); color: var(--danger); }
 
-        /* Status breakdown in stats */
         .status-breakdown {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -1009,7 +992,6 @@
         .status-item .value.dv { color: var(--warning); }
         .status-item .value.empty { color: var(--text-muted); }
 
-        /* ── NOTE MODAL ── */
         .note-modal-overlay {
             position: fixed; inset: 0;
             background: rgba(10,18,30,0.55);
@@ -1100,13 +1082,11 @@
         }
         .note-modal-btn:hover { background: var(--border); color: var(--text-primary); }
 
-        /* Scrollbar */
         ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
         .sidebar ::-webkit-scrollbar-thumb { background: var(--navy-border); }
 
-        /* Responsive tweaks */
         @media (max-width: 768px) {
             .sidebar { width: 220px; min-width: 180px; }
             .content-header { flex-direction: column; align-items: stretch; gap: 6px; }
@@ -1122,10 +1102,8 @@
 </head>
 <body>
 
-<!-- Toast -->
 <div id="toast" class="toast"></div>
 
-<!-- Top Bar -->
 <div class="topbar">
     <div class="topbar-brand">
         <div class="brand-logo">KB</div>
@@ -1155,10 +1133,8 @@
     </div>
 </div>
 
-<!-- Main -->
 <div class="main-container">
 
-    <!-- Sidebar -->
     <div class="sidebar">
         <div class="sidebar-header">
             <div class="sidebar-title">KAPPA BOLLE</div>
@@ -1213,7 +1189,6 @@
         <div class="jobs-list" id="jobsList"></div>
     </div>
 
-    <!-- Content Panel -->
     <div class="content-panel">
         <div class="content-header">
             <div class="content-header-left">
@@ -1226,13 +1201,13 @@
             </div>
             <div class="content-header-right">
                 <span class="worktype-tag" id="workTypeBadge"></span>
-                <button class="register-btn" data-status="ok" onclick="setJobStatus('ok')">
+                <button class="register-btn" data-status="ok" onclick="handleSetStatus('ok')">
                     ⏳ Registra
                 </button>
-                <button class="register-btn" data-status="nt" onclick="setJobStatus('nt')">
+                <button class="register-btn" data-status="nt" onclick="handleSetStatus('nt')">
                     🔍 Non Trovato
                 </button>
-                <button class="register-btn" data-status="dv" onclick="setJobStatus('dv')">
+                <button class="register-btn" data-status="dv" onclick="handleSetStatus('dv')">
                     ⚠️ Da Verificare
                 </button>
             </div>
@@ -1248,7 +1223,6 @@
     </div>
 </div>
 
-<!-- Note Modal -->
 <div id="noteModal" class="note-modal-overlay" style="display:none;">
     <div class="note-modal-box">
         <div class="note-modal-head">
@@ -1265,7 +1239,6 @@
     </div>
 </div>
 
-<!-- Stats Modal -->
 <div id="statsModal" class="modal-overlay" style="display:none;">
     <div class="modal-box">
         <div class="modal-head">
@@ -1283,15 +1256,13 @@
 </div>
 
 <script>
-    // ── State ──
     let workbook = null;
     let allRows = [];
     let jobs = [];
     let filteredJobs = [];
     let selectedJobIndex = 0;
-    let jobStates = {}; // { jobId: 'OK' | 'NT' | 'DV' | '' }
+    let jobStates = {};
 
-    // ── LocalStorage ──
     const STORAGE_KEY = 'kappa_bolle_job_states';
 
     function loadStates() {
@@ -1299,7 +1270,6 @@
             const data = localStorage.getItem(STORAGE_KEY);
             if (data) {
                 const parsed = JSON.parse(data);
-                // Only keep states for jobs that still exist after loading
                 jobStates = parsed || {};
             } else {
                 jobStates = {};
@@ -1317,16 +1287,6 @@
         return jobStates[jobId] || '';
     }
 
-    function setJobStatus(jobId, status) {
-        if (status === '') {
-            delete jobStates[jobId];
-        } else {
-            jobStates[jobId] = status;
-        }
-        saveStates();
-    }
-
-    // ── Toast ──
     function showToast(msg, type = 'info') {
         const t = document.getElementById('toast');
         t.textContent = msg;
@@ -1335,13 +1295,11 @@
         t._timer = setTimeout(() => t.classList.remove('show'), 3200);
     }
 
-    // ── Clipboard ──
     async function copyToClipboard(text) {
         try { await navigator.clipboard.writeText(text); showToast('✓ Copiato: ' + text, 'success'); }
         catch { showToast('Errore copia', 'error'); }
     }
 
-    // ── Date format ──
     function formatDate(v) {
         if (!v) return '—';
         try {
@@ -1355,7 +1313,6 @@
         return v;
     }
 
-    // ── Work type color ──
     function workColor(wt) {
         const map = { 'Rip a consuntivo':'#fef3c7', 'Reperibilità':'#fee2e2', 'Normale':'#d1fae5', 'Manutenzione':'#dbeafe', 'Urgente':'#ffedd5' };
         if (map[wt]) return map[wt];
@@ -1365,7 +1322,6 @@
         return `hsl(${Math.abs(h % 360)},60%,90%)`;
     }
 
-    // ── Group rows by Job ──
     function groupJobs(rows) {
         const map = new Map();
         rows.forEach(r => {
@@ -1384,7 +1340,6 @@
         return Array.from(map.values());
     }
 
-    // ── File upload ──
     async function handleFileUpload(file) {
         const pill = document.getElementById('statusPill');
         pill.className = 'status-pill loading';
@@ -1395,7 +1350,6 @@
             sel.innerHTML = workbook.SheetNames.map(n => `<option value="${n}">${n}</option>`).join('');
             document.getElementById('sheetSelectorContainer').style.display = 'flex';
             document.getElementById('exportBtn').disabled = false;
-            // Load states from localStorage
             loadStates();
             loadSheet(workbook.SheetNames[0]);
         } catch (e) {
@@ -1456,15 +1410,18 @@
             if (!row || row.every(c => c === undefined || c === null || c === '')) continue;
             const jobId = row[3] || '';
             if (jobId) {
-                // Load status from localStorage
                 const storedStatus = getJobStatus(jobId);
-                // If CHECK column has a value, use it as initial status (but only if not already in localStorage)
                 let initialStatus = storedStatus;
                 if (!initialStatus && checkColIndex !== -1 && row[checkColIndex]) {
                     const checkVal = String(row[checkColIndex]).trim().toUpperCase();
                     if (checkVal === 'OK' || checkVal === 'NT' || checkVal === 'DV') {
                         initialStatus = checkVal;
-                        setJobStatus(jobId, initialStatus);
+                        if (initialStatus === '') {
+                            delete jobStates[jobId];
+                        } else {
+                            jobStates[jobId] = initialStatus;
+                        }
+                        saveStates();
                     }
                 }
             }
@@ -1498,11 +1455,10 @@
         pill.textContent = `✓ ${jobs.length} job · OK:${okCount} NT:${ntCount} DV:${dvCount}`;
     }
 
-    // ── Filter options ──
     function updateFilterOptions() {
         const V = new Set(), C = new Set(), L = new Set();
         jobs.forEach(j => { j.venditori.forEach(v => V.add(v)); j.contratti.forEach(c => C.add(c)); j.lavori.forEach(l => L.add(l)); });
-        const fill = (id, set, label) => {
+        const fill = (id, set) => {
             document.getElementById(id).innerHTML = `<option value="">Tutti</option>` +
                 Array.from(set).sort().map(v => `<option value="${v}">${v}</option>`).join('');
         };
@@ -1511,7 +1467,6 @@
         fill('filterWork', L);
     }
 
-    // ── Filter jobs ──
     function filterJobs() {
         const q = document.getElementById('searchText').value.toLowerCase();
         const fv = document.getElementById('filterVenditore').value;
@@ -1546,7 +1501,6 @@
         renderJobList();
 
         if (filteredJobs.length > 0) { 
-            // If current selection is out of bounds, reset to 0
             if (selectedJobIndex >= filteredJobs.length) selectedJobIndex = 0;
             showJobDetail(selectedJobIndex); 
             updateNavBtns(); 
@@ -1558,7 +1512,6 @@
             document.getElementById('statusBadge').textContent = '—';
             document.getElementById('statusBadge').className = 'job-status-badge';
             document.getElementById('workTypeBadge').textContent = '';
-            // Reset buttons
             document.querySelectorAll('.register-btn').forEach(btn => {
                 btn.className = 'register-btn';
                 if (btn.dataset.status === 'ok') btn.textContent = '⏳ Registra';
@@ -1569,13 +1522,15 @@
     }
 
     function resetFilters() {
-        ['searchText'].forEach(id => document.getElementById(id).value = '');
-        ['filterVenditore','filterContract','filterWork','filterCheck'].forEach(id => document.getElementById(id).value = '');
+        document.getElementById('searchText').value = '';
+        document.getElementById('filterVenditore').value = '';
+        document.getElementById('filterContract').value = '';
+        document.getElementById('filterWork').value = '';
+        document.getElementById('filterCheck').value = '';
         document.getElementById('filterCosto').checked = false;
         filterJobs();
     }
 
-    // ── Render job list ──
     function renderJobList() {
         document.getElementById('jobsList').innerHTML = filteredJobs.map((j, i) => {
             const status = getJobStatus(j.job);
@@ -1604,32 +1559,32 @@
         }).join('');
     }
 
-    // ── Set job status (called by the three buttons) ──
-    function setJobStatus(status) {
+    function handleSetStatus(status) {
         if (!filteredJobs.length) return;
         const j = filteredJobs[selectedJobIndex];
         const currentStatus = getJobStatus(j.job);
         const newStatus = (currentStatus === status) ? '' : status;
         
-        setJobStatus(j.job, newStatus);
+        if (newStatus === '') {
+            delete jobStates[j.job];
+        } else {
+            jobStates[j.job] = newStatus;
+        }
+        saveStates();
         
-        // Update the buttons
-        updateStatusButtons(j.job);
+        updateUIForJob(j.job);
         
-        // Update the badge
-        updateStatusBadge(j.job);
-        
-        // Re-render the list to update dots
-        renderJobList();
-        
-        // Update status pill in top bar
-        updateStatusPill();
-        
-        // Show toast
         if (newStatus === 'OK') showToast('✓ Job registrato (OK)', 'success');
         else if (newStatus === 'NT') showToast('⛔ Job non trovato (NT)', 'error');
         else if (newStatus === 'DV') showToast('⚠️ Job da verificare (DV)', 'warning');
         else showToast('⏳ Registrazione rimossa', 'info');
+    }
+
+    function updateUIForJob(jobId) {
+        updateStatusButtons(jobId);
+        updateStatusBadge(jobId);
+        renderJobList();
+        updateStatusPill();
     }
 
     function updateStatusButtons(jobId) {
@@ -1675,13 +1630,11 @@
         const ntCount = jobs.filter(j => getJobStatus(j.job) === 'NT').length;
         const dvCount = jobs.filter(j => getJobStatus(j.job) === 'DV').length;
         const total = jobs.length;
-        // Keep the existing class but update text
         const classes = pill.className.split(' ').filter(c => c !== 'success' && c !== 'error' && c !== 'warning' && c !== 'loading');
         pill.className = classes.join(' ') + ' success';
         pill.textContent = `✓ ${total} job · OK:${okCount} NT:${ntCount} DV:${dvCount}`;
     }
 
-    // ── Show job detail ──
     function showJobDetail(index) {
         if (!filteredJobs.length) return;
         selectedJobIndex = index;
@@ -1691,9 +1644,7 @@
         document.getElementById('selectedJob').textContent = j.job || '—';
         document.getElementById('workTypeBadge').textContent = j.workType || '';
 
-        // Update status badge
         updateStatusBadge(j.job);
-        // Update buttons
         updateStatusButtons(j.job);
 
         const cost = j.tasks.reduce((s, t) => { const c = parseFloat(t.costo); return s + (isNaN(c) ? 0 : c); }, 0);
@@ -1716,7 +1667,6 @@
         }).join('');
 
         document.getElementById('detailContent').innerHTML = `
-            <!-- XY Card -->
             <div class="card xy-card">
                 <div class="card-header">
                     <span class="card-title"><span class="card-title-icon">💰</span>Costi &amp; Note Aggiuntive</span>
@@ -1735,7 +1685,6 @@
                 </div>
             </div>
 
-            <!-- Highlights -->
             <div class="highlight-row">
                 <div class="highlight-card">
                     <div>
@@ -1759,7 +1708,6 @@
                 </div>
             </div>
 
-            <!-- Informazioni generali -->
             <div class="card">
                 <div class="card-header">
                     <span class="card-title"><span class="card-title-icon">📋</span>Informazioni Generali</span>
@@ -1803,7 +1751,6 @@
                 </div>
             </div>
 
-            <!-- Tasks -->
             <div class="card">
                 <div class="card-header">
                     <span class="card-title"><span class="card-title-icon">🔧</span>Task Eseguite (${j.tasks.length})</span>
@@ -1823,13 +1770,11 @@
 
         updateNavBtns();
 
-        // Apri modale note se presenti
         if (ft.note && String(ft.note).trim()) {
             setTimeout(() => openNoteModal(j.job, String(ft.note).trim()), 150);
         }
     }
 
-    // ── Navigation ──
     function navigateJob(dir) {
         const ni = selectedJobIndex + dir;
         if (ni >= 0 && ni < filteredJobs.length) {
@@ -1843,7 +1788,6 @@
         document.getElementById('nextJob').disabled = selectedJobIndex >= filteredJobs.length - 1;
     }
 
-    // ── Export Excel (CHECK) ──
     function exportExcel() {
         if (!workbook || !allRows.length) return;
         try {
@@ -1873,12 +1817,12 @@
         } catch (e) { showToast('Errore esportazione', 'error'); }
     }
 
-    // ── Stats modal ──
     function openStatsModal() {
         if (!jobs.length) return showToast('Nessun dato', 'error');
         generateStats();
         document.getElementById('statsModal').style.display = 'flex';
     }
+
     function closeStatsModal() { document.getElementById('statsModal').style.display = 'none'; }
 
     function calcJobCost(j) {
@@ -1942,7 +1886,6 @@
             </div>
         </div>`;
 
-        // Status breakdown
         html += `<div class="stats-section">
             <div class="stats-section-title">📊 Suddivisione per Stato</div>
             <div class="status-breakdown">
@@ -1994,7 +1937,6 @@
             </table>
         </div>`;
 
-        // Missing jobs (everything that is NOT OK)
         const missingWithCost = jobs.filter(j => getJobStatus(j.job) !== 'OK' && calcJobCost(j) > 0);
         const totMissing = missingWithCost.reduce((s,j) => s + calcJobCost(j), 0);
 
@@ -2024,14 +1966,12 @@
         document.getElementById('statsContent').innerHTML = html;
     }
 
-    // ── Export PDF (jsPDF) ──
     function exportStatsPDF() {
         if (!jobs.length) return;
         try {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
-            // Header
             doc.setFillColor(15, 28, 46);
             doc.rect(0, 0, 210, 22, 'F');
             doc.setFont('helvetica', 'bold');
@@ -2044,8 +1984,6 @@
             doc.text(`Generato il ${new Date().toLocaleString('it-IT')}`, 14, 19);
 
             let y = 30;
-
-            // KPIs
             let totaleCosti = 0, totaleReg = 0, jobReg = 0;
             let totaleNt = 0, totaleDv = 0, jobNt = 0, jobDv = 0, jobEmpty = 0;
             const perVend = new Map(), perVendTipo = new Map();
@@ -2101,7 +2039,6 @@
             });
             y = doc.lastAutoTable.finalY + 8;
 
-            // Per venditore
             if (y > 250) { doc.addPage(); y = 14; }
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(9);
@@ -2123,7 +2060,6 @@
             });
             y = doc.lastAutoTable.finalY + 8;
 
-            // Venditore x tipo
             if (y > 250) { doc.addPage(); y = 14; }
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(9);
@@ -2146,7 +2082,6 @@
             });
             y = doc.lastAutoTable.finalY + 8;
 
-            // Missing jobs (NOT OK)
             const missingWithCost = jobs.filter(j => getJobStatus(j.job) !== 'OK' && calcJobCost(j) > 0);
             if (missingWithCost.length > 0) {
                 if (y > 230) { doc.addPage(); y = 14; }
@@ -2175,7 +2110,6 @@
                 });
             }
 
-            // Page numbers
             const pages = doc.getNumberOfPages();
             for (let i = 1; i <= pages; i++) {
                 doc.setPage(i);
@@ -2192,7 +2126,6 @@
         }
     }
 
-    // ── Export Stats Excel ──
     function exportStatsExcel() {
         if (!jobs.length) return;
         try {
@@ -2234,7 +2167,6 @@
         } catch(e) { showToast('Errore', 'error'); }
     }
 
-    // ── Export Missing Excel ──
     function exportMancantiExcel() {
         if (!jobs.length) return;
         try {
@@ -2259,16 +2191,14 @@
         } catch(e) { showToast('Errore', 'error'); }
     }
 
-    // ── Note modal ──
     function openNoteModal(jobCode, noteText) {
         document.getElementById('noteModalJobRef').textContent = 'Job: ' + jobCode;
         document.getElementById('noteModalText').textContent = noteText;
         document.getElementById('noteModal').style.display = 'flex';
     }
-    function closeNoteModal() { document.getElementById('noteModal').style.display = 'none'; }
-    document.getElementById('noteModal').addEventListener('click', e => { if (e.target === document.getElementById('noteModal')) closeNoteModal(); });
 
-    // ── Event listeners ──
+    function closeNoteModal() { document.getElementById('noteModal').style.display = 'none'; }
+
     document.getElementById('fileInput').addEventListener('change', e => { if (e.target.files.length) handleFileUpload(e.target.files[0]); });
     document.getElementById('sheetSelector').addEventListener('change', e => loadSheet(e.target.value));
     document.getElementById('exportBtn').addEventListener('click', exportExcel);
@@ -2277,14 +2207,14 @@
         if (!filteredJobs.length) return;
         if (e.altKey && e.key === 'ArrowLeft')  { e.preventDefault(); navigateJob(-1); }
         if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); navigateJob(1); }
-        if (e.altKey && e.key === '1') { e.preventDefault(); setJobStatus('ok'); }
-        if (e.altKey && e.key === '2') { e.preventDefault(); setJobStatus('nt'); }
-        if (e.altKey && e.key === '3') { e.preventDefault(); setJobStatus('dv'); }
+        if (e.altKey && e.key === '1') { e.preventDefault(); handleSetStatus('ok'); }
+        if (e.altKey && e.key === '2') { e.preventDefault(); handleSetStatus('nt'); }
+        if (e.altKey && e.key === '3') { e.preventDefault(); handleSetStatus('dv'); }
     });
 
     document.getElementById('statsModal').addEventListener('click', e => { if (e.target === document.getElementById('statsModal')) closeStatsModal(); });
+    document.getElementById('noteModal').addEventListener('click', e => { if (e.target === document.getElementById('noteModal')) closeNoteModal(); });
 
-    // ── Init ──
     loadStates();
 </script>
 </body>
