@@ -1,0 +1,2388 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KAPPA BOLLE — Gestione Interventi</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --navy: #0f1c2e;
+            --navy-mid: #1a2f47;
+            --navy-light: #243d58;
+            --navy-border: #2e4d6b;
+            --accent: #1a7fd4;
+            --accent-hover: #1569b8;
+            --accent-light: #e8f4fd;
+            --success: #0d7a52;
+            --success-bg: #d4f0e6;
+            --warning: #b45309;
+            --warning-bg: #fef3c7;
+            --danger: #b91c1c;
+            --danger-bg: #fee2e2;
+            --purple: #6d28d9;
+            --purple-bg: #ede9fe;
+            --surface: #ffffff;
+            --surface-2: #f7f9fc;
+            --surface-3: #eef2f7;
+            --border: #d1dce9;
+            --border-light: #e8eef5;
+            --text-primary: #0f1c2e;
+            --text-secondary: #4a6280;
+            --text-muted: #8aa0b8;
+            --font: 'IBM Plex Sans', sans-serif;
+            --mono: 'IBM Plex Mono', monospace;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: var(--font);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: var(--surface-2);
+            color: var(--text-primary);
+        }
+
+        /* ── TOP BAR ── */
+        .topbar {
+            background: var(--navy);
+            padding: 0 20px;
+            height: 52px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-shrink: 0;
+            border-bottom: 1px solid var(--navy-border);
+        }
+
+        .topbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-right: 8px;
+        }
+
+        .brand-logo {
+            width: 28px; height: 28px;
+            background: var(--accent);
+            border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; color: white; font-weight: 700;
+            font-family: var(--mono);
+            flex-shrink: 0;
+        }
+
+        .brand-name {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: white;
+            letter-spacing: 0.5px;
+        }
+
+        .topbar-divider {
+            width: 1px; height: 24px;
+            background: var(--navy-border);
+            flex-shrink: 0;
+        }
+
+        .topbar-btn {
+            display: inline-flex; align-items: center; gap: 7px;
+            padding: 6px 14px;
+            border-radius: 5px;
+            border: none;
+            font-family: var(--font);
+            font-size: 0.82rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+
+        .btn-upload {
+            background: var(--accent);
+            color: white;
+        }
+        .btn-upload:hover { background: var(--accent-hover); }
+
+        .btn-export {
+            background: var(--navy-light);
+            color: #c8d8e8;
+            border: 1px solid var(--navy-border);
+        }
+        .btn-export:hover:not(:disabled) { background: var(--navy-border); color: white; }
+        .btn-export:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .btn-stats {
+            background: transparent;
+            color: #c8d8e8;
+            border: 1px solid var(--navy-border);
+        }
+        .btn-stats:hover:not(:disabled) { background: var(--navy-light); color: white; }
+        .btn-stats:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        #fileInput { display: none; }
+
+        .sheet-selector-wrap {
+            display: none;
+            align-items: center;
+            gap: 8px;
+        }
+        .sheet-selector-wrap label { font-size: 0.78rem; color: var(--text-muted); }
+        .sheet-selector-wrap select {
+            padding: 5px 10px;
+            border-radius: 5px;
+            border: 1px solid var(--navy-border);
+            background: var(--navy-light);
+            color: white;
+            font-family: var(--font);
+            font-size: 0.82rem;
+        }
+
+        .topbar-status {
+            margin-left: auto;
+            display: flex; align-items: center; gap: 10px;
+        }
+
+        .status-pill {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            background: var(--navy-light);
+            color: var(--text-muted);
+            border: 1px solid var(--navy-border);
+            transition: all 0.3s;
+        }
+        .status-pill.success { background: rgba(13,122,82,0.25); color: #5ce0a8; border-color: rgba(13,122,82,0.4); }
+        .status-pill.error   { background: rgba(185,28,28,0.25); color: #fca5a5; border-color: rgba(185,28,28,0.4); }
+        .status-pill.loading { background: rgba(26,127,212,0.25); color: #93c5fd; border-color: rgba(26,127,212,0.4); }
+        .status-pill.warning { background: rgba(180,83,9,0.25); color: #fcd34d; border-color: rgba(180,83,9,0.4); }
+
+        /* ── MAIN LAYOUT ── */
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* ── LEFT COLUMN: FILTERS ── */
+        .filters-column {
+            width: 260px;
+            min-width: 260px;
+            background: var(--navy);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--navy-border);
+            flex-shrink: 0;
+            overflow: hidden;
+        }
+
+        .filters-header {
+            padding: 14px 16px 10px;
+            border-bottom: 1px solid var(--navy-border);
+            flex-shrink: 0;
+        }
+
+        .filters-header .sidebar-title {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+
+        .filters-header .sidebar-month {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: white;
+            letter-spacing: -0.3px;
+        }
+
+        .filters-header .job-count-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 6px;
+        }
+
+        .filters-header .job-count-badge {
+            font-size: 0.72rem;
+            background: var(--navy-light);
+            color: #8ab4d4;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-family: var(--mono);
+        }
+
+        .filters-scroll {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px 16px;
+        }
+
+        .filters-scroll .filter-row { margin-bottom: 10px; }
+        .filters-scroll .filter-row:last-child { margin-bottom: 0; }
+
+        .filters-scroll .filter-label {
+            font-size: 0.67rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        .filters-scroll .filter-select,
+        .filters-scroll .filter-input {
+            width: 100%;
+            padding: 6px 9px;
+            border-radius: 4px;
+            border: 1px solid var(--navy-border);
+            background: var(--navy-light);
+            color: white;
+            font-family: var(--font);
+            font-size: 0.8rem;
+        }
+        .filters-scroll .filter-select option { background: var(--navy-mid); }
+        .filters-scroll .filter-input::placeholder { color: #5a7a96; }
+
+        .filters-scroll .filter-checkbox-row {
+            display: flex; align-items: center; gap: 7px;
+        }
+        .filters-scroll .filter-checkbox-row input[type="checkbox"] {
+            width: 14px; height: 14px; accent-color: var(--accent);
+        }
+        .filters-scroll .filter-checkbox-row label {
+            font-size: 0.78rem; color: #a0b8cc; cursor: pointer;
+        }
+
+        .filters-scroll .reset-btn {
+            width: 100%;
+            padding: 6px;
+            margin-top: 8px;
+            background: transparent;
+            border: 1px solid var(--navy-border);
+            color: #8aa4bc;
+            border-radius: 4px;
+            font-family: var(--font);
+            font-size: 0.78rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .filters-scroll .reset-btn:hover { background: var(--navy-light); color: white; }
+
+        .filter-divider {
+            border: none;
+            border-top: 1px solid var(--navy-border);
+            margin: 12px 0;
+        }
+
+        /* ── CENTER COLUMN: JOB LIST ── */
+        .list-column {
+            width: 40%;
+            min-width: 320px;
+            background: var(--navy-mid);
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--navy-border);
+            overflow: hidden;
+        }
+
+        .list-header {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--navy-border);
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--navy);
+        }
+
+        .list-header-title {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        .list-header-count {
+            font-size: 0.72rem;
+            color: #8ab4d4;
+            font-family: var(--mono);
+        }
+
+        .jobs-list-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 6px 8px;
+        }
+
+        .job-card {
+            background: var(--navy-light);
+            border: 1px solid transparent;
+            border-radius: 5px;
+            padding: 8px 10px;
+            margin-bottom: 4px;
+            cursor: pointer;
+            transition: all 0.15s;
+            position: relative;
+        }
+        .job-card:hover { background: var(--navy-border); border-color: var(--navy-border); }
+        .job-card.active {
+            background: var(--accent);
+            border-color: var(--accent-hover);
+        }
+        .job-card.active .job-card-addr,
+        .job-card.active .job-card-badge,
+        .job-card.active .job-card-price { color: rgba(255,255,255,0.8); background: rgba(255,255,255,0.15); }
+        .job-card.active .job-card-price { color: rgba(255,255,255,0.9); }
+
+        .job-card-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2px;
+        }
+
+        .job-card-code {
+            font-size: 0.8rem;
+            font-weight: 600;
+            font-family: var(--mono);
+            color: white;
+        }
+
+        .job-card-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.7rem;
+        }
+
+        .job-card-count {
+            color: rgba(255,255,255,0.5);
+            font-family: var(--mono);
+        }
+
+        .job-card-price {
+            color: var(--text-muted);
+            font-family: var(--mono);
+            font-size: 0.72rem;
+            font-weight: 500;
+        }
+
+        .job-card-addr {
+            font-size: 0.7rem;
+            color: #8aa4bc;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 4px;
+        }
+
+        .job-card-badges {
+            display: flex; flex-wrap: wrap; gap: 3px;
+        }
+
+        .job-card-badge {
+            font-size: 0.6rem;
+            padding: 1px 6px;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.08);
+            color: #8aa4bc;
+            font-weight: 500;
+        }
+
+        .job-check-dot {
+            position: absolute;
+            top: 8px; right: 8px;
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: #0d7a52;
+            box-shadow: 0 0 0 2px rgba(13,122,82,0.25);
+        }
+
+        .job-check-dot.nt {
+            background: #b91c1c;
+            box-shadow: 0 0 0 2px rgba(185,28,28,0.25);
+        }
+
+        .job-check-dot.dv {
+            background: #b45309;
+            box-shadow: 0 0 0 2px rgba(180,83,9,0.25);
+        }
+
+        /* ── RIGHT COLUMN: DETAIL ── */
+        .detail-column {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: var(--surface-2);
+        }
+
+        .detail-header {
+            background: var(--surface);
+            padding: 10px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .detail-header-left {
+            display: flex; align-items: center; gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .nav-btn {
+            width: 30px; height: 30px;
+            display: flex; align-items: center; justify-content: center;
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            transition: all 0.15s;
+        }
+        .nav-btn:hover:not(:disabled) { background: var(--surface-3); border-color: var(--border); }
+        .nav-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        .detail-job-title {
+            font-size: 1rem;
+            font-weight: 400;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .detail-job-title strong {
+            font-weight: 700;
+            color: var(--accent);
+            font-family: var(--mono);
+        }
+
+        .job-status-badge {
+            font-size: 0.65rem;
+            font-weight: 600;
+            padding: 2px 10px;
+            border-radius: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-family: var(--mono);
+            background: var(--surface-3);
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+        }
+        .job-status-badge.ok {
+            background: var(--success-bg);
+            color: var(--success);
+            border-color: #6ee7b7;
+        }
+        .job-status-badge.nt {
+            background: var(--danger-bg);
+            color: var(--danger);
+            border-color: #fca5a5;
+        }
+        .job-status-badge.dv {
+            background: var(--warning-bg);
+            color: var(--warning);
+            border-color: #fde68a;
+        }
+
+        .detail-header-right {
+            display: flex; align-items: center; gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .worktype-tag {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            background: var(--surface-3);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+
+        .register-btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            font-family: var(--font);
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: var(--surface-2);
+            color: var(--text-secondary);
+        }
+        .register-btn:hover:not(.active) { background: var(--surface-3); }
+        .register-btn.active.ok {
+            background: var(--success-bg);
+            color: var(--success);
+            border-color: #6ee7b7;
+        }
+        .register-btn.active.ok:hover { background: #a7f3d0; }
+        .register-btn.active.nt {
+            background: var(--danger-bg);
+            color: var(--danger);
+            border-color: #fca5a5;
+        }
+        .register-btn.active.nt:hover { background: #fecaca; }
+        .register-btn.active.dv {
+            background: var(--warning-bg);
+            color: var(--warning);
+            border-color: #fde68a;
+        }
+        .register-btn.active.dv:hover { background: #fde68a; }
+
+        .detail-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 20px;
+        }
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            gap: 12px;
+            color: var(--text-muted);
+        }
+
+        .empty-state-icon {
+            width: 56px; height: 56px;
+            background: var(--surface-3);
+            border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px;
+        }
+
+        .empty-state h3 { font-size: 0.95rem; font-weight: 600; color: var(--text-secondary); }
+        .empty-state p { font-size: 0.82rem; }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            margin-bottom: 12px;
+            overflow: hidden;
+        }
+
+        .card-header {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border-light);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--surface-2);
+        }
+
+        .card-title {
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--text-secondary);
+            display: flex; align-items: center; gap: 7px;
+        }
+
+        .card-title-icon {
+            width: 18px; height: 18px;
+            background: var(--accent-light);
+            border-radius: 4px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px;
+        }
+
+        .card-body { padding: 14px; }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .info-item.full { grid-column: span 2; }
+
+        .info-label {
+            font-size: 0.63rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 3px;
+        }
+
+        .info-value {
+            font-size: 0.82rem;
+            color: var(--text-primary);
+            font-weight: 500;
+            background: var(--surface-2);
+            border: 1px solid var(--border-light);
+            padding: 5px 8px;
+            border-radius: 4px;
+            word-break: break-word;
+        }
+
+        .highlight-row {
+            display: flex; flex-wrap: wrap; gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .highlight-card {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: var(--surface);
+            border: 1px solid var(--border-light);
+            border-radius: 6px;
+            padding: 7px 12px;
+            flex: 1; min-width: 140px;
+        }
+
+        .highlight-label {
+            font-size: 0.68rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+        }
+
+        .highlight-value {
+            font-size: 0.9rem;
+            font-weight: 700;
+        }
+        .highlight-value.blue { color: var(--accent); }
+        .highlight-value.purple { color: var(--purple); }
+
+        .work-chip {
+            display: inline-flex; align-items: center;
+            padding: 3px 10px;
+            border-radius: 14px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            border: 1px solid var(--border);
+            margin: 2px;
+        }
+
+        .xy-card { border-left: 3px solid var(--accent); }
+        .xy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .xy-value {
+            background: #fffbeb;
+            border: 1px solid #fde68a;
+            color: #92400e;
+            font-weight: 600;
+        }
+
+        .task-item {
+            background: var(--surface-2);
+            border: 1px solid var(--border-light);
+            border-left: 3px solid var(--accent);
+            border-radius: 5px;
+            padding: 11px 12px;
+            margin-bottom: 10px;
+        }
+        .task-item:last-child { margin-bottom: 0; }
+
+        .task-top {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .task-component {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .task-employee {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            font-family: var(--mono);
+        }
+
+        .task-desc {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            margin-bottom: 8px;
+            white-space: pre-wrap;
+        }
+
+        .task-footer {
+            display: flex; justify-content: space-between; align-items: center;
+        }
+
+        .task-qty {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+        }
+
+        .task-cost {
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: var(--success);
+            font-family: var(--mono);
+        }
+
+        .task-xy-tag {
+            margin-top: 6px;
+            font-size: 0.72rem;
+            color: #92400e;
+            background: #fffbeb;
+            border: 1px solid #fde68a;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-family: var(--mono);
+        }
+
+        .total-cost-bar {
+            background: var(--navy);
+            color: white;
+            padding: 10px 14px;
+            border-radius: 5px;
+            margin-top: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.82rem;
+        }
+
+        .total-cost-bar .amount {
+            font-size: 1.05rem;
+            font-weight: 700;
+            font-family: var(--mono);
+        }
+
+        .copy-badge {
+            display: inline-flex; align-items: center; gap: 5px;
+            background: var(--accent-light);
+            color: var(--accent);
+            border: 1px solid #bfdbfe;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .copy-badge:hover { background: var(--accent); color: white; }
+
+        .note-footer {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border-light);
+            font-size: 0.78rem;
+            color: var(--text-muted);
+        }
+
+        /* ── TOAST ── */
+        .toast {
+            position: fixed;
+            bottom: 24px; right: 24px;
+            padding: 10px 18px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+            z-index: 9999;
+            opacity: 0;
+            transform: translateY(8px);
+            transition: all 0.25s;
+            pointer-events: none;
+            background: var(--navy);
+            color: white;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.success { background: #0d4a2f; border-left: 3px solid #0d7a52; }
+        .toast.error   { background: #4a0d0d; border-left: 3px solid #b91c1c; }
+        .toast.warning { background: #4a3a0d; border-left: 3px solid #b45309; }
+        .toast.info    { background: #0d2a4a; border-left: 3px solid var(--accent); }
+
+        /* ── MODALS ── */
+        .modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(10,18,30,0.7);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 5000;
+            backdrop-filter: blur(3px);
+        }
+
+        .modal-box {
+            background: var(--surface);
+            border-radius: 10px;
+            width: 92%;
+            max-width: 1100px;
+            max-height: 88vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 24px 60px rgba(0,0,0,0.35);
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        .modal-head {
+            background: var(--navy);
+            padding: 16px 24px;
+            display: flex; align-items: center; justify-content: space-between;
+            flex-shrink: 0;
+        }
+
+        .modal-head h2 {
+            font-size: 1rem;
+            font-weight: 700;
+            color: white;
+            display: flex; align-items: center; gap: 10px;
+        }
+
+        .modal-close-x {
+            background: none; border: none;
+            color: #8aa4bc; font-size: 1.4rem;
+            cursor: pointer; line-height: 1;
+            transition: color 0.15s;
+        }
+        .modal-close-x:hover { color: white; }
+
+        .modal-body { overflow-y: auto; padding: 24px; flex: 1; }
+
+        .modal-foot {
+            background: var(--surface-2);
+            padding: 12px 24px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            justify-content: flex-end;
+            flex-shrink: 0;
+            flex-wrap: wrap;
+        }
+
+        .modal-btn {
+            display: inline-flex; align-items: center; gap: 7px;
+            padding: 7px 16px;
+            border-radius: 5px;
+            border: none;
+            font-family: var(--font);
+            font-size: 0.82rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .modal-btn-pdf  { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
+        .modal-btn-pdf:hover  { background: #fecaca; }
+        .modal-btn-xlsx { background: var(--success-bg); color: var(--success); border: 1px solid #6ee7b7; }
+        .modal-btn-xlsx:hover { background: #a7f3d0; }
+        .modal-btn-missing { background: var(--warning-bg); color: var(--warning); border: 1px solid #fde68a; }
+        .modal-btn-missing:hover { background: #fde68a; }
+        .modal-btn-close { background: var(--surface-3); color: var(--text-secondary); border: 1px solid var(--border); }
+        .modal-btn-close:hover { background: var(--border); }
+
+        /* Stats */
+        .stats-section { margin-bottom: 28px; }
+        .stats-section-title {
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-light);
+            display: flex; align-items: center; gap: 8px;
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .kpi-card {
+            background: var(--surface-2);
+            border: 1px solid var(--border-light);
+            border-radius: 7px;
+            padding: 14px;
+            text-align: center;
+        }
+
+        .kpi-label {
+            font-size: 0.68rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+
+        .kpi-value {
+            font-size: 1.45rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            font-family: var(--mono);
+            line-height: 1.1;
+        }
+        .kpi-value.accent { color: var(--accent); }
+        .kpi-value.success { color: var(--success); }
+        .kpi-value.danger  { color: var(--danger); }
+        .kpi-value.warning { color: var(--warning); }
+
+        .kpi-sub {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .progress-track {
+            height: 4px;
+            background: var(--border-light);
+            border-radius: 2px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            border-radius: 2px;
+            transition: width 0.6s ease;
+        }
+
+        .stats-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.82rem;
+        }
+        .stats-table th {
+            text-align: left;
+            padding: 8px 12px;
+            background: var(--surface-3);
+            color: var(--text-secondary);
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border);
+        }
+        .stats-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border-light);
+            color: var(--text-primary);
+        }
+        .stats-table tr:last-child td { border-bottom: none; }
+        .stats-table tr:hover td { background: var(--surface-3); }
+        .stats-table .tr { text-align: right; font-family: var(--mono); }
+
+        .missing-list {
+            max-height: 280px;
+            overflow-y: auto;
+            border: 1px solid var(--border-light);
+            border-radius: 6px;
+        }
+
+        .missing-item {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border-light);
+        }
+        .missing-item:last-child { border-bottom: none; }
+        .missing-item:hover { background: var(--surface-3); }
+        .missing-item-job { font-weight: 600; color: var(--accent); font-family: var(--mono); font-size: 0.82rem; }
+        .missing-item-detail { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+        .missing-item-cost { font-weight: 700; color: var(--success); font-family: var(--mono); font-size: 0.82rem; }
+
+        .missing-total {
+            background: var(--surface-3);
+            padding: 10px 14px;
+            border-radius: 5px;
+            display: flex; justify-content: space-between;
+            align-items: center;
+            margin-top: 10px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .missing-total span:last-child { font-family: var(--mono); color: var(--danger); }
+
+        .status-breakdown {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .status-item {
+            background: var(--surface-2);
+            border: 1px solid var(--border-light);
+            border-radius: 6px;
+            padding: 10px 12px;
+            text-align: center;
+        }
+        .status-item .label {
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+        }
+        .status-item .value {
+            font-size: 1.1rem;
+            font-weight: 700;
+            font-family: var(--mono);
+            margin-top: 4px;
+        }
+        .status-item .value.ok { color: var(--success); }
+        .status-item .value.nt { color: var(--danger); }
+        .status-item .value.dv { color: var(--warning); }
+        .status-item .value.empty { color: var(--text-muted); }
+
+        /* ── NOTE MODAL ── */
+        .note-modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(10,18,30,0.55);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 6000;
+            backdrop-filter: blur(2px);
+            animation: fadeIn 0.18s ease;
+        }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .note-modal-box {
+            background: var(--surface);
+            border-radius: 10px;
+            width: 92%;
+            max-width: 460px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+            border: 1px solid var(--border);
+            overflow: hidden;
+            animation: slideUp 0.2s ease;
+        }
+
+        @keyframes slideUp { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+        .note-modal-head {
+            background: var(--navy);
+            padding: 13px 18px;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .note-modal-head h3 {
+            font-size: 0.88rem;
+            font-weight: 700;
+            color: white;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .note-modal-close {
+            background: none; border: none;
+            color: #8aa4bc; font-size: 1.3rem;
+            cursor: pointer; line-height: 1;
+            transition: color 0.15s;
+        }
+        .note-modal-close:hover { color: white; }
+
+        .note-modal-body { padding: 18px; }
+        .note-modal-job-ref {
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+        }
+        .note-modal-text {
+            font-size: 0.88rem;
+            line-height: 1.65;
+            color: var(--text-primary);
+            background: var(--surface-2);
+            border: 1px solid var(--border-light);
+            border-radius: 6px;
+            padding: 12px 14px;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .note-modal-foot {
+            padding: 12px 18px;
+            border-top: 1px solid var(--border-light);
+            display: flex; justify-content: flex-end;
+        }
+        .note-modal-btn {
+            padding: 7px 20px;
+            border-radius: 5px;
+            border: 1px solid var(--border);
+            background: var(--surface-3);
+            color: var(--text-secondary);
+            font-family: var(--font);
+            font-size: 0.82rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .note-modal-btn:hover { background: var(--border); color: var(--text-primary); }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        .filters-column ::-webkit-scrollbar-thumb { background: var(--navy-border); }
+        .list-column ::-webkit-scrollbar-thumb { background: var(--navy-border); }
+
+        @media (max-width: 1024px) {
+            .filters-column { width: 220px; min-width: 220px; }
+            .list-column { width: 35%; min-width: 220px; }
+        }
+
+        @media (max-width: 768px) {
+            .filters-column { width: 180px; min-width: 180px; }
+            .list-column { width: 40%; min-width: 180px; }
+            .detail-header { flex-direction: column; align-items: stretch; gap: 6px; }
+            .detail-header-left { flex-wrap: wrap; }
+            .detail-header-right { flex-wrap: wrap; }
+            .info-grid { grid-template-columns: 1fr; }
+            .xy-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<!-- Top Bar -->
+<div class="topbar">
+    <div class="topbar-brand">
+        <div class="brand-logo">KB</div>
+        <span class="brand-name">KAPPA BOLLE</span>
+    </div>
+    <div class="topbar-divider"></div>
+
+    <label for="fileInput" class="topbar-btn btn-upload">
+        <span>↑</span> Carica Excel
+    </label>
+    <input type="file" id="fileInput" accept=".xlsx,.xls,.csv">
+
+    <div class="sheet-selector-wrap" id="sheetSelectorContainer">
+        <label>Foglio:</label>
+        <select id="sheetSelector"></select>
+    </div>
+
+    <button id="exportBtn" class="topbar-btn btn-export" disabled>
+        ⬇ Esporta con CHECK
+    </button>
+
+    <div class="topbar-status">
+        <button id="statsBtn" class="topbar-btn btn-stats" disabled onclick="openStatsModal()">
+            ◫ Statistiche
+        </button>
+        <span id="statusPill" class="status-pill">Nessun file caricato</span>
+    </div>
+</div>
+
+<!-- Main -->
+<div class="main-container">
+
+    <!-- LEFT COLUMN: FILTERS -->
+    <div class="filters-column">
+        <div class="filters-header">
+            <div class="sidebar-title">Filtri</div>
+            <div class="sidebar-month" id="fileName">—</div>
+            <div class="job-count-row">
+                <span class="job-count-badge" id="jobCount">0 job</span>
+            </div>
+        </div>
+
+        <div class="filters-scroll">
+            <div class="filter-row">
+                <span class="filter-label">Ricerca</span>
+                <input type="text" class="filter-input" id="searchText" placeholder="Job, impianto, indirizzo…" oninput="filterJobs()">
+            </div>
+
+            <hr class="filter-divider">
+
+            <div class="filter-row">
+                <span class="filter-label">Venditore</span>
+                <select class="filter-select" id="filterVenditore" onchange="filterJobs()">
+                    <option value="">Tutti</option>
+                </select>
+            </div>
+
+            <div class="filter-row">
+                <span class="filter-label">Contratto</span>
+                <select class="filter-select" id="filterContract" onchange="filterJobs()">
+                    <option value="">Tutti</option>
+                </select>
+            </div>
+
+            <div class="filter-row">
+                <span class="filter-label">Tipo lavoro</span>
+                <select class="filter-select" id="filterWork" onchange="filterJobs()">
+                    <option value="">Tutti</option>
+                </select>
+            </div>
+
+            <div class="filter-row">
+                <span class="filter-label">Stato</span>
+                <select class="filter-select" id="filterCheck" onchange="filterJobs()">
+                    <option value="">Tutti</option>
+                    <option value="ok">Registrati (OK)</option>
+                    <option value="nt">Non Trovati (NT)</option>
+                    <option value="dv">Da Verificare (DV)</option>
+                    <option value="empty">Da registrare</option>
+                </select>
+            </div>
+
+            <div class="filter-row">
+                <div class="filter-checkbox-row">
+                    <input type="checkbox" id="filterCosto" onchange="filterJobs()">
+                    <label for="filterCosto">Solo job con costo &gt; 0</label>
+                </div>
+            </div>
+
+            <hr class="filter-divider">
+
+            <div class="filter-row">
+                <span class="filter-label">Ordina per</span>
+                <select class="filter-select" id="filterSort" onchange="filterJobs()">
+                    <option value="price-desc">Prezzo (decrescente) ↓</option>
+                    <option value="price-asc">Prezzo (crescente) ↑</option>
+                    <option value="date-desc">Data (più recente) ↓</option>
+                    <option value="date-asc">Data (più vecchia) ↑</option>
+                    <option value="job-asc">Nome Job (A→Z)</option>
+                    <option value="job-desc">Nome Job (Z→A)</option>
+                </select>
+            </div>
+
+            <button class="reset-btn" onclick="resetFilters()">↺ Reset filtri</button>
+        </div>
+    </div>
+
+    <!-- CENTER COLUMN: JOB LIST -->
+    <div class="list-column">
+        <div class="list-header">
+            <span class="list-header-title">📋 Job</span>
+            <span class="list-header-count" id="listCount">0</span>
+        </div>
+        <div class="jobs-list-container" id="jobsListContainer">
+            <div id="jobsList"></div>
+        </div>
+    </div>
+
+    <!-- RIGHT COLUMN: DETAIL -->
+    <div class="detail-column">
+        <div class="detail-header">
+            <div class="detail-header-left">
+                <button class="nav-btn" id="prevJob" onclick="navigateJob(-1)" disabled>◀</button>
+                <button class="nav-btn" id="nextJob" onclick="navigateJob(1)" disabled>▶</button>
+                <div class="detail-job-title">
+                    Job&nbsp;<strong id="selectedJob">—</strong>
+                    <span class="job-status-badge" id="statusBadge">—</span>
+                </div>
+            </div>
+            <div class="detail-header-right">
+                <span class="worktype-tag" id="workTypeBadge"></span>
+                <button class="register-btn" data-status="ok" onclick="handleSetStatus('ok')">
+                    ⏳ Registra
+                </button>
+                <button class="register-btn" data-status="nt" onclick="handleSetStatus('nt')">
+                    🔍 Non Trovato
+                </button>
+                <button class="register-btn" data-status="dv" onclick="handleSetStatus('dv')">
+                    ⚠️ Da Verificare
+                </button>
+            </div>
+        </div>
+
+        <div class="detail-body" id="detailContent">
+            <div class="empty-state">
+                <div class="empty-state-icon">📂</div>
+                <h3>Seleziona un job dalla lista</h3>
+                <p>Carica un file Excel per iniziare</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Note Modal -->
+<div id="noteModal" class="note-modal-overlay" style="display:none;">
+    <div class="note-modal-box">
+        <div class="note-modal-head">
+            <h3>📝 Note del Job</h3>
+            <button class="note-modal-close" onclick="closeNoteModal()">×</button>
+        </div>
+        <div class="note-modal-body">
+            <div class="note-modal-job-ref" id="noteModalJobRef"></div>
+            <div class="note-modal-text" id="noteModalText"></div>
+        </div>
+        <div class="note-modal-foot">
+            <button class="note-modal-btn" onclick="closeNoteModal()">Chiudi</button>
+        </div>
+    </div>
+</div>
+
+<!-- Stats Modal -->
+<div id="statsModal" class="modal-overlay" style="display:none;">
+    <div class="modal-box">
+        <div class="modal-head">
+            <h2>◫&nbsp; Statistiche Job</h2>
+            <button class="modal-close-x" onclick="closeStatsModal()">×</button>
+        </div>
+        <div class="modal-body" id="statsContent"></div>
+        <div class="modal-foot">
+            <button class="modal-btn modal-btn-pdf" onclick="exportStatsPDF()">⬇ PDF</button>
+            <button class="modal-btn modal-btn-xlsx" onclick="exportStatsExcel()">⬇ Excel Statistiche</button>
+            <button class="modal-btn modal-btn-missing" onclick="exportMancantiExcel()">⬇ Job Mancanti</button>
+            <button class="modal-btn modal-btn-close" onclick="closeStatsModal()">Chiudi</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ── State ──
+    let workbook = null;
+    let allRows = [];
+    let jobs = [];
+    let filteredJobs = [];
+    let selectedJobIndex = 0;
+    let jobStates = {};
+
+    const STORAGE_KEY = 'kappa_bolle_job_states';
+
+    // ── LocalStorage ──
+    function loadStates() {
+        try {
+            const data = localStorage.getItem(STORAGE_KEY);
+            if (data) {
+                const parsed = JSON.parse(data);
+                jobStates = parsed || {};
+            } else {
+                jobStates = {};
+            }
+        } catch { jobStates = {}; }
+    }
+
+    function saveStates() {
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(jobStates));
+        } catch { /* ignore */ }
+    }
+
+    function getJobStatus(jobId) {
+        return jobStates[jobId] || '';
+    }
+
+    // ── Toast ──
+    function showToast(msg, type = 'info') {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.className = 'toast show ' + type;
+        clearTimeout(t._timer);
+        t._timer = setTimeout(() => t.classList.remove('show'), 3200);
+    }
+
+    // ── Clipboard ──
+    async function copyToClipboard(text) {
+        try { await navigator.clipboard.writeText(text); showToast('✓ Copiato: ' + text, 'success'); }
+        catch { showToast('Errore copia', 'error'); }
+    }
+
+    // ── Date format ──
+    function formatDate(v) {
+        if (!v) return '—';
+        try {
+            if (typeof v === 'number') {
+                const d = XLSX.SSF.parse_date_code(v);
+                if (d) return `${String(d.d).padStart(2,'0')}/${String(d.m).padStart(2,'0')}/${d.y} ${String(d.H).padStart(2,'0')}:${String(d.M).padStart(2,'0')}`;
+            }
+            const d = new Date(String(v).replace(' ', 'T'));
+            if (!isNaN(d)) return d.toLocaleString('it-IT', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+        } catch {}
+        return v;
+    }
+
+    // ── Work type color ──
+    function workColor(wt) {
+        const map = { 'Rip a consuntivo':'#fef3c7', 'Reperibilità':'#fee2e2', 'Normale':'#d1fae5', 'Manutenzione':'#dbeafe', 'Urgente':'#ffedd5' };
+        if (map[wt]) return map[wt];
+        if (!wt) return '#f1f5f9';
+        let h = 0;
+        for (let i = 0; i < wt.length; i++) h = wt.charCodeAt(i) + ((h << 5) - h);
+        return `hsl(${Math.abs(h % 360)},60%,90%)`;
+    }
+
+    // ── Group rows by Job ──
+    function groupJobs(rows) {
+        const map = new Map();
+        rows.forEach(r => {
+            if (!r.job) return;
+            if (!map.has(r.job)) map.set(r.job, {
+                job: r.job, impianto: r.impianto, indirizzo: r.indirizzo,
+                tasks: [], venditori: new Set(), contratti: new Set(), lavori: new Set(),
+                workType: r.workType, cliente: r.cliente, amministratore: r.amministratore,
+                scheduledDate: r.scheduledDate
+            });
+            const j = map.get(r.job);
+            j.tasks.push(r);
+            if (r.venditore) j.venditori.add(r.venditore);
+            if (r.contractTemplate) j.contratti.add(r.contractTemplate);
+            if (r.localWorkPerformed) j.lavori.add(r.localWorkPerformed);
+        });
+        return Array.from(map.values());
+    }
+
+    function calcJobCost(j) {
+        return j.tasks.reduce((s, t) => { const c = parseFloat(t.costo); return s + (isNaN(c) ? 0 : c); }, 0);
+    }
+
+    // ── File upload ──
+    async function handleFileUpload(file) {
+        const pill = document.getElementById('statusPill');
+        pill.className = 'status-pill loading';
+        pill.textContent = 'Caricamento…';
+        try {
+            workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+            const sel = document.getElementById('sheetSelector');
+            sel.innerHTML = workbook.SheetNames.map(n => `<option value="${n}">${n}</option>`).join('');
+            document.getElementById('sheetSelectorContainer').style.display = 'flex';
+            document.getElementById('exportBtn').disabled = false;
+            loadStates();
+            loadSheet(workbook.SheetNames[0]);
+        } catch (e) {
+            pill.className = 'status-pill error';
+            pill.textContent = '✗ Errore: ' + e.message;
+        }
+    }
+
+    function loadSheet(sheetName) {
+        if (!workbook) return;
+        const pill = document.getElementById('statusPill');
+        const sheet = workbook.Sheets[sheetName];
+        const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+
+        let headerRow = -1;
+        for (let i = 0; i < Math.min(20, data.length); i++) {
+            if (data[i].some(c => typeof c === 'string' && (c.includes('JobTask') || c.includes('Impiantodiriferimento')))) {
+                headerRow = i; break;
+            }
+        }
+        if (headerRow === -1) {
+            pill.className = 'status-pill error';
+            pill.textContent = '✗ Intestazioni non trovate';
+            return;
+        }
+
+        const headers = data[headerRow];
+        const checkColIndex = headers.findIndex(h => h === 'CHECK');
+        const ci = {
+            jobTask: 0, job: 3,
+            impianto: headers.findIndex(h => h?.includes('Impiantodiriferimento')),
+            indirizzo: headers.findIndex(h => h?.includes('Indrizzo Edificio')),
+            scheduledDate: headers.findIndex(h => h?.includes('ScheduledDate')),
+            venditore: headers.findIndex(h => h?.includes('Venditore')),
+            cliente: headers.findIndex(h => h?.includes('Cliente')),
+            amministratore: headers.findIndex(h => h?.includes('Amministratore')),
+            workType: headers.findIndex(h => h?.includes('WorkType')),
+            contractTemplate: headers.findIndex(h => h?.includes('Contract template')),
+            localWorkPerformed: headers.findIndex(h => h?.includes('LocalWorkPerformed')),
+            componentCategory: headers.findIndex(h => h?.includes('LocalComponentCategory')),
+            component: headers.findIndex(h => h?.includes('LocalComponent')),
+            quantity: headers.findIndex(h => h?.includes('Quantity')),
+            employeeId: headers.findIndex(h => h?.includes('LocalEmployeeId')),
+            taskDescription: headers.findIndex(h => h?.includes('TaskDescription')),
+            tempoLavoro: headers.findIndex(h => h?.includes('Tempo Lavoro')),
+            acceptedTime: headers.findIndex(h => h?.includes('AcceptedTime')),
+            jobCompletedDate: headers.findIndex(h => h?.includes('JobCompletedDate')),
+            costo: headers.findIndex(h => h?.includes('COSTO')),
+            note: headers.findIndex(h => h?.includes('NOTE')),
+            dataModifica: headers.findIndex(h => h?.includes('Data modifica')),
+            x: 23, y: 24
+        };
+
+        allRows = [];
+
+        for (let i = headerRow + 1; i < data.length; i++) {
+            const row = data[i];
+            if (!row || row.every(c => c === undefined || c === null || c === '')) continue;
+            const jobId = row[3] || '';
+            if (jobId) {
+                const storedStatus = getJobStatus(jobId);
+                let initialStatus = storedStatus;
+                if (!initialStatus && checkColIndex !== -1 && row[checkColIndex]) {
+                    const checkVal = String(row[checkColIndex]).trim().toUpperCase();
+                    if (checkVal === 'OK' || checkVal === 'NT' || checkVal === 'DV') {
+                        initialStatus = checkVal;
+                        if (initialStatus === '') {
+                            delete jobStates[jobId];
+                        } else {
+                            jobStates[jobId] = initialStatus;
+                        }
+                        saveStates();
+                    }
+                }
+            }
+            allRows.push({
+                jobTask: row[0]||'', job: jobId,
+                impianto: row[ci.impianto]||'', indirizzo: row[ci.indirizzo]||'',
+                scheduledDate: row[ci.scheduledDate]||'', venditore: row[ci.venditore]||'',
+                cliente: row[ci.cliente]||'', amministratore: row[ci.amministratore]||'',
+                workType: row[ci.workType]||'', contractTemplate: row[ci.contractTemplate]||'',
+                localWorkPerformed: row[ci.localWorkPerformed]||'',
+                componentCategory: row[ci.componentCategory]||'', component: row[ci.component]||'',
+                quantity: row[ci.quantity]||'', employeeId: row[ci.employeeId]||'',
+                taskDescription: row[ci.taskDescription]||'', tempoLavoro: row[ci.tempoLavoro]||'',
+                acceptedTime: row[ci.acceptedTime]||'', jobCompletedDate: row[ci.jobCompletedDate]||'',
+                costo: row[ci.costo]||'', note: row[ci.note]||'',
+                dataModifica: row[ci.dataModifica]||'',
+                x: row[23]||'', y: row[24]||''
+            });
+        }
+
+        jobs = groupJobs(allRows);
+        updateFilterOptions();
+        applyFiltersAndSort();
+
+        document.getElementById('statsBtn').disabled = jobs.length === 0;
+        document.getElementById('fileName').textContent = sheetName;
+        updateStatusPill();
+    }
+
+    // ── Filter options ──
+    function updateFilterOptions() {
+        const V = new Set(), C = new Set(), L = new Set();
+        jobs.forEach(j => { j.venditori.forEach(v => V.add(v)); j.contratti.forEach(c => C.add(c)); j.lavori.forEach(l => L.add(l)); });
+        const fill = (id, set) => {
+            document.getElementById(id).innerHTML = `<option value="">Tutti</option>` +
+                Array.from(set).sort().map(v => `<option value="${v}">${v}</option>`).join('');
+        };
+        fill('filterVenditore', V);
+        fill('filterContract', C);
+        fill('filterWork', L);
+    }
+
+    // ── Sort jobs ──
+    function sortJobs(jobsToSort) {
+        const sortKey = document.getElementById('filterSort').value;
+        const sorted = [...jobsToSort];
+        
+        switch(sortKey) {
+            case 'price-desc':
+                sorted.sort((a, b) => calcJobCost(b) - calcJobCost(a));
+                break;
+            case 'price-asc':
+                sorted.sort((a, b) => calcJobCost(a) - calcJobCost(b));
+                break;
+            case 'date-desc':
+                sorted.sort((a, b) => {
+                    const da = a.scheduledDate || '';
+                    const db = b.scheduledDate || '';
+                    return db.localeCompare(da);
+                });
+                break;
+            case 'date-asc':
+                sorted.sort((a, b) => {
+                    const da = a.scheduledDate || '';
+                    const db = b.scheduledDate || '';
+                    return da.localeCompare(db);
+                });
+                break;
+            case 'job-asc':
+                sorted.sort((a, b) => a.job.localeCompare(b.job));
+                break;
+            case 'job-desc':
+                sorted.sort((a, b) => b.job.localeCompare(a.job));
+                break;
+            default:
+                sorted.sort((a, b) => calcJobCost(b) - calcJobCost(a));
+        }
+        return sorted;
+    }
+
+    // ── Filter and sort jobs ──
+    function applyFiltersAndSort() {
+        const q = document.getElementById('searchText').value.toLowerCase();
+        const fv = document.getElementById('filterVenditore').value;
+        const fc = document.getElementById('filterContract').value;
+        const fw = document.getElementById('filterWork').value;
+        const fck = document.getElementById('filterCheck').value;
+        const fcosto = document.getElementById('filterCosto').checked;
+
+        let filtered = jobs.filter(j => {
+            const cost = calcJobCost(j);
+            const status = getJobStatus(j.job);
+            const statusOk = status === 'OK';
+            const statusNt = status === 'NT';
+            const statusDv = status === 'DV';
+            const statusEmpty = status === '';
+            
+            let statusMatch = true;
+            if (fck === 'ok') statusMatch = statusOk;
+            else if (fck === 'nt') statusMatch = statusNt;
+            else if (fck === 'dv') statusMatch = statusDv;
+            else if (fck === 'empty') statusMatch = statusEmpty;
+
+            return (!q || [j.job, j.impianto, j.indirizzo].some(s => s.toLowerCase().includes(q)))
+                && (!fv || j.venditori.has(fv))
+                && (!fc || j.contratti.has(fc))
+                && (!fw || j.lavori.has(fw))
+                && statusMatch
+                && (!fcosto || cost > 0);
+        });
+
+        filteredJobs = sortJobs(filtered);
+
+        document.getElementById('jobCount').textContent = filteredJobs.length + ' job';
+        document.getElementById('listCount').textContent = filteredJobs.length;
+        renderJobList();
+
+        if (filteredJobs.length > 0) { 
+            if (selectedJobIndex >= filteredJobs.length) selectedJobIndex = 0;
+            showJobDetail(selectedJobIndex); 
+            updateNavBtns(); 
+        } else {
+            document.getElementById('detailContent').innerHTML = `<div class="empty-state"><div class="empty-state-icon">🔍</div><h3>Nessun job trovato</h3><p>Prova a modificare i filtri</p></div>`;
+            document.getElementById('prevJob').disabled = true;
+            document.getElementById('nextJob').disabled = true;
+            document.getElementById('selectedJob').textContent = '—';
+            document.getElementById('statusBadge').textContent = '—';
+            document.getElementById('statusBadge').className = 'job-status-badge';
+            document.getElementById('workTypeBadge').textContent = '';
+            document.querySelectorAll('.register-btn').forEach(btn => {
+                btn.className = 'register-btn';
+                if (btn.dataset.status === 'ok') btn.textContent = '⏳ Registra';
+                else if (btn.dataset.status === 'nt') btn.textContent = '🔍 Non Trovato';
+                else if (btn.dataset.status === 'dv') btn.textContent = '⚠️ Da Verificare';
+            });
+        }
+    }
+
+    function filterJobs() {
+        applyFiltersAndSort();
+    }
+
+    function resetFilters() {
+        document.getElementById('searchText').value = '';
+        document.getElementById('filterVenditore').value = '';
+        document.getElementById('filterContract').value = '';
+        document.getElementById('filterWork').value = '';
+        document.getElementById('filterCheck').value = '';
+        document.getElementById('filterCosto').checked = false;
+        document.getElementById('filterSort').value = 'price-desc';
+        applyFiltersAndSort();
+    }
+
+    // ── Render job list ──
+    function renderJobList() {
+        const container = document.getElementById('jobsList');
+        container.innerHTML = filteredJobs.map((j, i) => {
+            const status = getJobStatus(j.job);
+            const cost = calcJobCost(j);
+            const vend = Array.from(j.venditori)[0] || '';
+            const cont = Array.from(j.contratti)[0] || '';
+            const lav  = Array.from(j.lavori)[0] || '';
+            
+            let dotHtml = '';
+            if (status === 'OK') dotHtml = '<div class="job-check-dot"></div>';
+            else if (status === 'NT') dotHtml = '<div class="job-check-dot nt"></div>';
+            else if (status === 'DV') dotHtml = '<div class="job-check-dot dv"></div>';
+            
+            const priceHtml = cost > 0 ? `<span class="job-card-price">€ ${cost.toFixed(2).replace('.', ',')}</span>` : '';
+            
+            return `<div class="job-card ${i === selectedJobIndex ? 'active' : ''}" onclick="showJobDetail(${i})">
+                ${dotHtml}
+                <div class="job-card-top">
+                    <span class="job-card-code">${j.job}</span>
+                    <div class="job-card-right">
+                        <span class="job-card-count">${j.tasks.length}t</span>
+                        ${priceHtml}
+                    </div>
+                </div>
+                <div class="job-card-addr">${j.indirizzo || j.impianto || '—'}</div>
+                <div class="job-card-badges">
+                    ${vend ? `<span class="job-card-badge">${vend.split(' ')[0]}</span>` : ''}
+                    ${cont ? `<span class="job-card-badge">${cont}</span>` : ''}
+                    ${lav  ? `<span class="job-card-badge">${lav}</span>` : ''}
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    // ── Set job status ──
+    function handleSetStatus(status) {
+        if (!filteredJobs.length) return;
+        const upperStatus = status.toUpperCase();
+        const j = filteredJobs[selectedJobIndex];
+        const currentStatus = getJobStatus(j.job);
+        const newStatus = (currentStatus === upperStatus) ? '' : upperStatus;
+        
+        if (newStatus === '') {
+            delete jobStates[j.job];
+        } else {
+            jobStates[j.job] = newStatus;
+        }
+        saveStates();
+        
+        updateUIForJob(j.job);
+        
+        if (newStatus === 'OK') showToast('✓ Job registrato (OK)', 'success');
+        else if (newStatus === 'NT') showToast('⛔ Job non trovato (NT)', 'error');
+        else if (newStatus === 'DV') showToast('⚠️ Job da verificare (DV)', 'warning');
+        else showToast('⏳ Registrazione rimossa', 'info');
+    }
+
+    function updateUIForJob(jobId) {
+        updateStatusButtons(jobId);
+        updateStatusBadge(jobId);
+        renderJobList();
+        updateStatusPill();
+        applyFiltersAndSort();
+    }
+
+    function updateStatusButtons(jobId) {
+        const status = getJobStatus(jobId);
+        document.querySelectorAll('.register-btn').forEach(btn => {
+            const btnStatus = btn.dataset.status;
+            btn.className = 'register-btn';
+            if (btnStatus === 'ok') {
+                btn.textContent = status === 'OK' ? '✓ Registrato' : '⏳ Registra';
+                if (status === 'OK') btn.classList.add('active', 'ok');
+            } else if (btnStatus === 'nt') {
+                btn.textContent = status === 'NT' ? '⛔ Non Trovato' : '🔍 Non Trovato';
+                if (status === 'NT') btn.classList.add('active', 'nt');
+            } else if (btnStatus === 'dv') {
+                btn.textContent = status === 'DV' ? '⚠️ Da Verificare' : '⚠️ Da Verificare';
+                if (status === 'DV') btn.classList.add('active', 'dv');
+            }
+        });
+    }
+
+    function updateStatusBadge(jobId) {
+        const status = getJobStatus(jobId);
+        const badge = document.getElementById('statusBadge');
+        if (status === 'OK') {
+            badge.textContent = '✓ Registrato';
+            badge.className = 'job-status-badge ok';
+        } else if (status === 'NT') {
+            badge.textContent = '⛔ Non Trovato';
+            badge.className = 'job-status-badge nt';
+        } else if (status === 'DV') {
+            badge.textContent = '⚠️ Da Verificare';
+            badge.className = 'job-status-badge dv';
+        } else {
+            badge.textContent = '—';
+            badge.className = 'job-status-badge';
+        }
+    }
+
+    function updateStatusPill() {
+        const pill = document.getElementById('statusPill');
+        if (!jobs.length) return;
+        const okCount = jobs.filter(j => getJobStatus(j.job) === 'OK').length;
+        const ntCount = jobs.filter(j => getJobStatus(j.job) === 'NT').length;
+        const dvCount = jobs.filter(j => getJobStatus(j.job) === 'DV').length;
+        const total = jobs.length;
+        const classes = pill.className.split(' ').filter(c => c !== 'success' && c !== 'error' && c !== 'warning' && c !== 'loading');
+        pill.className = classes.join(' ') + ' success';
+        pill.textContent = `✓ ${total} job · OK:${okCount} NT:${ntCount} DV:${dvCount}`;
+    }
+
+    // ── Show job detail ──
+    function showJobDetail(index) {
+        if (!filteredJobs.length) return;
+        selectedJobIndex = index;
+        const j = filteredJobs[index];
+
+        document.querySelectorAll('.job-card').forEach((el, i) => el.classList.toggle('active', i === index));
+        document.getElementById('selectedJob').textContent = j.job || '—';
+        document.getElementById('workTypeBadge').textContent = j.workType || '';
+
+        updateStatusBadge(j.job);
+        updateStatusButtons(j.job);
+
+        const cost = calcJobCost(j);
+        const ft = j.tasks[0] || {};
+
+        const tasksHTML = j.tasks.map(t => {
+            const tc = parseFloat(t.costo);
+            return `<div class="task-item">
+                <div class="task-top">
+                    <span class="task-component">${t.componentCategory || '—'} · ${t.component || '—'}</span>
+                    <span class="task-employee">${t.employeeId || ''}</span>
+                </div>
+                <div class="task-desc">${t.taskDescription || 'Nessuna descrizione'}</div>
+                <div class="task-footer">
+                    <span class="task-qty">Qty: ${t.quantity || '1'}</span>
+                    <span class="task-cost">€ ${isNaN(tc) ? '0.00' : tc.toFixed(2)}</span>
+                </div>
+                ${(t.x || t.y) ? `<div class="task-xy-tag">Costo: ${t.x||'—'} · Note: ${t.y||'—'}</div>` : ''}
+            </div>`;
+        }).join('');
+
+        document.getElementById('detailContent').innerHTML = `
+            <div class="card xy-card">
+                <div class="card-header">
+                    <span class="card-title"><span class="card-title-icon">💰</span>Costi &amp; Note Aggiuntive</span>
+                </div>
+                <div class="card-body">
+                    <div class="xy-grid">
+                        <div class="info-item">
+                            <div class="info-label">Costo</div>
+                            <div class="info-value xy-value">${ft.x || '—'}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Note</div>
+                            <div class="info-value xy-value">${ft.y || '—'}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="highlight-row">
+                <div class="highlight-card">
+                    <div>
+                        <div class="highlight-label">Contratto</div>
+                        <div class="highlight-value blue">${ft.contractTemplate || '—'}</div>
+                    </div>
+                </div>
+                <div class="highlight-card">
+                    <div>
+                        <div class="highlight-label">Venditore</div>
+                        <div class="highlight-value purple">${ft.venditore || '—'}</div>
+                    </div>
+                </div>
+                <div class="highlight-card">
+                    <div>
+                        <div class="highlight-label">Tipo lavori</div>
+                        <div style="margin-top:2px;">
+                            ${Array.from(j.lavori).map(l => `<span class="work-chip" style="background:${workColor(l)}">${l}</span>`).join('') || '—'}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title"><span class="card-title-icon">📋</span>Informazioni Generali</span>
+                    <span class="copy-badge" onclick="copyToClipboard('${j.impianto}')">📋 ${j.impianto}</span>
+                </div>
+                <div class="card-body">
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <div class="info-label">Job</div>
+                            <div class="info-value">${j.job}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Data Intervento</div>
+                            <div class="info-value">${formatDate(ft.scheduledDate)}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Impianto</div>
+                            <div class="info-value">${j.impianto || '—'}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Indirizzo</div>
+                            <div class="info-value">${j.indirizzo || '—'}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Cliente</div>
+                            <div class="info-value">${j.cliente || '—'}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Amministratore</div>
+                            <div class="info-value">${j.amministratore || '—'}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Data Completamento</div>
+                            <div class="info-value">${formatDate(ft.jobCompletedDate)}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Tempo lavoro</div>
+                            <div class="info-value">${ft.tempoLavoro || '—'}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title"><span class="card-title-icon">🔧</span>Task Eseguite (${j.tasks.length})</span>
+                    <span style="font-size:0.78rem;font-weight:600;color:var(--success);font-family:var(--mono)">€ ${cost.toFixed(2)}</span>
+                </div>
+                <div class="card-body">
+                    ${tasksHTML}
+                    <div class="total-cost-bar">
+                        <span>Totale complessivo</span>
+                        <span class="amount">€ ${cost.toFixed(2)}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="note-footer">📝 Note: ${ft.note || 'Nessuna nota'}</div>
+        `;
+
+        updateNavBtns();
+
+        if (ft.note && String(ft.note).trim()) {
+            setTimeout(() => openNoteModal(j.job, String(ft.note).trim()), 150);
+        }
+    }
+
+    // ── Navigation ──
+    function navigateJob(dir) {
+        const ni = selectedJobIndex + dir;
+        if (ni >= 0 && ni < filteredJobs.length) {
+            showJobDetail(ni);
+            document.querySelectorAll('.job-card')[ni]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+    }
+
+    function updateNavBtns() {
+        document.getElementById('prevJob').disabled = selectedJobIndex <= 0;
+        document.getElementById('nextJob').disabled = selectedJobIndex >= filteredJobs.length - 1;
+    }
+
+    // ── Export Excel ──
+    function exportExcel() {
+        if (!workbook || !allRows.length) return;
+        try {
+            const sheetName = document.getElementById('sheetSelector').value;
+            const sheet = workbook.Sheets[sheetName];
+            const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+            let hr = -1;
+            for (let i = 0; i < data.length; i++) { if (data[i].some(c => c?.toString().includes('JobTask'))) { hr = i; break; } }
+            if (hr === -1) return showToast('Header non trovato', 'error');
+            const headers = data[hr];
+            let cci = headers.findIndex(h => h === 'CHECK');
+            if (cci === -1) { cci = headers.length; headers.push('CHECK'); }
+            for (let i = hr + 1; i < data.length; i++) {
+                const row = data[i];
+                if (!row || !row.length) continue;
+                const jobId = row[3];
+                if (!jobId) continue;
+                while (row.length <= cci) row.push('');
+                const status = getJobStatus(jobId);
+                row[cci] = status || '';
+            }
+            const nb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(nb, XLSX.utils.aoa_to_sheet(data), sheetName);
+            workbook.SheetNames.forEach(n => { if (n !== sheetName) XLSX.utils.book_append_sheet(nb, workbook.Sheets[n], n); });
+            XLSX.writeFile(nb, `KAPPA_BOLLE_CHECK_${new Date().toISOString().slice(0,10)}.xlsx`);
+            showToast('✓ File esportato', 'success');
+        } catch (e) { showToast('Errore esportazione', 'error'); }
+    }
+
+    // ── Stats ──
+    function openStatsModal() {
+        if (!jobs.length) return showToast('Nessun dato', 'error');
+        generateStats();
+        document.getElementById('statsModal').style.display = 'flex';
+    }
+
+    function closeStatsModal() { document.getElementById('statsModal').style.display = 'none'; }
+
+    function generateStats() {
+        let totaleCosti = 0, totaleReg = 0, jobReg = 0;
+        let totaleNt = 0, totaleDv = 0;
+        let jobNt = 0, jobDv = 0, jobEmpty = 0;
+        const perVend = new Map(), perVendTipo = new Map();
+
+        jobs.forEach(j => {
+            const cost = calcJobCost(j);
+            totaleCosti += cost;
+            const status = getJobStatus(j.job);
+            if (status === 'OK') { 
+                totaleReg += cost; 
+                jobReg++; 
+            } else if (status === 'NT') { 
+                totaleNt += cost; 
+                jobNt++; 
+            } else if (status === 'DV') { 
+                totaleDv += cost; 
+                jobDv++; 
+            } else {
+                jobEmpty++;
+            }
+            j.venditori.forEach(v => {
+                if (!v) return;
+                perVend.set(v, (perVend.get(v)||0) + cost);
+                j.lavori.forEach(l => { if (l) { const k=`${v}|${l}`; perVendTipo.set(k,(perVendTipo.get(k)||0)+cost); } });
+            });
+        });
+
+        const mancanti = totaleCosti - totaleReg;
+        const pct = n => totaleCosti > 0 ? ((n / totaleCosti) * 100).toFixed(1) : '0.0';
+
+        let html = `<div class="stats-section">
+            <div class="stats-section-title">◫ Totali Generali</div>
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-label">Totale Costi</div>
+                    <div class="kpi-value accent">€ ${totaleCosti.toFixed(2)}</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Registrati (OK)</div>
+                    <div class="kpi-value success">€ ${totaleReg.toFixed(2)}</div>
+                    <div class="kpi-sub">${pct(totaleReg)}% del totale</div>
+                    <div class="progress-track"><div class="progress-fill" style="width:${pct(totaleReg)}%"></div></div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Mancanti</div>
+                    <div class="kpi-value danger">€ ${mancanti.toFixed(2)}</div>
+                    <div class="kpi-sub">${pct(mancanti)}% del totale</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Job Totali</div>
+                    <div class="kpi-value">${jobs.length}</div>
+                </div>
+            </div>
+        </div>`;
+
+        html += `<div class="stats-section">
+            <div class="stats-section-title">📊 Suddivisione per Stato</div>
+            <div class="status-breakdown">
+                <div class="status-item">
+                    <div class="label">Registrati (OK)</div>
+                    <div class="value ok">${jobReg} job</div>
+                    <div class="kpi-sub">€ ${totaleReg.toFixed(2)}</div>
+                </div>
+                <div class="status-item">
+                    <div class="label">Non Trovati (NT)</div>
+                    <div class="value nt">${jobNt} job</div>
+                    <div class="kpi-sub">€ ${totaleNt.toFixed(2)}</div>
+                </div>
+                <div class="status-item">
+                    <div class="label">Da Verificare (DV)</div>
+                    <div class="value dv">${jobDv} job</div>
+                    <div class="kpi-sub">€ ${totaleDv.toFixed(2)}</div>
+                </div>
+                <div class="status-item">
+                    <div class="label">Da registrare</div>
+                    <div class="value empty">${jobEmpty} job</div>
+                    <div class="kpi-sub">€ ${(totaleCosti - totaleReg - totaleNt - totaleDv).toFixed(2)}</div>
+                </div>
+            </div>
+        </div>`;
+
+        html += `<div class="stats-section">
+            <div class="stats-section-title">👤 Costi per Venditore</div>
+            <table class="stats-table">
+                <thead><tr><th>Venditore</th><th class="tr">Totale</th><th class="tr">%</th></tr></thead>
+                <tbody>
+                ${Array.from(perVend.entries()).sort((a,b)=>b[1]-a[1]).map(([v,t]) =>
+                    `<tr><td>${v}</td><td class="tr">€ ${t.toFixed(2)}</td><td class="tr">${pct(t)}%</td></tr>`
+                ).join('')}
+                </tbody>
+            </table>
+        </div>`;
+
+        html += `<div class="stats-section">
+            <div class="stats-section-title">🔧 Dettaglio Venditore × Tipo Lavoro</div>
+            <table class="stats-table">
+                <thead><tr><th>Venditore</th><th>Tipo Lavoro</th><th class="tr">Totale</th></tr></thead>
+                <tbody>
+                ${Array.from(perVendTipo.entries()).sort().map(([k,t]) => {
+                    const [v,l] = k.split('|');
+                    return `<tr><td>${v}</td><td>${l}</td><td class="tr">€ ${t.toFixed(2)}</td></tr>`;
+                }).join('')}
+                </tbody>
+            </table>
+        </div>`;
+
+        const missingWithCost = jobs.filter(j => getJobStatus(j.job) !== 'OK' && calcJobCost(j) > 0);
+        const totMissing = missingWithCost.reduce((s,j) => s + calcJobCost(j), 0);
+
+        html += `<div class="stats-section">
+            <div class="stats-section-title">📋 Job Mancanti da Registrare (costo &gt; 0)</div>
+            <div class="missing-list">
+                ${missingWithCost.map(j => {
+                    const c = calcJobCost(j);
+                    const ft = j.tasks[0]||{};
+                    const status = getJobStatus(j.job);
+                    const statusLabel = status === 'NT' ? '⛔ NT' : status === 'DV' ? '⚠️ DV' : '';
+                    return `<div class="missing-item">
+                        <div>
+                            <div class="missing-item-job">${j.job} ${statusLabel}</div>
+                            <div class="missing-item-detail">${j.impianto} · ${formatDate(ft.scheduledDate)}</div>
+                        </div>
+                        <div class="missing-item-cost">€ ${c.toFixed(2)}</div>
+                    </div>`;
+                }).join('')}
+            </div>
+            <div class="missing-total">
+                <span>Totale mancante (${missingWithCost.length} job)</span>
+                <span>€ ${totMissing.toFixed(2)}</span>
+            </div>
+        </div>`;
+
+        document.getElementById('statsContent').innerHTML = html;
+    }
+
+    // ── Export PDF ──
+    function exportStatsPDF() {
+        if (!jobs.length) return;
+        try {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+            doc.setFillColor(15, 28, 46);
+            doc.rect(0, 0, 210, 22, 'F');
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(13);
+            doc.setTextColor(255, 255, 255);
+            doc.text('KAPPA BOLLE — Statistiche Job', 14, 14);
+            doc.setFontSize(8);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(170, 190, 210);
+            doc.text(`Generato il ${new Date().toLocaleString('it-IT')}`, 14, 19);
+
+            let y = 30;
+            let totaleCosti = 0, totaleReg = 0, jobReg = 0;
+            let totaleNt = 0, totaleDv = 0, jobNt = 0, jobDv = 0, jobEmpty = 0;
+            const perVend = new Map(), perVendTipo = new Map();
+            jobs.forEach(j => {
+                const cost = calcJobCost(j);
+                totaleCosti += cost;
+                const status = getJobStatus(j.job);
+                if (status === 'OK') { 
+                    totaleReg += cost; 
+                    jobReg++; 
+                } else if (status === 'NT') { 
+                    totaleNt += cost; 
+                    jobNt++; 
+                } else if (status === 'DV') { 
+                    totaleDv += cost; 
+                    jobDv++; 
+                } else {
+                    jobEmpty++;
+                }
+                j.venditori.forEach(v => {
+                    if (!v) return;
+                    perVend.set(v, (perVend.get(v)||0) + cost);
+                    j.lavori.forEach(l => { if (l) { const k=`${v}|${l}`; perVendTipo.set(k,(perVendTipo.get(k)||0)+cost); }});
+                });
+            });
+
+            const mancanti = totaleCosti - totaleReg;
+
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(30, 43, 58);
+            doc.text('TOTALI GENERALI', 14, y);
+            y += 5;
+
+            doc.autoTable({
+                startY: y,
+                head: [['Metrica', 'Valore', '%']],
+                body: [
+                    ['Totale Costi',    `€ ${totaleCosti.toFixed(2)}`, '100%'],
+                    ['Registrati (OK)', `€ ${totaleReg.toFixed(2)}`,  `${((totaleReg/totaleCosti||0)*100).toFixed(1)}%`],
+                    ['Mancanti',        `€ ${mancanti.toFixed(2)}`,   `${((mancanti/totaleCosti||0)*100).toFixed(1)}%`],
+                    ['Job Totali',       jobs.length, ''],
+                    ['Job Registrati (OK)',   jobReg, `${((jobReg/jobs.length||0)*100).toFixed(1)}%`],
+                    ['Job Non Trovati (NT)',  jobNt, ''],
+                    ['Job Da Verificare (DV)', jobDv, ''],
+                    ['Job Da registrare',     jobEmpty, ''],
+                ],
+                theme: 'grid',
+                styles: { fontSize: 8, cellPadding: 3 },
+                headStyles: { fillColor: [15, 28, 46], textColor: 255, fontStyle: 'bold' },
+                alternateRowStyles: { fillColor: [245, 248, 252] },
+                margin: { left: 14, right: 14 },
+            });
+            y = doc.lastAutoTable.finalY + 8;
+
+            if (y > 250) { doc.addPage(); y = 14; }
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.setTextColor(30, 43, 58);
+            doc.text('COSTI PER VENDITORE', 14, y);
+            y += 5;
+
+            doc.autoTable({
+                startY: y,
+                head: [['Venditore', 'Totale Costi', '% Totale']],
+                body: Array.from(perVend.entries()).sort((a,b)=>b[1]-a[1]).map(([v,t]) => [
+                    v, `€ ${t.toFixed(2)}`, `${((t/totaleCosti||0)*100).toFixed(1)}%`
+                ]),
+                theme: 'grid',
+                styles: { fontSize: 8, cellPadding: 3 },
+                headStyles: { fillColor: [26, 127, 212], textColor: 255, fontStyle: 'bold' },
+                alternateRowStyles: { fillColor: [240, 247, 253] },
+                margin: { left: 14, right: 14 },
+            });
+            y = doc.lastAutoTable.finalY + 8;
+
+            if (y > 250) { doc.addPage(); y = 14; }
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.setTextColor(30, 43, 58);
+            doc.text('DETTAGLIO VENDITORE × TIPO LAVORO', 14, y);
+            y += 5;
+
+            doc.autoTable({
+                startY: y,
+                head: [['Venditore', 'Tipo Lavoro', 'Totale Costi']],
+                body: Array.from(perVendTipo.entries()).sort().map(([k,t]) => {
+                    const [v,l] = k.split('|');
+                    return [v, l, `€ ${t.toFixed(2)}`];
+                }),
+                theme: 'grid',
+                styles: { fontSize: 8, cellPadding: 3 },
+                headStyles: { fillColor: [109, 40, 217], textColor: 255, fontStyle: 'bold' },
+                alternateRowStyles: { fillColor: [245, 243, 255] },
+                margin: { left: 14, right: 14 },
+            });
+            y = doc.lastAutoTable.finalY + 8;
+
+            const missingWithCost = jobs.filter(j => getJobStatus(j.job) !== 'OK' && calcJobCost(j) > 0);
+            if (missingWithCost.length > 0) {
+                if (y > 230) { doc.addPage(); y = 14; }
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(9);
+                doc.setTextColor(30, 43, 58);
+                doc.text('JOB MANCANTI DA REGISTRARE (costo > 0)', 14, y);
+                y += 5;
+
+                doc.autoTable({
+                    startY: y,
+                    head: [['Job', 'Stato', 'Impianto', 'Data', 'Costo']],
+                    body: missingWithCost.map(j => {
+                        const ft = j.tasks[0]||{};
+                        const status = getJobStatus(j.job);
+                        const statusLabel = status === 'NT' ? 'NT' : status === 'DV' ? 'DV' : '';
+                        return [j.job, statusLabel, j.impianto, formatDate(ft.scheduledDate), `€ ${calcJobCost(j).toFixed(2)}`];
+                    }),
+                    foot: [['', '', '', 'TOTALE', `€ ${missingWithCost.reduce((s,j)=>s+calcJobCost(j),0).toFixed(2)}`]],
+                    theme: 'grid',
+                    styles: { fontSize: 8, cellPadding: 3 },
+                    headStyles: { fillColor: [185, 28, 28], textColor: 255, fontStyle: 'bold' },
+                    footStyles: { fillColor: [30, 43, 58], textColor: 255, fontStyle: 'bold' },
+                    alternateRowStyles: { fillColor: [255, 245, 245] },
+                    margin: { left: 14, right: 14 },
+                });
+            }
+
+            const pages = doc.getNumberOfPages();
+            for (let i = 1; i <= pages; i++) {
+                doc.setPage(i);
+                doc.setFontSize(7);
+                doc.setTextColor(160, 176, 200);
+                doc.text(`Pagina ${i} di ${pages} · KAPPA BOLLE`, 14, 292);
+            }
+
+            doc.save(`STATISTICHE_${new Date().toISOString().slice(0,10)}.pdf`);
+            showToast('✓ PDF esportato', 'success');
+        } catch (e) {
+            console.error(e);
+            showToast('Errore esportazione PDF: ' + e.message, 'error');
+        }
+    }
+
+    function exportStatsExcel() {
+        if (!jobs.length) return;
+        try {
+            let tot = 0, reg = 0, nt = 0, dv = 0;
+            let jobReg = 0, jobNt = 0, jobDv = 0, jobEmpty = 0;
+            const pv = new Map(), pvt = new Map();
+            jobs.forEach(j => {
+                const c = calcJobCost(j); 
+                tot += c;
+                const status = getJobStatus(j.job);
+                if (status === 'OK') { reg += c; jobReg++; }
+                else if (status === 'NT') { nt += c; jobNt++; }
+                else if (status === 'DV') { dv += c; jobDv++; }
+                else { jobEmpty++; }
+                j.venditori.forEach(v => { if(v){ pv.set(v,(pv.get(v)||0)+c); j.lavori.forEach(l=>{ if(l){ const k=`${v}|${l}`; pvt.set(k,(pvt.get(k)||0)+c); }}); } });
+            });
+            const rows = [
+                ['STATISTICHE JOB',''],['Generato il', new Date().toLocaleString('it-IT')],[''],
+                ['TOTALI GENERALI'],['Totale Costi',`€ ${tot.toFixed(2)}`],
+                ['Registrati (OK)',`€ ${reg.toFixed(2)}`],
+                ['Non Trovati (NT)',`€ ${nt.toFixed(2)}`],
+                ['Da Verificare (DV)',`€ ${dv.toFixed(2)}`],
+                ['Mancanti (totale - OK)',`€ ${(tot-reg).toFixed(2)}`],
+                ['Job Totali', jobs.length],
+                ['Job Registrati (OK)', jobReg],
+                ['Job Non Trovati (NT)', jobNt],
+                ['Job Da Verificare (DV)', jobDv],
+                ['Job Da registrare', jobEmpty],
+                [''],
+                ['COSTI PER VENDITORE'],['Venditore','Totale','%'],
+                ...Array.from(pv.entries()).sort((a,b)=>b[1]-a[1]).map(([v,t])=>[v,`€ ${t.toFixed(2)}`,`${((t/tot)*100).toFixed(1)}%`]),
+                [''],['VENDITORE × TIPO LAVORO'],['Venditore','Tipo','Totale'],
+                ...Array.from(pvt.entries()).sort().map(([k,t])=>{ const [v,l]=k.split('|'); return [v,l,`€ ${t.toFixed(2)}`]; })
+            ];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Statistiche');
+            XLSX.writeFile(wb, `STATISTICHE_${new Date().toISOString().slice(0,10)}.xlsx`);
+            showToast('✓ Statistiche esportate', 'success');
+        } catch(e) { showToast('Errore', 'error'); }
+    }
+
+    function exportMancantiExcel() {
+        if (!jobs.length) return;
+        try {
+            const missing = jobs.filter(j => getJobStatus(j.job) !== 'OK');
+            let tot = 0;
+            const rows = [['JOB MANCANTI (da registrare)'],['Generato il', new Date().toLocaleString('it-IT')],[''],['Job','Stato','Impianto','Data','Costo','Task','Venditori']];
+            missing.forEach(j => {
+                const c = calcJobCost(j);
+                if (c <= 0) return;
+                tot += c;
+                const ft = j.tasks[0]||{};
+                const status = getJobStatus(j.job);
+                const statusLabel = status === 'NT' ? 'NT' : status === 'DV' ? 'DV' : '';
+                rows.push([j.job, statusLabel, j.impianto, formatDate(ft.scheduledDate), `€ ${c.toFixed(2)}`, j.tasks.length, Array.from(j.venditori).join(', ')]);
+            });
+            rows.push([]);
+            rows.push(['TOTALE','','','',`€ ${tot.toFixed(2)}`,'','']);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Job Mancanti');
+            XLSX.writeFile(wb, `JOB_MANCANTI_${new Date().toISOString().slice(0,10)}.xlsx`);
+            showToast('✓ Job mancanti esportati', 'success');
+        } catch(e) { showToast('Errore', 'error'); }
+    }
+
+    // ── Note modal ──
+    function openNoteModal(jobCode, noteText) {
+        document.getElementById('noteModalJobRef').textContent = 'Job: ' + jobCode;
+        document.getElementById('noteModalText').textContent = noteText;
+        document.getElementById('noteModal').style.display = 'flex';
+    }
+
+    function closeNoteModal() { document.getElementById('noteModal').style.display = 'none'; }
+
+    // ── Event listeners ──
+    document.getElementById('fileInput').addEventListener('change', e => { if (e.target.files.length) handleFileUpload(e.target.files[0]); });
+    document.getElementById('sheetSelector').addEventListener('change', e => loadSheet(e.target.value));
+    document.getElementById('exportBtn').addEventListener('click', exportExcel);
+
+    document.addEventListener('keydown', e => {
+        if (!filteredJobs.length) return;
+        if (e.altKey && e.key === 'ArrowLeft')  { e.preventDefault(); navigateJob(-1); }
+        if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); navigateJob(1); }
+        if (e.altKey && e.key === '1') { e.preventDefault(); handleSetStatus('ok'); }
+        if (e.altKey && e.key === '2') { e.preventDefault(); handleSetStatus('nt'); }
+        if (e.altKey && e.key === '3') { e.preventDefault(); handleSetStatus('dv'); }
+    });
+
+    document.getElementById('statsModal').addEventListener('click', e => { if (e.target === document.getElementById('statsModal')) closeStatsModal(); });
+    document.getElementById('noteModal').addEventListener('click', e => { if (e.target === document.getElementById('noteModal')) closeNoteModal(); });
+
+    // ── Init ──
+    loadStates();
+</script>
+</body>
+</html>
