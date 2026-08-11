@@ -123,6 +123,17 @@
         .btn-stats:hover:not(:disabled) { background: var(--navy-light); color: white; }
         .btn-stats:disabled { opacity: 0.4; cursor: not-allowed; }
 
+        .btn-auto {
+            background: var(--navy-light);
+            color: #5ce0a8;
+            border: 1px solid var(--navy-border);
+        }
+        .btn-auto:hover { background: var(--navy-border); color: white; }
+        .btn-auto.paused {
+            color: #fca5a5;
+            border-color: rgba(185,28,28,0.4);
+        }
+
         #fileInput { display: none; }
 
         .sheet-selector-wrap {
@@ -1184,6 +1195,10 @@
         ⬇ Esporta con CHECK
     </button>
 
+    <button id="autoBtn" class="topbar-btn btn-auto" onclick="toggleAutoRefresh()">
+        ▶️ Auto
+    </button>
+
     <div class="topbar-status">
         <button id="statsBtn" class="topbar-btn btn-stats" disabled onclick="openStatsModal()">
             ◫ Statistiche
@@ -1358,6 +1373,7 @@
     let filteredJobs = [];
     let selectedJobIndex = 0;
     let jobStates = {};
+    let autoRefreshEnabled = true;
 
     const STORAGE_KEY = 'kappa_bolle_job_states';
 
@@ -1391,6 +1407,30 @@
         t.className = 'toast show ' + type;
         clearTimeout(t._timer);
         t._timer = setTimeout(() => t.classList.remove('show'), 3200);
+    }
+
+    // ── Auto Refresh Toggle ──
+    function toggleAutoRefresh() {
+        autoRefreshEnabled = !autoRefreshEnabled;
+        const btn = document.getElementById('autoBtn');
+        if (autoRefreshEnabled) {
+            btn.textContent = '▶️ Auto';
+            btn.classList.remove('paused');
+            applyFiltersAndSort();
+            showToast('▶️ Auto-aggiornamento ripristinato', 'info');
+        } else {
+            btn.textContent = '⏸️ Auto';
+            btn.classList.add('paused');
+            showToast('⏸️ Auto-aggiornamento sospeso', 'info');
+        }
+    }
+
+    function pauseAutoRefresh() {
+        if (autoRefreshEnabled) toggleAutoRefresh();
+    }
+
+    function resumeAutoRefresh() {
+        if (!autoRefreshEnabled) toggleAutoRefresh();
     }
 
     // ── Clipboard ──
@@ -1612,6 +1652,9 @@
 
     // ── Filter and sort jobs ──
     function applyFiltersAndSort() {
+        // Se l'auto-refresh è disabilitato, esci senza aggiornare
+        if (!autoRefreshEnabled) return;
+
         const q = document.getElementById('searchText').value.toLowerCase();
         const fv = document.getElementById('filterVenditore').value;
         const fc = document.getElementById('filterContract').value;
@@ -1669,6 +1712,15 @@
     }
 
     function filterJobs() {
+        // Se l'auto-refresh è disabilitato, force-refresh manuale
+        if (!autoRefreshEnabled) {
+            // Abilita temporaneamente, applica, poi disabilita
+            const wasEnabled = autoRefreshEnabled;
+            autoRefreshEnabled = true;
+            applyFiltersAndSort();
+            autoRefreshEnabled = wasEnabled;
+            return;
+        }
         applyFiltersAndSort();
     }
 
@@ -1745,9 +1797,14 @@
     function updateUIForJob(jobId) {
         updateStatusButtons(jobId);
         updateStatusBadge(jobId);
-        renderJobList();
+        
+        // Solo se l'auto-refresh è abilitato, aggiorna la lista
+        if (autoRefreshEnabled) {
+            renderJobList();
+            applyFiltersAndSort();
+        }
+        
         updateStatusPill();
-        applyFiltersAndSort();
     }
 
     function updateStatusButtons(jobId) {
@@ -2376,6 +2433,7 @@
         if (e.altKey && e.key === '1') { e.preventDefault(); handleSetStatus('ok'); }
         if (e.altKey && e.key === '2') { e.preventDefault(); handleSetStatus('nt'); }
         if (e.altKey && e.key === '3') { e.preventDefault(); handleSetStatus('dv'); }
+        if (e.altKey && e.key === 'a') { e.preventDefault(); toggleAutoRefresh(); }
     });
 
     document.getElementById('statsModal').addEventListener('click', e => { if (e.target === document.getElementById('statsModal')) closeStatsModal(); });
