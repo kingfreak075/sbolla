@@ -29,7 +29,7 @@
             <h1 class="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
                 Sbolla Admin - Splitter
             </h1>
-            <p class="text-slate-500 mt-2">Genera file storico suddiviso in chunk da 23MB (compatibile GitHub Pages)</p>
+            <p class="text-slate-500 mt-2">Genera file storico suddiviso in chunk da <strong>20MB</strong> (compatibile GitHub)</p>
         </div>
 
         <!-- Card Principale -->
@@ -44,7 +44,7 @@
                 <input type="file" id="fileInput" accept=".xlsx, .xls, .csv" class="hidden" onchange="handleFile(this)">
                 <div class="text-7xl mb-4 text-indigo-400">📂</div>
                 <div class="text-xl font-medium text-slate-600">Clicca per selezionare un file Excel</div>
-                <div class="text-sm text-slate-400 mt-2">Verrà suddiviso automaticamente in chunk da 23MB</div>
+                <div class="text-sm text-slate-400 mt-2">Verrà suddiviso automaticamente in chunk da 20MB</div>
             </div>
 
             <!-- Progresso -->
@@ -88,7 +88,7 @@
                     <div class="flex gap-3">
                         <button onclick="generaChunk()" 
                                 class="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold py-4 px-6 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 text-lg">
-                            ✂️ Genera chunk (max 23MB)
+                            ✂️ Genera chunk (max 20MB)
                         </button>
                         <button onclick="reset()" 
                                 class="bg-white border-2 border-slate-300 hover:bg-slate-50 text-slate-600 font-bold py-4 px-6 rounded-xl transition-all">
@@ -106,11 +106,12 @@
                 Come funziona
             </h2>
             <ul class="space-y-3 text-slate-600">
-                <li class="flex gap-3">📦 <span>I dati vengono suddivisi in chunk da <strong>23MB</strong> (limite GitHub)</span></li>
+                <li class="flex gap-3">📦 <span>I dati vengono suddivisi in chunk da <strong>20MB</strong> (limite GitHub)</span></li>
                 <li class="flex gap-3">📄 <span>Viene generato un file <code class="bg-slate-100 px-2 py-0.5 rounded">sbolla_manifest.json</code> con l'elenco dei chunk</span></li>
                 <li class="flex gap-3">🧩 <span>I chunk si chiamano <code class="bg-slate-100 px-2 py-0.5 rounded">sbolla_chunk_000.json</code>, <code class="bg-slate-100 px-2 py-0.5 rounded">sbolla_chunk_001.json</code>, ecc.</span></li>
                 <li class="flex gap-3">📂 <span><strong>Sposta TUTTI i file</strong> (manifest + tutti i chunk) nella cartella di index.html</span></li>
                 <li class="flex gap-3">🚀 <span>All'avvio, Sbolla Manager caricherà e unirà automaticamente tutti i chunk</span></li>
+                <li class="flex gap-3 text-amber-600">⚠️ <span>Il limite è calcolato sulla dimensione effettiva del file JSON generato, non sui dati raw</span></li>
             </ul>
         </div>
     </div>
@@ -120,7 +121,8 @@
         let nomeFile = '';
         let totalBytes = 0;
 
-        function calcolaDimensione(obj) {
+        // Calcola dimensione EFFETTIVA del JSON (non dei dati raw)
+        function calcolaDimensioneJSON(obj) {
             const jsonStr = JSON.stringify(obj);
             return new Blob([jsonStr]).size;
         }
@@ -159,31 +161,32 @@
             });
             
             const totale = rows.length;
-            totalBytes = calcolaDimensione(rows);
+            // Calcola dimensione EFFETTIVA del JSON
+            totalBytes = calcolaDimensioneJSON(rows);
             
             document.getElementById('stats-totale').textContent = totale;
             document.getElementById('stats-storici').textContent = storici;
             document.getElementById('stats-nuovi').textContent = nuovi;
             
             const mbSize = (totalBytes / (1024 * 1024)).toFixed(2);
-            const chunkStimati = Math.ceil(totalBytes / (23 * 1024 * 1024));
+            const chunkStimati = Math.ceil(totalBytes / (20 * 1024 * 1024));
             
             document.getElementById('chunk-stats').innerHTML = `
                 <div class="grid grid-cols-2 gap-3 text-sm">
                     <div>
-                        <div class="text-slate-500">📦 Dimensione totale dati</div>
+                        <div class="text-slate-500">📦 Dimensione JSON stimata</div>
                         <div class="font-bold text-slate-700">${mbSize} MB</div>
                     </div>
                     <div>
-                        <div class="text-slate-500">✂️ Chunk stimati (23MB max)</div>
+                        <div class="text-slate-500">✂️ Chunk stimati (20MB max)</div>
                         <div class="font-bold text-indigo-600">${chunkStimati} chunk</div>
                     </div>
                 </div>
-                ${mbSize > 23 ? `<div class="mt-3 text-amber-600 text-xs bg-amber-50 p-2 rounded">⚠️ Attenzione: i dati totali superano 23MB. Verranno suddivisi in ${chunkStimati} chunk.</div>` : '<div class="mt-3 text-emerald-600 text-xs bg-emerald-50 p-2 rounded">✅ I dati rientrano in un unico chunk.</div>'}
+                ${mbSize > 20 ? `<div class="mt-3 text-amber-600 text-xs bg-amber-50 p-2 rounded">⚠️ Attenzione: i dati totali superano 20MB. Verranno suddivisi in ${chunkStimati} chunk.</div>` : '<div class="mt-3 text-emerald-600 text-xs bg-emerald-50 p-2 rounded">✅ I dati rientrano in un unico chunk.</div>'}
             `;
             
             document.getElementById('stats-section').classList.remove('hidden');
-            console.log(`📊 Dati caricati: ${totale} totali (${storici} storici, ${nuovi} nuovi), ${mbSize} MB`);
+            console.log(`📊 Dati caricati: ${totale} totali (${storici} storici, ${nuovi} nuovi), ${mbSize} MB (JSON)`);
         }
 
         async function generaChunk() {
@@ -192,7 +195,8 @@
                 return;
             }
 
-            const MAX_CHUNK_BYTES = 23 * 1024 * 1024;
+            // LIMITE: 20MB (non 23)
+            const MAX_CHUNK_BYTES = 20 * 1024 * 1024;
             const chunks = [];
             let currentChunk = [];
             let currentSize = 0;
@@ -206,10 +210,11 @@
 
             for (let i = 0; i < datiCaricati.length; i++) {
                 const row = datiCaricati[i];
-                const rowSize = calcolaDimensione(row);
+                // Calcola dimensione EFFETTIVA del JSON di questa riga
+                const rowSize = calcolaDimensioneJSON(row);
                 
                 if (rowSize > MAX_CHUNK_BYTES) {
-                    console.warn(`⚠️ Riga ${i} troppo grande, verrà salvata da sola`);
+                    console.warn(`⚠️ Riga ${i} troppo grande (${(rowSize/1024/1024).toFixed(2)}MB), verrà salvata da sola`);
                     if (currentChunk.length > 0) {
                         chunks.push([...currentChunk]);
                         currentChunk = [];
@@ -230,7 +235,7 @@
                 
                 const progresso = (i / datiCaricati.length) * 50;
                 progressBar.style.width = `${progresso}%`;
-                progressText.textContent = `Suddivisione... ${i + 1}/${datiCaricati.length} righe`;
+                progressText.textContent = `Suddivisione... ${i + 1}/${datiCaricati.length} righe (${(currentSize/1024/1024).toFixed(1)}MB)`;
             }
             
             if (currentChunk.length > 0) {
@@ -259,7 +264,7 @@
                 timestamp: new Date().toISOString(),
                 totalInterventi: datiCaricati.length,
                 numChunks: numChunks,
-                maxChunkSizeMB: 23,
+                maxChunkSizeMB: 20,
                 chunks: [],
                 stats: {
                     storici: document.getElementById('stats-storici').textContent,
@@ -269,7 +274,7 @@
             
             for (let i = 0; i < numChunks; i++) {
                 const chunkData = chunks[i];
-                const chunkSize = calcolaDimensione(chunkData);
+                const chunkSize = calcolaDimensioneJSON(chunkData);
                 const chunkHash = calcolaHash(chunkData);
                 
                 manifest.chunks.push({
