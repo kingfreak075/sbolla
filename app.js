@@ -196,7 +196,7 @@ function calcolaMedieComponenti() {
 
     console.log(`📚 Processo storico: ${window.storicoInterventi.interventi.length} righe totali`);
 
-    window.storicoInterventi.interventi.forEach((row, index) => {
+    window.storicoInterventi.interventi.forEach((row) => {
         const codice = row[COLS.COMP_CODE] || row['ComponentCode (LocalComponent) (Component)'];
         const costo = parseFloat(row['COSTO']); // ← LEGGE DIRETTAMENTE IL CAMPO COSTO
         const categoria = row[COLS.CATEGORIA] || row['LocalComponentCategory'] || "";
@@ -238,14 +238,10 @@ function calcolaMedieComponenti() {
     listinoPrezzi.medie = nuoveMedie;
     listinoPrezzi.lastUpdate = new Date().toISOString();
 
-    // ⚠️ NON sovrascrivere i prezzi personalizzati con le medie!
-    // (mantieni separati listinoPrezzi.prezzi e listinoPrezzi.medie)
-
     salvaListino();
     console.log("✅ calcolaMedieComponenti completata (solo storico)");
     return nuoveMedie;
 }
-
 // ============================================
 // FUNZIONI DI PRICING
 // ============================================
@@ -281,53 +277,71 @@ function calculateRowPrice(row) {
 // FUNZIONI DI SCELTA INIZIALE
 // ============================================
 
-window.applicaPrezziMedi = function () {
+function calcolaMedieComponenti() {
     console.log("==========================================");
-    console.log("💰 FUNZIONE: applicaPrezziMedi() - USA SOLO MEDIE STORICHE");
+    console.log("🔍 INIZIO calcolaMedieComponenti (SOLO STORICO)");
     console.log("==========================================");
-    console.log("📊 appData.rawRows.length:", appData.rawRows.length);
-    console.log("📊 storicoInterventi:", window.storicoInterventi ? "Presente" : "Assente");
 
-    let contatore = 0;
-    let senzaCodice = 0;
-    let senzaPrezzo = 0;
+    const stats = {};
+    let righeProcessate = 0;
 
-    appData.rawRows.forEach((row, index) => {
-        if (!row._isHistory) {
-            const codice = row[COLS.COMP_CODE];
-            // 🔧 USA SOLO LA MEDIA, IGNORA I PREZZI PERSONALIZZATI
-            const prezzoMedio = listinoPrezzi.medie?.[codice]?.media || null;
+    // ✅ USA SOLO LO STORICO (NON i dati correnti/EXCEL)
+    if (!window.storicoInterventi?.interventi) {
+        console.log("⚠️ Nessuno storico disponibile - medie vuote");
+        listinoPrezzi.medie = {};
+        listinoPrezzi.lastUpdate = new Date().toISOString();
+        salvaListino();
+        return {};
+    }
 
-            if (!codice) {
-                senzaCodice++;
-                row._suggestedPrice = 0;
-                row._logic = "Senza codice";
-            } else if (!prezzoMedio) {
-                senzaPrezzo++;
-                row._suggestedPrice = 0;
-                row._logic = "Nessuna media storica";
-            } else {
-                contatore++;
-                row._suggestedPrice = prezzoMedio;
-                row._logic = "Media storica";
+    console.log(`📚 Processo storico: ${window.storicoInterventi.interventi.length} righe totali`);
+
+    window.storicoInterventi.interventi.forEach((row) => {
+        const codice = row[COLS.COMP_CODE] || row['ComponentCode (LocalComponent) (Component)'];
+        const costo = parseFloat(row['COSTO']); // ← LEGGE DIRETTAMENTE IL CAMPO COSTO
+        const categoria = row[COLS.CATEGORIA] || row['LocalComponentCategory'] || "";
+        const descrizione = row[COLS.COMPONENTE] || row['LocalComponent'] || "";
+
+        // ✅ SOLO se: codice esiste, costo è un numero, costo > 0
+        if (codice && !isNaN(costo) && costo > 0) {
+            if (!stats[codice]) {
+                stats[codice] = {
+                    somma: 0,
+                    conteggio: 0,
+                    categoria: categoria,
+                    descrizione: descrizione
+                };
             }
+            stats[codice].somma += costo;
+            stats[codice].conteggio++;
+            righeProcessate++;
+
+            if (categoria && !stats[codice].categoria) stats[codice].categoria = categoria;
+            if (descrizione && !stats[codice].descrizione) stats[codice].descrizione = descrizione;
         }
     });
 
-    console.log(`✅ Righe con media: ${contatore}`);
-    console.log(`⚠️ Senza codice: ${senzaCodice}`);
-    console.log(`⚠️ Senza prezzo medio: ${senzaPrezzo}`);
+    console.log(`📊 Righe storiche VALIDE (con costo > 0): ${righeProcessate}`);
 
-    Object.values(appData.jobGroups).forEach(g => {
-        g.totalPrice = g.rows.reduce((sum, r) => sum + (r._suggestedPrice || 0), 0);
+    const nuoveMedie = {};
+    Object.entries(stats).forEach(([codice, data]) => {
+        nuoveMedie[codice] = {
+            media: data.conteggio > 0 ? Math.round((data.somma / data.conteggio) * 100) / 100 : 0,
+            categoria: data.categoria || 'N/D',
+            descrizione: data.descrizione || 'Nessuna descrizione',
+            occorrenze: data.conteggio
+        };
     });
 
-    prezziInizializzati = true;
-    console.log("🚀 Chiamo initUI()...");
-    initUI();
-    window.calculateAnalytics?.();
-    console.log("✅ applicaPrezziMedi() completata");
-};
+    console.log(`💰 Calcolate medie per ${Object.keys(nuoveMedie).length} codici (solo da storico)`);
+
+    listinoPrezzi.medie = nuoveMedie;
+    listinoPrezzi.lastUpdate = new Date().toISOString();
+
+    salvaListino();
+    console.log("✅ calcolaMedieComponenti completata (solo storico)");
+    return nuoveMedie;
+}
 
 window.applicaPrezziVuoti = function () {
     console.log("==========================================");
