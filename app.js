@@ -1,5 +1,5 @@
 // ============================================
-// Sbolla Manager v3.0 - Core Application
+// Sbolla Manager v3.2 - Core Application
 // ============================================
 
 console.log("==========================================");
@@ -31,6 +31,9 @@ const COLS = {
     COMP_CODE: "ComponentCode (LocalComponent) (Component)"
 };
 
+// Esponi COLS globalmente per analisi.js
+window.COLS = COLS;
+
 // Configurazione tariffe
 let pricingConfig = {
     oa: 75.0,
@@ -44,8 +47,8 @@ let pricingConfig = {
 
 // Listino prezzi
 let listinoPrezzi = {
-    prezzi: {},
-    medie: {},
+    prezzi: {},      // ← PREZZI PERSONALIZZATI (modificati manualmente)
+    medie: {},       // ← PREZZI MEDI (calcolati dallo storico)
     lastUpdate: null
 };
 
@@ -74,34 +77,6 @@ console.log("✅ Variabili globali inizializzate");
 // ============================================
 // FUNZIONI DI UTILITÀ
 // ============================================
-
-// ============================================
-// FUNZIONE PER OTTENERE TUTTI GLI INTERVENTI (storico + correnti)
-// ============================================
-
-function getTuttiInterventi() {
-    let tutti = [];
-
-    // Aggiungi storico
-    if (window.storicoInterventi?.interventi) {
-        tutti = tutti.concat(window.storicoInterventi.interventi.map(row => ({
-            ...row,
-            _isHistory: true,
-            _costo: parseFloat(row['COSTO']) || 0,
-            _jobDate: parseDate(row[COLS.JOB_DATE] || row['JobCompletedDate (Job) (Job)']),
-            _suggestedPrice: parseFloat(row['COSTO']) || 0
-        })));
-    }
-
-    // Aggiungi dati correnti
-    if (appData.rawRows) {
-        tutti = tutti.concat(appData.rawRows);
-    }
-
-    console.log(`📚 Totale interventi: ${tutti.length} (storico: ${window.storicoInterventi?.interventi?.length || 0}, corrente: ${appData.rawRows?.length || 0})`);
-    return tutti;
-}
-
 
 function formatDateItalian(dateObj) {
     if (!dateObj || isNaN(dateObj)) return "-";
@@ -133,6 +108,33 @@ function arrotondaPrezzo(importo, step = 5) {
 }
 
 // ============================================
+// FUNZIONE PER OTTENERE TUTTI GLI INTERVENTI (storico + correnti)
+// ============================================
+
+function getTuttiInterventi() {
+    let tutti = [];
+
+    // Aggiungi storico
+    if (window.storicoInterventi?.interventi) {
+        tutti = tutti.concat(window.storicoInterventi.interventi.map(row => ({
+            ...row,
+            _isHistory: true,
+            _costo: parseFloat(row['COSTO']) || 0,
+            _jobDate: parseDate(row[COLS.JOB_DATE] || row['JobCompletedDate (Job) (Job)']),
+            _suggestedPrice: parseFloat(row['COSTO']) || 0
+        })));
+    }
+
+    // Aggiungi dati correnti
+    if (appData.rawRows) {
+        tutti = tutti.concat(appData.rawRows);
+    }
+
+    console.log(`📚 Totale interventi: ${tutti.length} (storico: ${window.storicoInterventi?.interventi?.length || 0}, corrente: ${appData.rawRows?.length || 0})`);
+    return tutti;
+}
+
+// ============================================
 // GESTIONE LISTINO
 // ============================================
 
@@ -160,7 +162,9 @@ function salvaListino() {
 
 function getPrezzoListino(codice) {
     if (!codice) return null;
+    // PRIMA: prezzo personalizzato (modificato manualmente)
     const personalizzato = listinoPrezzi.prezzi?.[codice];
+    // POI: media storica (se non c'è personalizzato)
     const media = listinoPrezzi.medie?.[codice]?.media;
     return personalizzato ?? media ?? null;
 }
@@ -169,20 +173,36 @@ function getCategoriaPerCodice(codice) {
     return listinoPrezzi.medie?.[codice]?.categoria || '';
 }
 
+// ============================================
+// CALCOLO MEDIE COMPONENTI (SOLO STORICO)
+// ============================================
+
 function calcolaMedieComponenti() {
     console.log("==========================================");
-    console.log("🔍 INIZIO calcolaMedieComponenti");
+    console.log("🔍 INIZIO calcolaMedieComponenti (SOLO STORICO)");
     console.log("==========================================");
 
     const stats = {};
     let righeProcessate = 0;
 
-    function processaRiga(row, fonte) {
+    // ✅ USA SOLO LO STORICO (NON i dati correnti/EXCEL)
+    if (!window.storicoInterventi?.interventi) {
+        console.log("⚠️ Nessuno storico disponibile - medie vuote");
+        listinoPrezzi.medie = {};
+        listinoPrezzi.lastUpdate = new Date().toISOString();
+        salvaListino();
+        return {};
+    }
+
+    console.log(`📚 Processo storico: ${window.storicoInterventi.interventi.length} righe totali`);
+
+    window.storicoInterventi.interventi.forEach((row, index) => {
         const codice = row[COLS.COMP_CODE] || row['ComponentCode (LocalComponent) (Component)'];
-        const costo = row._costo || parseFloat(row['COSTO']);
+        const costo = parseFloat(row['COSTO']); // ← LEGGE DIRETTAMENTE IL CAMPO COSTO
         const categoria = row[COLS.CATEGORIA] || row['LocalComponentCategory'] || "";
         const descrizione = row[COLS.COMPONENTE] || row['LocalComponent'] || "";
 
+        // ✅ SOLO se: codice esiste, costo è un numero, costo > 0
         if (codice && !isNaN(costo) && costo > 0) {
             if (!stats[codice]) {
                 stats[codice] = {
@@ -199,23 +219,9 @@ function calcolaMedieComponenti() {
             if (categoria && !stats[codice].categoria) stats[codice].categoria = categoria;
             if (descrizione && !stats[codice].descrizione) stats[codice].descrizione = descrizione;
         }
-    }
+    });
 
-    // Processa storico
-    if (window.storicoInterventi?.interventi) {
-        console.log(`📚 Processo storico: ${window.storicoInterventi.interventi.length} righe`);
-        window.storicoInterventi.interventi.forEach(row => processaRiga(row, 'storico'));
-    } else {
-        console.log("⚠️ Nessuno storico disponibile");
-    }
-
-    // Processa dati correnti
-    if (appData.rawRows?.length) {
-        console.log(`📄 Processo dati correnti: ${appData.rawRows.length} righe`);
-        appData.rawRows.forEach(row => processaRiga(row, 'corrente'));
-    }
-
-    console.log(`📊 Righe valide processate: ${righeProcessate}`);
+    console.log(`📊 Righe storiche VALIDE (con costo > 0): ${righeProcessate}`);
 
     const nuoveMedie = {};
     Object.entries(stats).forEach(([codice, data]) => {
@@ -227,19 +233,16 @@ function calcolaMedieComponenti() {
         };
     });
 
-    console.log(`💰 Calcolate medie per ${Object.keys(nuoveMedie).length} codici`);
+    console.log(`💰 Calcolate medie per ${Object.keys(nuoveMedie).length} codici (solo da storico)`);
 
     listinoPrezzi.medie = nuoveMedie;
     listinoPrezzi.lastUpdate = new Date().toISOString();
 
-    Object.keys(nuoveMedie).forEach(codice => {
-        if (listinoPrezzi.prezzi[codice] === undefined) {
-            listinoPrezzi.prezzi[codice] = nuoveMedie[codice].media;
-        }
-    });
+    // ⚠️ NON sovrascrivere i prezzi personalizzati con le medie!
+    // (mantieni separati listinoPrezzi.prezzi e listinoPrezzi.medie)
 
     salvaListino();
-    console.log("✅ calcolaMedieComponenti completata");
+    console.log("✅ calcolaMedieComponenti completata (solo storico)");
     return nuoveMedie;
 }
 
@@ -275,7 +278,7 @@ function calculateRowPrice(row) {
 }
 
 // ============================================
-// FUNZIONI DI SCELTA INIZIALE (GLOBALI)
+// FUNZIONI DI SCELTA INIZIALE
 // ============================================
 
 window.applicaPrezziMedi = function () {
@@ -315,7 +318,6 @@ window.applicaPrezziMedi = function () {
     console.log(`⚠️ Senza codice: ${senzaCodice}`);
     console.log(`⚠️ Senza prezzo medio: ${senzaPrezzo}`);
 
-    // Aggiorna i totali dei gruppi
     Object.values(appData.jobGroups).forEach(g => {
         g.totalPrice = g.rows.reduce((sum, r) => sum + (r._suggestedPrice || 0), 0);
     });
@@ -326,8 +328,6 @@ window.applicaPrezziMedi = function () {
     window.calculateAnalytics?.();
     console.log("✅ applicaPrezziMedi() completata");
 };
-
-
 
 window.applicaPrezziVuoti = function () {
     console.log("==========================================");
@@ -698,6 +698,7 @@ function renderTable() {
 
         const isLocked = group.hasMultiple || group.isHistory;
         const codiceComponente = r[COLS.COMP_CODE];
+        // ✅ LISTINO = prezzo personalizzato (se c'è) altrimenti media
         const prezzoListino = getPrezzoListino(codiceComponente);
         const hasListino = !group.isHistory && !isLocked && prezzoListino !== null;
         const rowClass = hasListino ? 'hover:bg-indigo-50/30 border-l-2 border-indigo-200' : 'hover:bg-white';
@@ -726,7 +727,7 @@ function renderTable() {
                 prezzoCellContent += `
                     <button onclick="applicaPrezzoListino('${group.jobId}', ${prezzoListino})" 
                         class="flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2 py-1.5 rounded-l-md border border-indigo-200 transition text-xs font-medium"
-                        title="Codice: ${codiceComponente} - Prezzo listino: € ${prezzoListino}">
+                        title="💡 Prezzo listino (personalizzato o media): € ${prezzoListino}">
                         <span class="text-sm">💡</span>
                         <span class="font-mono font-bold">${prezzoListino}€</span>
                         ${!giaApplicato ? '<span class="ml-1 w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>' : ''}
@@ -786,8 +787,7 @@ function renderTable() {
                         <div id="tooltip-${codiceComponente?.replace(/\s/g, '')}" class="hidden absolute bottom-full right-0 mb-2 w-64 bg-white rounded-lg shadow-xl border border-slate-200 p-3 text-left z-50 text-xs">Caricamento...</div>
                     </div>
                     ${folderIcon}
-<button onclick="esportaJobPDF('${group.jobId}')" class="text-slate-400 hover:text-red-500 text-base transition transform hover:scale-110" title="Esporta PDF">📄</button>
-
+                    <button onclick="esportaJobPDF('${group.jobId}')" class="text-slate-400 hover:text-red-500 text-base transition transform hover:scale-110" title="Esporta PDF">📄</button>
                 </div>
             </td>
             <td class="px-4 py-3 align-top text-right">${prezzoCellContent}</td>
@@ -820,39 +820,86 @@ function renderTable() {
 // ============================================
 
 function getImpiantoStats(impianto) {
+    if (!impianto) return {
+        totaleInterventi: 0,
+        spesaStorica: "0.00",
+        ticketMedio: "0.00"
+    };
+
+    // Usa una Map per tenere traccia dei job unici e del loro costo TOTALE
+    const jobMap = new Map(); // key: jobId, value: { costo: number, componenti: number }
+
+    // 1. PROCESSO STORICO (se presente)
+    if (window.storicoInterventi?.interventi) {
+        window.storicoInterventi.interventi.forEach(row => {
+            const rowImpianto = row[COLS.IMPIANTO] || row['Impiantodiriferimento (Job) (Job)'];
+            if (rowImpianto === impianto) {
+                const jobId = row[COLS.JOB_ID] || row['Job'];
+                const costo = parseFloat(row['COSTO']) || 0;
+                
+                if (!jobMap.has(jobId)) {
+                    // Primo componente di questo job
+                    jobMap.set(jobId, {
+                        costo: costo,
+                        componenti: 1,
+                        isHistory: true
+                    });
+                } else {
+                    // Altro componente dello stesso job
+                    const existing = jobMap.get(jobId);
+                    // NOTA: Il costo nello storico è tipicamente il costo TOTALE del job
+                    // in ogni riga, quindi NON lo sommiamo di nuovo
+                    existing.componenti++;
+                    jobMap.set(jobId, existing);
+                }
+            }
+        });
+    }
+
+    // 2. PROCESSO CORRENTE (appData.jobGroups)
+    // Per i job correnti, il costo è quello totale del gruppo
+    if (appData.jobGroups) {
+        Object.values(appData.jobGroups).forEach(group => {
+            if (group.masterRow && group.masterRow[COLS.IMPIANTO] === impianto) {
+                const jobId = group.jobId;
+                // Per i job correnti, prendiamo il prezzo suggerito o quello originale
+                const costo = group.isHistory 
+                    ? (group.masterRow._costo || 0)
+                    : (group.totalPrice || 0);
+                
+                if (!jobMap.has(jobId)) {
+                    jobMap.set(jobId, {
+                        costo: costo,
+                        componenti: group.rows.length,
+                        isHistory: group.isHistory
+                    });
+                }
+            }
+        });
+    }
+
+    // 3. CALCOLA STATISTICHE
     let totaleInterventi = 0;
     let spesaStorica = 0;
 
-    // Usa TUTTI gli interventi (storico + corrente)
-    const tuttiInterventi = getTuttiInterventi();
-
-    // Raggruppa per jobId per non contare doppioni
-    const jobVisti = new Set();
-
-    tuttiInterventi.forEach(row => {
-        if (row[COLS.IMPIANTO] === impianto) {
-            const jobId = row[COLS.JOB_ID];
-            if (!jobVisti.has(jobId)) {
-                jobVisti.add(jobId);
-                totaleInterventi++;
-            }
-
-            // Spesa storica: considera solo gli storici
-            const costo = parseFloat(row['COSTO']) || row._costo || 0;
-            if (costo > 0) {
-                spesaStorica += costo;
-            }
+    jobMap.forEach((value, jobId) => {
+        totaleInterventi++;
+        // Solo i job storici contribuiscono alla spesa storica
+        if (value.isHistory && value.costo > 0) {
+            spesaStorica += value.costo;
         }
     });
 
-    const ticketMedio = totaleInterventi > 0 ? (spesaStorica / totaleInterventi).toFixed(2) : "0.00";
+    const ticketMedio = totaleInterventi > 0 
+        ? (spesaStorica / totaleInterventi).toFixed(2) 
+        : "0.00";
 
-    console.log(`📊 Stats impianto ${impianto}: ${totaleInterventi} interventi, spesa ${spesaStorica.toFixed(2)}`);
+    console.log(`📊 Stats impianto ${impianto}: ${totaleInterventi} job unici, spesa ${spesaStorica.toFixed(2)}, ticket medio ${ticketMedio}`);
 
     return {
-        totaleInterventi,
+        totaleInterventi: totaleInterventi,
         spesaStorica: spesaStorica.toFixed(2),
-        ticketMedio
+        ticketMedio: ticketMedio
     };
 }
 
@@ -1255,85 +1302,104 @@ window.openInfo = function (jid) {
 
     // ============================================
     // Raccogli TUTTI gli interventi per QUESTO impianto (storico + corrente)
+    // MA SOLO UNA VOLTA PER JOB (non per riga/componente)
     // ============================================
-    const interventiImpianto = [];
-    const jobIdsImpianto = new Set();
+    const interventiPerJob = new Map(); // usa Map con jobId come key
 
-    // 1. PRENDI DALLO STORICO (se presente)
+    // 1. PRENDI DALLO STORICO (se presente) - UN JOB UNA VOLTA
     if (window.storicoInterventi?.interventi) {
-        console.log("📚 Processo storico:", window.storicoInterventi.interventi.length, "interventi totali");
+        console.log("📚 Processo storico:", window.storicoInterventi.interventi.length, "righe totali");
 
+        // Raggruppa per jobId dallo storico
+        const storicoPerJob = new Map();
+        
         window.storicoInterventi.interventi.forEach(row => {
             const rowImpianto = row[COLS.IMPIANTO] || row['Impiantodiriferimento (Job) (Job)'];
             if (rowImpianto === impianto) {
                 const jobId = row[COLS.JOB_ID] || row['Job'];
-                jobIdsImpianto.add(jobId);
+                
+                if (!storicoPerJob.has(jobId)) {
+                    // Determina data
+                    let data = null;
+                    const dataRaw = row[COLS.JOB_DATE] || row['JobCompletedDate (Job) (Job)'];
+                    if (dataRaw) {
+                        if (dataRaw instanceof Date) data = dataRaw;
+                        else if (typeof dataRaw === 'number') data = new Date(Math.round((dataRaw - 25569) * 86400 * 1000));
+                        else data = new Date(dataRaw);
+                    }
 
-                // Determina data
-                let data = null;
-                const dataRaw = row[COLS.JOB_DATE] || row['JobCompletedDate (Job) (Job)'];
-                if (dataRaw) {
-                    if (dataRaw instanceof Date) data = dataRaw;
-                    else if (typeof dataRaw === 'number') data = new Date(Math.round((dataRaw - 25569) * 86400 * 1000));
-                    else data = new Date(dataRaw);
+                    storicoPerJob.set(jobId, {
+                        jobId: jobId,
+                        data: data,
+                        workPerformed: row[COLS.WORK_PERFORMED] || row['LocalWorkPerformed'] || "",
+                        isHistory: true,
+                        costoOriginale: parseFloat(row['COSTO']) || 0,
+                        prezzoAttuale: parseFloat(row['COSTO']) || 0,
+                        riassunto: row[COLS.COMPONENTE] || row['LocalComponent'] || '',
+                        rowCount: 1 // per debug
+                    });
+                } else {
+                    // Aggiorna il conteggio righe per debug
+                    const existing = storicoPerJob.get(jobId);
+                    existing.rowCount++;
+                    // Se troviamo una descrizione migliore, aggiorniamo
+                    if (!existing.riassunto && (row[COLS.COMPONENTE] || row['LocalComponent'])) {
+                        existing.riassunto = row[COLS.COMPONENTE] || row['LocalComponent'];
+                    }
+                    storicoPerJob.set(jobId, existing);
                 }
-
-                interventiImpianto.push({
-                    jobId: jobId,
-                    data: data,
-                    workPerformed: row[COLS.WORK_PERFORMED] || row['LocalWorkPerformed'] || "",
-                    isHistory: true,
-                    costoOriginale: parseFloat(row['COSTO']) || 0,
-                    prezzoAttuale: parseFloat(row['COSTO']) || 0,
-                    rows: 1,
-                    riassunto: row[COLS.COMPONENTE] || row['LocalComponent'] || '',
-                    componenti: row[COLS.COMPONENTE] || row['LocalComponent'] || ''
-                });
             }
+        });
+
+        // Aggiungi alla mappa principale
+        storicoPerJob.forEach((value, key) => {
+            interventiPerJob.set(key, value);
         });
     }
 
-    // 2. PRENDI DAL CORRENTE (appData.jobGroups)
+    // 2. PRENDI DAL CORRENTE (appData.jobGroups) - UN JOB UNA VOLTA
     console.log("📄 Processo corrente:", Object.keys(appData.jobGroups).length, "gruppi");
 
     Object.values(appData.jobGroups).forEach(g => {
         if (g.masterRow[COLS.IMPIANTO] === impianto) {
-            jobIdsImpianto.add(g.jobId);
+            if (!interventiPerJob.has(g.jobId)) {
+                const componentiPrincipali = g.rows.slice(0, 2).map(row => row[COLS.COMPONENTE]).filter(c => c).join(", ");
+                const descrizioneBreve = g.rows[0]?.[COLS.DESCRIZIONE] || "";
+                const riassunto = componentiPrincipali || descrizioneBreve.substring(0, 30) + (descrizioneBreve.length > 30 ? "..." : "");
 
-            const componentiPrincipali = g.rows.slice(0, 2).map(row => row[COLS.COMPONENTE]).filter(c => c).join(", ");
-            const descrizioneBreve = g.rows[0]?.[COLS.DESCRIZIONE] || "";
-            const riassunto = componentiPrincipali || descrizioneBreve.substring(0, 30) + (descrizioneBreve.length > 30 ? "..." : "");
-
-            interventiImpianto.push({
-                jobId: g.jobId,
-                data: g.masterRow._jobDate,
-                workPerformed: g.masterRow[COLS.WORK_PERFORMED] || "",
-                isHistory: g.isHistory,
-                costoOriginale: g.masterRow._costo || 0,
-                prezzoAttuale: g.totalPrice || 0,
-                rows: g.rows.length,
-                riassunto: riassunto || "Nessuna descrizione",
-                componenti: g.rows.map(row => row[COLS.COMPONENTE]).filter(c => c).join(" · ")
-            });
+                interventiPerJob.set(g.jobId, {
+                    jobId: g.jobId,
+                    data: g.masterRow._jobDate,
+                    workPerformed: g.masterRow[COLS.WORK_PERFORMED] || "",
+                    isHistory: g.isHistory,
+                    costoOriginale: g.masterRow._costo || 0,
+                    prezzoAttuale: g.totalPrice || 0,
+                    riassunto: riassunto || "Nessuna descrizione",
+                    rowCount: g.rows.length
+                });
+            }
         }
     });
 
-    console.log(`📊 Trovati ${interventiImpianto.length} interventi per impianto ${impianto} (${jobIdsImpianto.size} job unici)`);
+    // Converti la Map in array per facilità di uso
+    const interventiImpianto = Array.from(interventiPerJob.values());
+    
+    console.log(`📊 Trovati ${interventiImpianto.length} interventi UNICI per impianto ${impianto}`);
 
     // ============================================
-    // CALCOLA KPI
+    // CALCOLA KPI (CORRETTI - per JOB, non per riga)
     // ============================================
-    const totaleInterventi = jobIdsImpianto.size;
+    const totaleInterventi = interventiImpianto.length;
     const spesaStorica = interventiImpianto
         .filter(i => i.isHistory)
         .reduce((sum, i) => sum + i.costoOriginale, 0);
     const ticketMedio = totaleInterventi > 0 ? (spesaStorica / totaleInterventi).toFixed(2) : "0.00";
     const interventiInCorso = interventiImpianto.filter(i => !i.isHistory).length;
 
-    console.log(`📈 KPI: totale=${totaleInterventi}, spesa=${spesaStorica.toFixed(2)}, ticket=${ticketMedio}, inCorso=${interventiInCorso}`);
+    console.log(`📈 KPI (corretti): totale=${totaleInterventi}, spesa=${spesaStorica.toFixed(2)}, ticket=${ticketMedio}, inCorso=${interventiInCorso}`);
 
     // ============================================
-    // CONTEGGI PER TIPOLOGIA
+    // CONTEGGI PER TIPOLOGIA (per JOB, non per riga)
     // ============================================
     const conteggioTipi = {
         Normale: interventiImpianto.filter(i => i.workPerformed.includes("Normale")).length,
@@ -1347,15 +1413,16 @@ window.openInfo = function (jid) {
     };
 
     // ============================================
-    // TIMELINE (ordinata per data)
+    // TIMELINE (ordinata per data, per JOB unici)
     // ============================================
     const timeline = [...interventiImpianto]
         .sort((a, b) => (b.data || 0) - (a.data || 0))
         .slice(0, 30);
 
-    // ============================================
-    // FUNZIONI DI AGGIORNAMENTO PREZZO
-    // ============================================
+    // ... il resto della funzione rimane invariato ...
+    // (dalla generazione dell'HTML in poi è uguale)
+    
+    // FUNZIONI DI AGGIORNAMENTO PREZZO (invariate)
     const aggiornaPrezzo = (nuovoPrezzo) => {
         console.log(`💰 Aggiorno prezzo job ${jid} da ${group.totalPrice} a ${nuovoPrezzo}`);
         if (group.isHistory) return;
@@ -1366,7 +1433,6 @@ window.openInfo = function (jid) {
                 row._suggestedPrice = Math.round((row._suggestedPrice || 0) * rapporto * 100) / 100;
             });
         } else {
-            // Se totale era zero, distribuisci equamente
             const prezzoPerRiga = nuovoPrezzo / group.rows.length;
             group.rows.forEach(row => {
                 row._suggestedPrice = prezzoPerRiga;
@@ -1378,7 +1444,7 @@ window.openInfo = function (jid) {
         if (typeof window.calculateAnalytics === 'function') window.calculateAnalytics();
         saveState();
         renderTable();
-        openInfo(jid); // Ricarica il modale
+        openInfo(jid);
     };
 
     const aggiornaPrezzoZero = () => {
@@ -1399,9 +1465,7 @@ window.openInfo = function (jid) {
     window.aggiornaPrezzo = aggiornaPrezzo;
     window.aggiornaPrezzoZero = aggiornaPrezzoZero;
 
-    // ============================================
-    // GENERA LISTA COMPONENTI DEL JOB CORRENTE
-    // ============================================
+    // GENERA LISTA COMPONENTI DEL JOB CORRENTE (invariata)
     const compList = group.rows.map((row, idx) => {
         const codice = row[COLS.COMP_CODE];
         return `
@@ -1439,9 +1503,7 @@ window.openInfo = function (jid) {
         </li>
     `}).join("");
 
-    // ============================================
-    // GENERA TIMELINE HTML
-    // ============================================
+    // GENERA TIMELINE HTML (usando i dati corretti per JOB)
     const timelineHtml = timeline.map(i => {
         const dataFormattata = i.data ? formatDateItalian(i.data) : "Data sconosciuta";
         const badgeClass = i.isHistory
@@ -1457,14 +1519,14 @@ window.openInfo = function (jid) {
                         <span class="text-xs font-mono text-slate-400">${dataFormattata}</span>
                         <span class="text-xs font-bold text-slate-700">${i.jobId}</span>
                         <span class="text-[10px] px-2 py-0.5 rounded-full border ${badgeClass} font-bold whitespace-nowrap">${stato}</span>
+                        ${i.rowCount > 1 ? `<span class="text-[9px] bg-slate-100 text-slate-500 px-1 rounded">${i.rowCount} comp.</span>` : ''}
                     </div>
-                    <div class="text-[11px] text-slate-600 mb-1 line-clamp-2" title="${i.componenti || i.riassunto}">
-                        <span class="font-medium text-slate-500">🔧</span> ${i.componenti || i.riassunto || 'N/D'}
+                    <div class="text-[11px] text-slate-600 mb-1 line-clamp-2">
+                        <span class="font-medium text-slate-500">🔧</span> ${i.riassunto || 'N/D'}
                     </div>
                     <div class="flex items-center justify-between">
                         <div class="text-[10px] text-slate-400">
                             <span class="bg-slate-100 px-1.5 py-0.5 rounded">${i.workPerformed || 'N/D'}</span>
-                            ${i.rows > 1 ? `<span class="ml-2 bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">${i.rows} task</span>` : ''}
                         </div>
                         ${i.isHistory
                 ? `<span class="text-xs font-mono font-bold text-emerald-600">€ ${i.costoOriginale.toFixed(2)}</span>`
@@ -1476,16 +1538,14 @@ window.openInfo = function (jid) {
         </div>
     `}).join("");
 
-    // ============================================
-    // COSTRUISCI HTML COMPLETO
-    // ============================================
+    // COSTRUISCI HTML COMPLETO (invariato)
     const html = `
         <!-- KPI Cards -->
         <div class="grid grid-cols-4 gap-4 mb-6">
             <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                 <div class="text-[10px] text-slate-400 uppercase font-bold">Interventi Totali</div>
                 <div class="text-3xl font-bold text-slate-800">${totaleInterventi}</div>
-                <div class="text-[10px] text-slate-400 mt-1">su tutto lo storico</div>
+                <div class="text-[10px] text-slate-400 mt-1">job unici sull'impianto</div>
             </div>
             <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                 <div class="text-[10px] text-slate-400 uppercase font-bold">Spesa Storica</div>
@@ -1625,12 +1685,8 @@ window.openInfo = function (jid) {
         </div>
     `;
 
-    // ============================================
-    // INSERISCI HTML E MOSTRA MODALE
-    // ============================================
     document.getElementById('info-modal-content').innerHTML = html;
 
-    // Allarga il modale
     const modal = document.getElementById('info-modal').querySelector('.max-w-3xl');
     if (modal) {
         modal.classList.remove('max-w-3xl');
@@ -1639,7 +1695,7 @@ window.openInfo = function (jid) {
 
     document.getElementById('info-modal').classList.remove('hidden');
 
-    console.log("✅ Scheda tecnica visualizzata");
+    console.log("✅ Scheda tecnica visualizzata con statistiche corrette");
 };
 
 // ============================================
