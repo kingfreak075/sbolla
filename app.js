@@ -1740,27 +1740,60 @@ window.mostraStatisticheCodice = function (codice, elemento) {
 };
 
 function calcolaStatisticheCodice(codice) {
+    if (!codice) {
+        return { ultimiPrezzi: 'Nessun dato', media: '0', max: '0', modale: '0', frequenza: 0 };
+    }
+    
     const prezzi = [];
-    appData.rawRows.forEach(row => {
-        if (row[COLS.COMP_CODE] === codice && (row._suggestedPrice || 0) > 0) {
-            prezzi.push(row._suggestedPrice);
-        }
-    });
+    
+    // ✅ 1. Prendi i prezzi dallo STORICO
+    if (window.storicoInterventi?.interventi) {
+        window.storicoInterventi.interventi.forEach(row => {
+            const rowCodice = row[COLS.COMP_CODE] || row['ComponentCode (LocalComponent) (Component)'];
+            const costo = parseFloat(row['COSTO']);
+            if (rowCodice === codice && !isNaN(costo) && costo > 0) {
+                prezzi.push(costo);
+            }
+        });
+    }
+    
+    // ✅ 2. Prendi anche i prezzi correnti (se presenti)
+    if (appData.rawRows) {
+        appData.rawRows.forEach(row => {
+            if (row[COLS.COMP_CODE] === codice && (row._suggestedPrice || 0) > 0) {
+                prezzi.push(row._suggestedPrice);
+            }
+        });
+    }
 
     if (prezzi.length === 0) {
         return { ultimiPrezzi: 'Nessun dato', media: '0', max: '0', modale: '0', frequenza: 0 };
     }
 
+    // Ordina per data? Non abbiamo la data, ma possiamo prendere gli ultimi 5 come sono
     const ultimi = prezzi.slice(-5).reverse().map(p => `€ ${p}`).join(', ');
     const media = (prezzi.reduce((a, b) => a + b, 0) / prezzi.length).toFixed(2);
     const max = Math.max(...prezzi).toFixed(2);
 
+    // Calcola il prezzo più frequente (modale)
     const frequenze = {};
     prezzi.forEach(p => frequenze[p] = (frequenze[p] || 0) + 1);
-    let modale = prezzi[0], maxFreq = 0;
-    Object.entries(frequenze).forEach(([p, f]) => { if (f > maxFreq) { modale = p; maxFreq = f; } });
+    let modale = prezzi[0];
+    let maxFreq = 0;
+    Object.entries(frequenze).forEach(([p, f]) => {
+        if (f > maxFreq) {
+            modale = p;
+            maxFreq = f;
+        }
+    });
 
-    return { ultimiPrezzi: ultimi, media, max, modale, frequenza: maxFreq };
+    return { 
+        ultimiPrezzi: ultimi, 
+        media, 
+        max, 
+        modale, 
+        frequenza: maxFreq 
+    };
 }
 
 // ============================================
