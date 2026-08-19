@@ -195,55 +195,113 @@
         let debugMode = true;
 
         console.log("==========================================");
-        console.log("🚀 Sbolla Manager v3.0 - Avvio");
+        console.log("🚀 Sbolla Manager v3.2 - Avvio");
         console.log("==========================================");
 
-        // Funzione per caricare storico all'avvio
-        async function caricaStoricoAvvio() {
-            console.log("📂 Tentativo caricamento sbolla.json...");
-            try {
-                const response = await fetch('sbolla.json');
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status} - File non trovato`);
-                }
-                storicoInterventi = await response.json();
-                console.log("✅ Storico caricato con successo!");
-                console.log("📊 Dati storico:", {
-                    interventi: storicoInterventi.interventi?.length || 0,
-                    fileName: storicoInterventi.fileName,
-                    timestamp: storicoInterventi.timestamp
-                });
-
-                // Calcola statistiche rapide
-                if (storicoInterventi.interventi) {
-                    let storici = 0, nuovi = 0;
-                    storicoInterventi.interventi.forEach(row => {
-                        const costo = parseFloat(row['COSTO']);
-                        if (!isNaN(costo) && costo > 0) storici++;
-                        else nuovi++;
-                    });
-                    console.log(`📈 Statistiche storico: ${storicoInterventi.interventi.length} totali (${storici} storici, ${nuovi} nuovi)`);
-                }
-
-                // Salva in una variabile globale accessibile
-                window.storicoInterventi = storicoInterventi;
-
-                mostraNotifica('✅ Storico caricato', 'success');
-
-                // Se appData è già stato inizializzato, ricalcola le medie
-                if (typeof window.calcolaMedieComponenti === 'function') {
-                    console.log("🔄 Ricalcolo medie con storico...");
-                    window.calcolaMedieComponenti();
-                }
-
-            } catch (error) {
-                console.log("❌ Errore caricamento storico:", error.message);
-                storicoInterventi = null;
-                window.storicoInterventi = null;
-                mostraNotifica('⚠️ Nessuno storico trovato', 'warning');
-            }
+       async function caricaStoricoAvvio() {
+    console.log("==========================================");
+    console.log("📂 Tentativo caricamento storico chunk...");
+    console.log("==========================================");
+    
+    try {
+        // 1. Carica il manifest
+        const manifestResponse = await fetch('sbolla_manifest.json');
+        if (!manifestResponse.ok) {
+            throw new Error(`Manifest non trovato (HTTP ${manifestResponse.status})`);
         }
-
+        
+        const manifest = await manifestResponse.json();
+        console.log("✅ Manifest caricato:", manifest);
+        console.log(`📦 Numero chunk: ${manifest.numChunks}, totale interventi: ${manifest.totalInterventi}`);
+        
+        // 2. Carica tutti i chunk in parallelo
+        const chunkPromises = manifest.chunks.map(async (chunkInfo) => {
+            console.log(`⬇️ Download chunk ${chunkInfo.index}... (${chunkInfo.sizeMB} MB)`);
+            const response = await fetch(chunkInfo.fileName);
+            if (!response.ok) {
+                throw new Error(`Errore caricamento ${chunkInfo.fileName}: HTTP ${response.status}`);
+            }
+            const chunkData = await response.json();
+            console.log(`✅ Chunk ${chunkInfo.index} caricato: ${chunkData.length} interventi`);
+            return chunkData;
+        });
+        
+        const totalChunks = manifest.numChunks;
+        let loadedChunks = 0;
+        
+        const results = await Promise.all(chunkPromises.map(p => p.then(data => {
+            loadedChunks++;
+            console.log(`📊 Progresso: ${loadedChunks}/${totalChunks} chunk caricati`);
+            return data;
+        })));
+        
+        // 3. Unisci tutti i chunk
+        const tuttiInterventi = results.flat();
+        console.log(`📚 Totale interventi uniti: ${tuttiInterventi.length}`);
+        
+        // 4. Crea lo storico finale
+        storicoInterventi = {
+            fileName: manifest.fileName,
+            timestamp: manifest.timestamp,
+            interventi: tuttiInterventi,
+            version: manifest.version || "3.2",
+            stats: manifest.stats
+        };
+        
+        console.log("✅ Storico caricato con successo (chunk uniti)!");
+        console.log("📊 Dati storico:", {
+            interventi: storicoInterventi.interventi.length,
+            fileName: storicoInterventi.fileName,
+            timestamp: storicoInterventi.timestamp,
+            chunks: manifest.numChunks
+        });
+        
+        // Calcola statistiche rapide
+        if (storicoInterventi.interventi) {
+            let storici = 0, nuovi = 0;
+            storicoInterventi.interventi.forEach(row => {
+                const costo = parseFloat(row['COSTO']);
+                if (!isNaN(costo) && costo > 0) storici++;
+                else nuovi++;
+            });
+            console.log(`📈 Statistiche storico: ${storicoInterventi.interventi.length} totali (${storici} storici, ${nuovi} nuovi)`);
+        }
+        
+        window.storicoInterventi = storicoInterventi;
+        
+        mostraNotifica('✅ Storico caricato (chunk)', 'success');
+        
+        if (typeof window.calcolaMedieComponenti === 'function') {
+            console.log("🔄 Ricalcolo medie con storico...");
+            window.calcolaMedieComponenti();
+        }
+        
+    } catch (error) {
+        console.log("❌ Errore caricamento storico chunk:", error.message);
+        
+        // Fallback: prova con il vecchio sbolla.json (singolo)
+        console.log("🔄 Tentativo fallback con sbolla.json singolo...");
+        try {
+            const response = await fetch('sbolla.json');
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            storicoInterventi = await response.json();
+            console.log("✅ Storico caricato (fallback singolo)");
+            window.storicoInterventi = storicoInterventi;
+            mostraNotifica('✅ Storico caricato (legacy)', 'success');
+            
+            if (typeof window.calcolaMedieComponenti === 'function') {
+                window.calcolaMedieComponenti();
+            }
+        } catch (fallbackError) {
+            console.log("❌ Nessuno storico trovato (né chunk né singolo)");
+            storicoInterventi = null;
+            window.storicoInterventi = null;
+            mostraNotifica('⚠️ Nessuno storico trovato', 'warning');
+        }
+    }
+}
         function mostraNotifica(testo, tipo) {
             // Crea notifica se non esiste già
             if (document.getElementById('notifica-storico')) return;
