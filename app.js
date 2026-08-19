@@ -280,7 +280,7 @@ function calculateRowPrice(row) {
 
 window.applicaPrezziMedi = function () {
     console.log("==========================================");
-    console.log("💰 FUNZIONE: applicaPrezziMedi()");
+    console.log("💰 FUNZIONE: applicaPrezziMedi() - USA SOLO MEDIE STORICHE");
     console.log("==========================================");
     console.log("📊 appData.rawRows.length:", appData.rawRows.length);
     console.log("📊 storicoInterventi:", window.storicoInterventi ? "Presente" : "Assente");
@@ -292,7 +292,8 @@ window.applicaPrezziMedi = function () {
     appData.rawRows.forEach((row, index) => {
         if (!row._isHistory) {
             const codice = row[COLS.COMP_CODE];
-            const prezzoMedio = getPrezzoListino(codice);
+            // 🔧 USA SOLO LA MEDIA, IGNORA I PREZZI PERSONALIZZATI
+            const prezzoMedio = listinoPrezzi.medie?.[codice]?.media || null;
 
             if (!codice) {
                 senzaCodice++;
@@ -301,7 +302,7 @@ window.applicaPrezziMedi = function () {
             } else if (!prezzoMedio) {
                 senzaPrezzo++;
                 row._suggestedPrice = 0;
-                row._logic = "Nessuna media";
+                row._logic = "Nessuna media storica";
             } else {
                 contatore++;
                 row._suggestedPrice = prezzoMedio;
@@ -314,6 +315,7 @@ window.applicaPrezziMedi = function () {
     console.log(`⚠️ Senza codice: ${senzaCodice}`);
     console.log(`⚠️ Senza prezzo medio: ${senzaPrezzo}`);
 
+    // Aggiorna i totali dei gruppi
     Object.values(appData.jobGroups).forEach(g => {
         g.totalPrice = g.rows.reduce((sum, r) => sum + (r._suggestedPrice || 0), 0);
     });
@@ -324,6 +326,8 @@ window.applicaPrezziMedi = function () {
     window.calculateAnalytics?.();
     console.log("✅ applicaPrezziMedi() completata");
 };
+
+
 
 window.applicaPrezziVuoti = function () {
     console.log("==========================================");
