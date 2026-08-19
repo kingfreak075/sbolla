@@ -1,0 +1,30 @@
+{
+  "version": "3.1",
+  "fileName": "bolle_from_DB.xlsx",
+  "timestamp": "2026-08-19T07:09:08.218Z",
+  "totalInterventi": 21378,
+  "numChunks": 2,
+  "maxChunkSizeMB": 23,
+  "chunks": [
+    {
+      "index": 0,
+      "fileName": "sbolla_chunk_000.json",
+      "size": 24135298,
+      "sizeMB": "23.02",
+      "interventi": 19213,
+      "hash": "45ef0ee3"
+    },
+    {
+      "index": 1,
+      "fileName": "sbolla_chunk_001.json",
+      "size": 2725771,
+      "sizeMB": "2.60",
+      "interventi": 2165,
+      "hash": "7687dd19"
+    }
+  ],
+  "stats": {
+    "storici": "8444",
+    "nuovi": "12934"
+  }
+}
