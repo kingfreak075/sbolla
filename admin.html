@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sbolla Admin - Genera Storico</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+        .card { transition: all 0.2s; backdrop-filter: blur(10px); }
+        .card:hover { transform: translateY(-2px); box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
+        .progress-bar { transition: width 0.3s ease; }
+    </style>
+</head>
+<body class="text-slate-800 p-6">
+
+    <div class="max-w-4xl mx-auto">
+        
+        <!-- Header -->
+        <div class="bg-white/95 backdrop-blur-lg rounded-3xl shadow-2xl p-8 mb-8 text-center border border-white/20 relative">
+            <a href="index.html" 
+               class="absolute top-6 right-6 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-bold py-2 px-4 rounded-xl transition-all flex items-center gap-2">
+                <span>🚀</span>
+                <span>Vai a Sbolla Manager</span>
+            </a>
+            <div class="text-7xl mb-4">📦</div>
+            <h1 class="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                Sbolla Admin - Splitter
+            </h1>
+            <p class="text-slate-500 mt-2">Genera file storico suddiviso in chunk da 23MB (compatibile GitHub Pages)</p>
+        </div>
+
+        <!-- Card Principale -->
+        <div class="bg-white/95 backdrop-blur-lg rounded-3xl shadow-2xl p-8 mb-8 card">
+            <h2 class="text-2xl font-bold text-slate-800 mb-6 flex items-center gap-3">
+                <span class="w-2 h-8 bg-gradient-to-b from-indigo-500 to-purple-500 rounded-full"></span>
+                Carica file Excel MASTER
+            </h2>
+            
+            <div class="border-3 border-dashed border-slate-200 rounded-2xl p-16 text-center hover:border-indigo-300 transition-all cursor-pointer bg-slate-50/50" 
+                 onclick="document.getElementById('fileInput').click()">
+                <input type="file" id="fileInput" accept=".xlsx, .xls, .csv" class="hidden" onchange="handleFile(this)">
+                <div class="text-7xl mb-4 text-indigo-400">📂</div>
+                <div class="text-xl font-medium text-slate-600">Clicca per selezionare un file Excel</div>
+                <div class="text-sm text-slate-400 mt-2">Verrà suddiviso automaticamente in chunk da 23MB</div>
+            </div>
+
+            <!-- Progresso -->
+            <div id="progress-section" class="hidden mt-8">
+                <div class="border-t border-slate-200 pt-6">
+                    <h3 class="text-lg font-bold text-slate-700 mb-4">📊 Elaborazione in corso...</h3>
+                    <div class="bg-slate-200 rounded-full h-3 overflow-hidden">
+                        <div id="progress-bar" class="progress-bar bg-gradient-to-r from-indigo-500 to-purple-500 h-full rounded-full" style="width: 0%"></div>
+                    </div>
+                    <p id="progress-text" class="text-sm text-slate-500 mt-2 text-center">Preparazione...</p>
+                </div>
+            </div>
+
+            <!-- Statistiche -->
+            <div id="stats-section" class="hidden mt-8">
+                <div class="border-t border-slate-200 pt-6">
+                    <h3 class="text-lg font-bold text-slate-700 mb-4 flex items-center gap-2">
+                        <span class="w-1.5 h-5 bg-emerald-500 rounded-full"></span>
+                        Dati caricati
+                    </h3>
+                    
+                    <div class="grid grid-cols-3 gap-4 mb-6">
+                        <div class="bg-gradient-to-br from-slate-50 to-white p-5 rounded-xl border border-slate-200">
+                            <div class="text-sm text-slate-500 mb-1">📊 Interventi totali</div>
+                            <div class="text-3xl font-bold text-slate-800" id="stats-totale">0</div>
+                        </div>
+                        <div class="bg-gradient-to-br from-emerald-50 to-white p-5 rounded-xl border border-emerald-200">
+                            <div class="text-sm text-slate-500 mb-1">💰 Con costo > 0</div>
+                            <div class="text-3xl font-bold text-emerald-600" id="stats-storici">0</div>
+                        </div>
+                        <div class="bg-gradient-to-br from-blue-50 to-white p-5 rounded-xl border border-blue-200">
+                            <div class="text-sm text-slate-500 mb-1">🆕 Costo = 0 o vuoto</div>
+                            <div class="text-3xl font-bold text-blue-600" id="stats-nuovi">0</div>
+                        </div>
+                    </div>
+
+                    <div id="chunk-stats" class="bg-slate-50 rounded-xl p-4 mb-6 text-sm">
+                        <!-- Chunk info qui -->
+                    </div>
+
+                    <div class="flex gap-3">
+                        <button onclick="generaChunk()" 
+                                class="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold py-4 px-6 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 text-lg">
+                            ✂️ Genera chunk (max 23MB)
+                        </button>
+                        <button onclick="reset()" 
+                                class="bg-white border-2 border-slate-300 hover:bg-slate-50 text-slate-600 font-bold py-4 px-6 rounded-xl transition-all">
+                            ↺ Annulla
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Info -->
+        <div class="bg-white/95 backdrop-blur-lg rounded-3xl shadow-2xl p-8 card">
+            <h2 class="text-2xl font-bold text-slate-800 mb-6 flex items-center gap-3">
+                <span class="w-2 h-8 bg-gradient-to-b from-emerald-500 to-teal-500 rounded-full"></span>
+                Come funziona
+            </h2>
+            <ul class="space-y-3 text-slate-600">
+                <li class="flex gap-3">📦 <span>I dati vengono suddivisi in chunk da <strong>23MB</strong> (limite GitHub)</span></li>
+                <li class="flex gap-3">📄 <span>Viene generato un file <code class="bg-slate-100 px-2 py-0.5 rounded">sbolla_manifest.json</code> con l'elenco dei chunk</span></li>
+                <li class="flex gap-3">🧩 <span>I chunk si chiamano <code class="bg-slate-100 px-2 py-0.5 rounded">sbolla_chunk_000.json</code>, <code class="bg-slate-100 px-2 py-0.5 rounded">sbolla_chunk_001.json</code>, ecc.</span></li>
+                <li class="flex gap-3">📂 <span><strong>Sposta TUTTI i file</strong> (manifest + tutti i chunk) nella cartella di index.html</span></li>
+                <li class="flex gap-3">🚀 <span>All'avvio, Sbolla Manager caricherà e unirà automaticamente tutti i chunk</span></li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        let datiCaricati = null;
+        let nomeFile = '';
+        let totalBytes = 0;
+
+        function calcolaDimensione(obj) {
+            const jsonStr = JSON.stringify(obj);
+            return new Blob([jsonStr]).size;
+        }
+
+        function handleFile(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            console.log("📂 File selezionato:", file.name);
+            nomeFile = file.name;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {type: 'array', cellDates: true});
+                const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet, {defval: ""});
+                processData(jsonData);
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function processData(rows) {
+            datiCaricati = rows;
+            
+            let storici = 0;
+            let nuovi = 0;
+            
+            rows.forEach(row => {
+                const costo = parseFloat(row['COSTO']);
+                if (!isNaN(costo) && costo > 0) {
+                    storici++;
+                } else {
+                    nuovi++;
+                }
+            });
+            
+            const totale = rows.length;
+            totalBytes = calcolaDimensione(rows);
+            
+            document.getElementById('stats-totale').textContent = totale;
+            document.getElementById('stats-storici').textContent = storici;
+            document.getElementById('stats-nuovi').textContent = nuovi;
+            
+            const mbSize = (totalBytes / (1024 * 1024)).toFixed(2);
+            const chunkStimati = Math.ceil(totalBytes / (23 * 1024 * 1024));
+            
+            document.getElementById('chunk-stats').innerHTML = `
+                <div class="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                        <div class="text-slate-500">📦 Dimensione totale dati</div>
+                        <div class="font-bold text-slate-700">${mbSize} MB</div>
+                    </div>
+                    <div>
+                        <div class="text-slate-500">✂️ Chunk stimati (23MB max)</div>
+                        <div class="font-bold text-indigo-600">${chunkStimati} chunk</div>
+                    </div>
+                </div>
+                ${mbSize > 23 ? `<div class="mt-3 text-amber-600 text-xs bg-amber-50 p-2 rounded">⚠️ Attenzione: i dati totali superano 23MB. Verranno suddivisi in ${chunkStimati} chunk.</div>` : '<div class="mt-3 text-emerald-600 text-xs bg-emerald-50 p-2 rounded">✅ I dati rientrano in un unico chunk.</div>'}
+            `;
+            
+            document.getElementById('stats-section').classList.remove('hidden');
+            console.log(`📊 Dati caricati: ${totale} totali (${storici} storici, ${nuovi} nuovi), ${mbSize} MB`);
+        }
+
+        async function generaChunk() {
+            if (!datiCaricati) {
+                alert('❌ Nessun dato da salvare!');
+                return;
+            }
+
+            const MAX_CHUNK_BYTES = 23 * 1024 * 1024;
+            const chunks = [];
+            let currentChunk = [];
+            let currentSize = 0;
+
+            document.getElementById('progress-section').classList.remove('hidden');
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+            
+            progressText.textContent = 'Suddivisione in chunk...';
+            progressBar.style.width = '10%';
+
+            for (let i = 0; i < datiCaricati.length; i++) {
+                const row = datiCaricati[i];
+                const rowSize = calcolaDimensione(row);
+                
+                if (rowSize > MAX_CHUNK_BYTES) {
+                    console.warn(`⚠️ Riga ${i} troppo grande, verrà salvata da sola`);
+                    if (currentChunk.length > 0) {
+                        chunks.push([...currentChunk]);
+                        currentChunk = [];
+                        currentSize = 0;
+                    }
+                    chunks.push([row]);
+                    continue;
+                }
+                
+                if (currentSize + rowSize > MAX_CHUNK_BYTES && currentChunk.length > 0) {
+                    chunks.push([...currentChunk]);
+                    currentChunk = [];
+                    currentSize = 0;
+                }
+                
+                currentChunk.push(row);
+                currentSize += rowSize;
+                
+                const progresso = (i / datiCaricati.length) * 50;
+                progressBar.style.width = `${progresso}%`;
+                progressText.textContent = `Suddivisione... ${i + 1}/${datiCaricati.length} righe`;
+            }
+            
+            if (currentChunk.length > 0) {
+                chunks.push(currentChunk);
+            }
+            
+            const numChunks = chunks.length;
+            progressText.textContent = `Generazione ${numChunks} chunk...`;
+            progressBar.style.width = '60%';
+            
+            console.log(`✂️ Creati ${numChunks} chunk`);
+
+            function calcolaHash(array) {
+                let hash = 0;
+                const str = JSON.stringify(array);
+                for (let i = 0; i < str.length; i++) {
+                    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+                    hash |= 0;
+                }
+                return Math.abs(hash).toString(16);
+            }
+
+            const manifest = {
+                version: "3.1",
+                fileName: nomeFile,
+                timestamp: new Date().toISOString(),
+                totalInterventi: datiCaricati.length,
+                numChunks: numChunks,
+                maxChunkSizeMB: 23,
+                chunks: [],
+                stats: {
+                    storici: document.getElementById('stats-storici').textContent,
+                    nuovi: document.getElementById('stats-nuovi').textContent
+                }
+            };
+            
+            for (let i = 0; i < numChunks; i++) {
+                const chunkData = chunks[i];
+                const chunkSize = calcolaDimensione(chunkData);
+                const chunkHash = calcolaHash(chunkData);
+                
+                manifest.chunks.push({
+                    index: i,
+                    fileName: `sbolla_chunk_${String(i).padStart(3, '0')}.json`,
+                    size: chunkSize,
+                    sizeMB: (chunkSize / (1024 * 1024)).toFixed(2),
+                    interventi: chunkData.length,
+                    hash: chunkHash
+                });
+                
+                const chunkJson = JSON.stringify(chunkData, null, 2);
+                const chunkBlob = new Blob([chunkJson], {type: 'application/json'});
+                const chunkUrl = URL.createObjectURL(chunkBlob);
+                const chunkLink = document.createElement('a');
+                chunkLink.href = chunkUrl;
+                chunkLink.download = `sbolla_chunk_${String(i).padStart(3, '0')}.json`;
+                document.body.appendChild(chunkLink);
+                chunkLink.click();
+                document.body.removeChild(chunkLink);
+                URL.revokeObjectURL(chunkUrl);
+                
+                const progresso = 60 + (i / numChunks) * 35;
+                progressBar.style.width = `${progresso}%`;
+                progressText.textContent = `Generato chunk ${i + 1}/${numChunks} (${manifest.chunks[i].sizeMB} MB)`;
+                
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+            
+            progressText.textContent = 'Generazione manifest...';
+            progressBar.style.width = '98%';
+            
+            const manifestJson = JSON.stringify(manifest, null, 2);
+            const manifestBlob = new Blob([manifestJson], {type: 'application/json'});
+            const manifestUrl = URL.createObjectURL(manifestBlob);
+            const manifestLink = document.createElement('a');
+            manifestLink.href = manifestUrl;
+            manifestLink.download = 'sbolla_manifest.json';
+            document.body.appendChild(manifestLink);
+            manifestLink.click();
+            document.body.removeChild(manifestLink);
+            URL.revokeObjectURL(manifestUrl);
+            
+            progressBar.style.width = '100%';
+            progressText.textContent = `✅ Completato! Generati ${numChunks} chunk.`;
+            
+            let riepilogoHtml = `
+                <div class="mt-4 p-4 bg-emerald-50 rounded-xl border border-emerald-200">
+                    <div class="font-bold text-emerald-800 mb-2">✅ Generazione completata!</div>
+                    <div class="text-sm text-emerald-700 space-y-1">
+                        <div>📦 Totale interventi: ${manifest.totalInterventi}</div>
+                        <div>✂️ Numero chunk: ${numChunks}</div>
+                        <div class="text-xs text-emerald-600 mt-2">
+                            📢 Ricorda: sposta TUTTI i file nella cartella di index.html:<br>
+                            • sbolla_manifest.json<br>
+                            • sbolla_chunk_000.json (e tutti gli altri)<br>
+                            • ${numChunks} file totali
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('chunk-stats').innerHTML = riepilogoHtml;
+        }
+
+        function reset() {
+            datiCaricati = null;
+            document.getElementById('stats-section').classList.add('hidden');
+            document.getElementById('progress-section').classList.add('hidden');
+            document.getElementById('fileInput').value = '';
+        }
+    </script>
+</body>
+</html>
