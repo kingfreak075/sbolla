@@ -242,6 +242,7 @@ function calcolaMedieComponenti() {
     console.log("✅ calcolaMedieComponenti completata (solo storico)");
     return nuoveMedie;
 }
+
 // ============================================
 // FUNZIONI DI PRICING
 // ============================================
@@ -277,8 +278,6 @@ function calculateRowPrice(row) {
 // FUNZIONI DI SCELTA INIZIALE
 // ============================================
 
-
-
 window.applicaPrezziVuoti = function () {
     console.log("==========================================");
     console.log("0️⃣ FUNZIONE: applicaPrezziVuoti()");
@@ -303,18 +302,27 @@ window.applicaPrezziVuoti = function () {
     initUI();
     window.calculateAnalytics?.();
 };
+
 window.applicaPrezziMedi = function () {
     console.log("==========================================");
     console.log("💰 FUNZIONE: applicaPrezziMedi() - USA SOLO MEDIE STORICHE");
     console.log("==========================================");
     console.log("📊 appData.rawRows.length:", appData.rawRows.length);
     console.log("📊 storicoInterventi:", window.storicoInterventi ? "Presente" : "Assente");
+    console.log("📊 appData.jobGroups:", Object.keys(appData.jobGroups).length, "gruppi");
 
     let contatore = 0;
     let senzaCodice = 0;
     let senzaPrezzo = 0;
 
-    appData.rawRows.forEach((row, index) => {
+    // Se non ci sono jobGroups, potrebbe essere troppo presto
+    if (Object.keys(appData.jobGroups).length === 0) {
+        console.warn("⚠️ Nessun jobGroup trovato, riprovo tra 500ms...");
+        setTimeout(window.applicaPrezziMedi, 500);
+        return;
+    }
+
+    appData.rawRows.forEach((row) => {
         if (!row._isHistory) {
             const codice = row[COLS.COMP_CODE];
             // ✅ USA SOLO LA MEDIA, IGNORA I PREZZI PERSONALIZZATI
@@ -351,6 +359,7 @@ window.applicaPrezziMedi = function () {
     window.calculateAnalytics?.();
     console.log("✅ applicaPrezziMedi() completata");
 };
+
 window.applicaPrezziDaJSON = function (sessionData) {
     console.log("==========================================");
     console.log("📦 FUNZIONE: applicaPrezziDaJSON()");
@@ -2302,7 +2311,6 @@ function mostraNotificaAggiuntiva(testo, tipo) {
 }
 
 // Override della funzione renderTable per gestire i prezzi readonly in modalità solo storico
-// AGGIUNGI QUESTA FUNZIONE (NON SOSTITUIRE LA ESISTENTE - È UN OVERRIDE)
 const originalRenderTable = window.renderTable;
 window.renderTable = function () {
     // Se siamo in modalità solo storico, assicuriamoci che tutti i prezzi siano readonly
