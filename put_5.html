@@ -2744,11 +2744,34 @@
                     updateFromOpener();
                 }, 200);
 
-                window.addEventListener('message', function(e) {
-                    if (e.data === 'updateQuickPanel') {
-                        updateFromOpener();
-                    }
-                });
+           window.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'JOB_UPDATE') {
+        const { job, cost, status, impianto, hasPrev, hasNext } = e.data.payload;
+
+        document.getElementById('panelJobValue').textContent = job || '—';
+        document.getElementById('panelImpiantoValue').textContent = impianto || '—';
+        document.getElementById('panelCostoValue').textContent = '€ ' + cost.toFixed(2).replace('.', ',');
+        document.getElementById('panelCopyText').textContent = impianto || '—';
+
+        const statusEl = document.getElementById('panelStatoValue');
+        if (status === 'OK') {
+            statusEl.textContent = '✓ Registrato';
+            statusEl.className = 'value status-ok';
+        } else if (status === 'NT') {
+            statusEl.textContent = '🔍 Non Trovato';
+            statusEl.className = 'value status-nt';
+        } else if (status === 'DV') {
+            statusEl.textContent = '⚠ Da Verificare';
+            statusEl.className = 'value status-dv';
+        } else {
+            statusEl.textContent = 'Da registrare';
+            statusEl.className = 'value status-empty';
+        }
+
+        document.getElementById('panelPrev').disabled = !hasPrev;
+        document.getElementById('panelNext').disabled = !hasNext;
+    }
+});
 
                 setTimeout(updateFromOpener, 100);
             <\/script>
@@ -2773,13 +2796,31 @@
         }, 300);
     }
 
-    function updateQuickPanel() {
-        if (quickPanelWindow && !quickPanelWindow.closed) {
-            try {
-                quickPanelWindow.postMessage('updateQuickPanel', '*');
-            } catch(e) {}
+function updateQuickPanel() {
+    if (quickPanelWindow && !quickPanelWindow.closed) {
+        if (!filteredJobs.length || selectedJobIndex >= filteredJobs.length) {
+            quickPanelWindow.postMessage({
+                type: 'JOB_UPDATE',
+                payload: { job: '—', cost: 0, status: '', impianto: '—', hasPrev: false, hasNext: false }
+            }, '*');
+            return;
         }
+
+        const j = filteredJobs[selectedJobIndex];
+        const dataPayload = {
+            job: j.job,
+            impianto: j.impianto,
+            cost: calcJobCost(j),
+            status: getJobStatus(j.job),
+            hasPrev: selectedJobIndex > 0,
+            hasNext: selectedJobIndex < filteredJobs.length - 1
+        };
+
+        try {
+            quickPanelWindow.postMessage({ type: 'JOB_UPDATE', payload: dataPayload }, '*');
+        } catch(e) {}
     }
+}
 
     // ── Event listeners ──
     document.getElementById('fileInput').addEventListener('change', e => { if (e.target.files.length) handleFileUpload(e.target.files[0]); });
@@ -2815,8 +2856,17 @@ window.showJobDetail = showJobDetail;
 window.updateQuickPanel = updateQuickPanel;
 
 
-window.filteredJobs = filteredJobs;
-window.selectedJobIndex = selectedJobIndex;
+// RIMUOVI queste righe:
+// window.filteredJobs = filteredJobs;
+// window.selectedJobIndex = selectedJobIndex;
+
+// AGGIUNGI i getter dinamici:
+Object.defineProperty(window, 'filteredJobs', {
+    get: () => filteredJobs
+});
+Object.defineProperty(window, 'selectedJobIndex', {
+    get: () => selectedJobIndex
+});
 
 
 
