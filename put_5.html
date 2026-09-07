@@ -2631,7 +2631,6 @@
                 document.getElementById('alwaysOnTopCheck').addEventListener('change', function() {
                     alwaysOnTop = this.checked;
                     if (alwaysOnTop) {
-                        // Try to keep window on top by repeatedly focusing
                         startFocusSteal();
                     } else {
                         stopFocusSteal();
@@ -2641,7 +2640,6 @@
                 let focusInterval = null;
                 function startFocusSteal() {
                     if (focusInterval) clearInterval(focusInterval);
-                    // Try to focus the window every 300ms
                     focusInterval = setInterval(() => {
                         if (alwaysOnTop) {
                             try { window.focus(); } catch(e) {}
@@ -2655,14 +2653,12 @@
                     }
                 }
 
-                // Also try to keep focus when user interacts with main page
                 document.addEventListener('click', function() {
                     if (alwaysOnTop) {
                         try { window.focus(); } catch(e) {}
                     }
                 });
 
-                // Close interval on unload
                 window.addEventListener('unload', function() {
                     if (focusInterval) clearInterval(focusInterval);
                 });
@@ -2672,9 +2668,9 @@
                     try {
                         const opener = window.opener;
                         if (!opener) return;
-                        const jobs = opener.filteredJobs || [];
+                        const filteredJobs = opener.filteredJobs || [];
                         const idx = opener.selectedJobIndex || 0;
-                        if (jobs.length === 0 || idx >= jobs.length) {
+                        if (filteredJobs.length === 0 || idx >= filteredJobs.length) {
                             document.getElementById('panelJobValue').textContent = '—';
                             document.getElementById('panelImpiantoValue').textContent = '—';
                             document.getElementById('panelCostoValue').textContent = '€ 0,00';
@@ -2685,7 +2681,7 @@
                             document.getElementById('panelNext').disabled = true;
                             return;
                         }
-                        const job = jobs[idx];
+                        const job = filteredJobs[idx];
                         const cost = opener.calcJobCost(job);
                         const status = opener.getJobStatus(job.job);
                         const impianto = job.impianto || '—';
@@ -2711,19 +2707,17 @@
                         }
 
                         document.getElementById('panelPrev').disabled = idx <= 0;
-                        document.getElementById('panelNext').disabled = idx >= jobs.length - 1;
+                        document.getElementById('panelNext').disabled = idx >= filteredJobs.length - 1;
 
-                        // Update status buttons
                         document.querySelectorAll('.status-btn').forEach(btn => {
                             const s = btn.dataset.status.toUpperCase();
                             btn.classList.remove('active', 'ok', 'nt', 'dv');
                             if (status === s) btn.classList.add('active', s.toLowerCase());
                         });
 
-                        // Update copy button style
                         const copyBtn = document.getElementById('panelCopyBtn');
                         copyBtn.classList.remove('copied');
-                    } catch(e) {}
+                    } catch(e) { console.error('updateFromOpener error:', e); }
                 }
 
                 // ── Copy impianto ──
@@ -2750,14 +2744,12 @@
                     updateFromOpener();
                 }, 200);
 
-                // Also listen for messages from opener (for immediate updates)
                 window.addEventListener('message', function(e) {
                     if (e.data === 'updateQuickPanel') {
                         updateFromOpener();
                     }
                 });
 
-                // Initial update
                 setTimeout(updateFromOpener, 100);
             <\/script>
         </body>
@@ -2767,7 +2759,6 @@
         quickPanelWindow.document.write(html);
         quickPanelWindow.document.close();
 
-        // Poll to check if the window is closed
         const checkClosed = setInterval(() => {
             if (quickPanelWindow && quickPanelWindow.closed) {
                 clearInterval(checkClosed);
@@ -2775,7 +2766,6 @@
             }
         }, 500);
 
-        // Send initial update
         setTimeout(() => {
             if (quickPanelWindow && !quickPanelWindow.closed) {
                 try { quickPanelWindow.postMessage('updateQuickPanel', '*'); } catch(e) {}
