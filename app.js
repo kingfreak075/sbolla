@@ -1,89 +1,143 @@
 // ============================================
-// Sbolla Manager v3.2 - Core Application
+// Sbolla Manager v4 - Core Application
 // ============================================
 
 console.log("==========================================");
-console.log("📦 app.js caricato");
+console.log("🚀 Sbolla Manager v4 - Bootstrap");
 console.log("==========================================");
 
 // ============================================
-// CONFIGURAZIONE E COSTANTI
+// 1. COSTANTI
 // ============================================
+
 const COLS = {
-    COSTO: "COSTO",
-    TEMPO: "Tempo Lavoro (Job) (Job)",
-    CONTRATTO: "Contract template (LocalUnitId) (Impianto)",
-    WORKTYPE: "WorkType (Job) (Job)",
-    JOB_DATE: "JobCompletedDate (Job) (Job)",
-    JOB_ID: "Job",
+    JOB: "Job",
     IMPIANTO: "Impiantodiriferimento (Job) (Job)",
-    COMPONENTE: "LocalComponent",
-    CATEGORIA: "LocalComponentCategory",
-    DESCRIZIONE: "TaskDescription",
     INDIRIZZO: "Indrizzo Edificio (LocalUnitId) (Impianto)",
-    TECNICO: "LocalEmployeeId (Job) (Job)",
+    SCHEDULED_DATE: "ScheduledDate (Job) (Job)",
     VENDITORE: "Venditore (LocalUnitId) (Impianto)",
-    DATA_MODIFICA: "(Non modificare) Data modifica",
-    WORK_PERFORMED: "LocalWorkPerformed",
     CLIENTE: "Cliente (Job) (Job)",
     AMMINISTRATORE: "Amministratore (LocalUnitId) (Impianto)",
+    WORKTYPE: "WorkType (Job) (Job)",
+    CONTRATTO: "Contract template (LocalUnitId) (Impianto)",
+    WORK_PERFORMED: "LocalWorkPerformed",
+    COMP_CODE: "ComponentCode (LocalComponent) (Component)",
+    CATEGORIA: "LocalComponentCategory",
+    COMPONENTE: "LocalComponent",
     QUANTITA: "Quantity",
-    COMP_CODE: "ComponentCode (LocalComponent) (Component)"
+    TECNICO: "LocalEmployeeId (Job) (Job)",
+    DESCRIZIONE: "TaskDescription",
+    TEMPO: "Tempo Lavoro (Job) (Job)",
+    ACCEPTED_TIME: "AcceptedTime (Job) (Job)",
+    JOB_DATE: "JobCompletedDate (Job) (Job)",
+    DATA_MODIFICA: "(Non modificare) Data modifica",
+    COSTO: "COSTO",
+    NOTE: "NOTE"
 };
 
-// Esponi COLS globalmente per analisi.js
+// Esposizione globale
 window.COLS = COLS;
 
-// Configurazione tariffe
-let pricingConfig = {
-    oa: 75.0,
-    om: 85.0,
-    sa: 90.0,
-    std: 65.0,
-    urgencyMult: 1.4,
-    fixedFee: 0.0,
-    rounding: 5
+const IA_COLS = {
+    LISTINO: "LISTINO",
+    PREZZO_MEDIO: "PREZZO MEDIO",
+    STORICO: "STORICO",
+    TIPO: "TIPO",
+    FATTURABILITA: "FATTURABILITÀ",
+    PREZZO_CONSIGLIATO: "PREZZO CONSIGLIATO",
+    CRITICITA: "CRITICITÀ IMPIANTO",
+    CONFIDENZA: "CONFIDENZA",
+    MOTIVAZIONE: "MOTIVAZIONE",
+    INDICAZIONE: "INDICAZIONE COMMERCIALE",
+    ANALOGHI: "ANALOGHI UTILIZZATI",
+    INTERVALLO: "INTERVALLO STORICO",
+    CREDITO: "CREDITO COMMERCIALE"
 };
 
-// Listino prezzi
-let listinoPrezzi = {
-    prezzi: {},      // ← PREZZI PERSONALIZZATI (modificati manualmente)
-    medie: {},       // ← PREZZI MEDI (calcolati dallo storico)
-    lastUpdate: null
+window.IA_COLS = IA_COLS;
+
+const REQUIRED_COLS = [
+    COLS.JOB,
+    COLS.IMPIANTO,
+    COLS.COSTO,
+    COLS.NOTE,
+    IA_COLS.PREZZO_CONSIGLIATO,
+    IA_COLS.FATTURABILITA,
+    IA_COLS.CONFIDENZA
+];
+
+const STATI = {
+    DA_RIVEDERE: 'da-rivedere',
+    CONFERMATO: 'confermato',
+    MODIFICATO: 'modificato',
+    AZZERATO: 'azzerato'
 };
 
-// Storico ricerche
-let storicoRicerche = [];
-let jsonCaricatoTemp = null;
-let prezziInizializzati = false;
+window.STATI = STATI;
 
-// Stato Applicazione
+const MONTHS_IT = ["GEN", "FEB", "MAR", "APR", "MAG", "GIU", "LUG", "AGO", "SET", "OTT", "NOV", "DIC"];
+
+// ============================================
+// 2. STATO APPLICAZIONE
+// ============================================
+
 let appData = {
+    fileName: null,
+    aoa: [],
+    headers: [],
+    columnIndex: {},
+    dataStartRow: 1,
     rawRows: [],
     jobGroups: {},
-    displayList: [],
+    venditore: {},
     uniqueVenditori: new Set(),
     uniqueWorkPerf: new Set(),
     uniqueContracts: new Set(),
-    analytics: {},
-    fileName: ""
+    displayList: []
 };
 
-// Mesi in Italiano
-const MONTHS_IT = ["GEN", "FEB", "MAR", "APR", "MAG", "GIU", "LUG", "AGO", "SET", "OTT", "NOV", "DIC"];
+let storicoInterventi = null;
+let storicoRicerche = [];
+let storicoIndex = new Map(); // Map<impianto, interventi[]>
 
-console.log("✅ Variabili globali inizializzate");
+// ── ESPOSIZIONE GLOBALE DI appData E storicoInterventi ──
+Object.defineProperty(window, 'appData', {
+    get: () => appData,
+    configurable: true
+});
+
+Object.defineProperty(window, 'storicoInterventi', {
+    get: () => storicoInterventi,
+    set: (v) => { storicoInterventi = v; },
+    configurable: true
+});
+
+Object.defineProperty(window, 'storicoRicerche', {
+    get: () => storicoRicerche,
+    set: (v) => { storicoRicerche = v; },
+    configurable: true
+});
 
 // ============================================
-// FUNZIONI DI UTILITÀ
+// 3. UTILITIES
 // ============================================
 
-function formatDateItalian(dateObj) {
-    if (!dateObj || isNaN(dateObj)) return "-";
-    const d = dateObj.getDate().toString().padStart(2, '0');
-    const m = MONTHS_IT[dateObj.getMonth()];
-    const y = dateObj.getFullYear();
-    return `${d}-${m}-${y}`;
+
+// ── Download sicuro di un blob (evita reload pagina) ──
+function downloadBlob(blob, filename) {
+    window._isDownloading = true;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        window._isDownloading = false;
+    }, 1000);
 }
 
 function parseDate(raw) {
@@ -94,6 +148,19 @@ function parseDate(raw) {
     return isNaN(d) ? null : d;
 }
 
+function formatDateItalian(dateObj) {
+    if (!dateObj || isNaN(dateObj)) return "-";
+    const d = dateObj.getDate().toString().padStart(2, '0');
+    const m = MONTHS_IT[dateObj.getMonth()];
+    const y = dateObj.getFullYear();
+    return `${d}-${m}-${y}`;
+}
+
+function formatEuro(n) {
+    if (n === null || n === undefined || isNaN(n)) return "€ 0";
+    return "€ " + Number(n).toLocaleString('it-IT', { maximumFractionDigits: 0 });
+}
+
 function debounce(func, wait) {
     let timeout;
     return function (...args) {
@@ -102,497 +169,471 @@ function debounce(func, wait) {
     };
 }
 
-function arrotondaPrezzo(importo, step = 5) {
-    if (step <= 1) return Math.round(importo * 100) / 100;
-    return Math.ceil(importo / step) * step;
+// ============================================
+// 4. PERSISTENZA
+// ============================================
+
+function storageKey() {
+    return `SP_V4_${appData.fileName || 'default'}`;
 }
 
-// ============================================
-// FUNZIONE PER OTTENERE TUTTI GLI INTERVENTI (storico + correnti)
-// ============================================
+// ── saveState con debounce (500ms) ──
+let _saveStateTimer = null;
 
-function getTuttiInterventi() {
-    let tutti = [];
-
-    // Aggiungi storico
-    if (window.storicoInterventi?.interventi) {
-        tutti = tutti.concat(window.storicoInterventi.interventi.map(row => ({
-            ...row,
-            _isHistory: true,
-            _costo: parseFloat(row['COSTO']) || 0,
-            _jobDate: parseDate(row[COLS.JOB_DATE] || row['JobCompletedDate (Job) (Job)']),
-            _suggestedPrice: parseFloat(row['COSTO']) || 0
-        })));
-    }
-
-    // Aggiungi dati correnti
-    if (appData.rawRows) {
-        tutti = tutti.concat(appData.rawRows);
-    }
-
-    console.log(`📚 Totale interventi: ${tutti.length} (storico: ${window.storicoInterventi?.interventi?.length || 0}, corrente: ${appData.rawRows?.length || 0})`);
-    return tutti;
-}
-
-// ============================================
-// GESTIONE LISTINO
-// ============================================
-
-function caricaListino() {
-    console.log("📂 Caricamento listino da localStorage...");
-    const saved = localStorage.getItem("SP_LISTINO_PREZZI");
-    if (saved) {
+function saveState() {
+    if (!appData.fileName) return;
+    
+    if (_saveStateTimer) clearTimeout(_saveStateTimer);
+    
+    _saveStateTimer = setTimeout(() => {
         try {
-            listinoPrezzi = JSON.parse(saved);
-            console.log("✅ Listino caricato:", Object.keys(listinoPrezzi.prezzi).length, "prezzi personalizzati");
+            const state = {
+                venditore: appData.venditore,
+                timestamp: new Date().toISOString()
+            };
+            localStorage.setItem(storageKey(), JSON.stringify(state));
         } catch (e) {
-            console.error("❌ Errore caricamento listino:", e);
-            listinoPrezzi = { prezzi: {}, medie: {}, lastUpdate: null };
+            console.error("❌ Errore salvataggio:", e);
         }
-    } else {
-        console.log("ℹ️ Nessun listino salvato");
-        listinoPrezzi = { prezzi: {}, medie: {}, lastUpdate: null };
+    }, 500);
+}
+
+// ── Salvataggio immediato (per chiusura pagina) ──
+function saveStateNow() {
+    if (!appData.fileName) return;
+    if (_saveStateTimer) {
+        clearTimeout(_saveStateTimer);
+        _saveStateTimer = null;
     }
-}
-
-function salvaListino() {
-    localStorage.setItem("SP_LISTINO_PREZZI", JSON.stringify(listinoPrezzi));
-    console.log("💾 Listino salvato:", Object.keys(listinoPrezzi.prezzi).length, "prezzi");
-}
-
-function getPrezzoListino(codice) {
-    if (!codice) return null;
-    // PRIMA: prezzo personalizzato (modificato manualmente)
-    const personalizzato = listinoPrezzi.prezzi?.[codice];
-    // POI: media storica (se non c'è personalizzato)
-    const media = listinoPrezzi.medie?.[codice]?.media;
-    return personalizzato ?? media ?? null;
-}
-
-function getCategoriaPerCodice(codice) {
-    return listinoPrezzi.medie?.[codice]?.categoria || '';
-}
-
-// ============================================
-// CALCOLO MEDIE COMPONENTI (SOLO STORICO)
-// ============================================
-
-function calcolaMedieComponenti() {
-    console.log("==========================================");
-    console.log("🔍 INIZIO calcolaMedieComponenti (SOLO STORICO)");
-    console.log("==========================================");
-
-    const stats = {};
-    let righeProcessate = 0;
-
-    // ✅ USA SOLO LO STORICO (NON i dati correnti/EXCEL)
-    if (!window.storicoInterventi?.interventi) {
-        console.log("⚠️ Nessuno storico disponibile - medie vuote");
-        listinoPrezzi.medie = {};
-        listinoPrezzi.lastUpdate = new Date().toISOString();
-        salvaListino();
-        return {};
-    }
-
-    console.log(`📚 Processo storico: ${window.storicoInterventi.interventi.length} righe totali`);
-
-    window.storicoInterventi.interventi.forEach((row) => {
-        const codice = row[COLS.COMP_CODE] || row['ComponentCode (LocalComponent) (Component)'];
-        const costo = parseFloat(row['COSTO']); // ← LEGGE DIRETTAMENTE IL CAMPO COSTO
-        const categoria = row[COLS.CATEGORIA] || row['LocalComponentCategory'] || "";
-        const descrizione = row[COLS.COMPONENTE] || row['LocalComponent'] || "";
-
-        // ✅ SOLO se: codice esiste, costo è un numero, costo > 0
-        if (codice && !isNaN(costo) && costo > 0) {
-            if (!stats[codice]) {
-                stats[codice] = {
-                    somma: 0,
-                    conteggio: 0,
-                    categoria: categoria,
-                    descrizione: descrizione
-                };
-            }
-            stats[codice].somma += costo;
-            stats[codice].conteggio++;
-            righeProcessate++;
-
-            if (categoria && !stats[codice].categoria) stats[codice].categoria = categoria;
-            if (descrizione && !stats[codice].descrizione) stats[codice].descrizione = descrizione;
-        }
-    });
-
-    console.log(`📊 Righe storiche VALIDE (con costo > 0): ${righeProcessate}`);
-
-    const nuoveMedie = {};
-    Object.entries(stats).forEach(([codice, data]) => {
-        nuoveMedie[codice] = {
-            media: data.conteggio > 0 ? Math.round((data.somma / data.conteggio) * 100) / 100 : 0,
-            categoria: data.categoria || 'N/D',
-            descrizione: data.descrizione || 'Nessuna descrizione',
-            occorrenze: data.conteggio
+    try {
+        const state = {
+            venditore: appData.venditore,
+            timestamp: new Date().toISOString()
         };
-    });
-
-    console.log(`💰 Calcolate medie per ${Object.keys(nuoveMedie).length} codici (solo da storico)`);
-
-    listinoPrezzi.medie = nuoveMedie;
-    listinoPrezzi.lastUpdate = new Date().toISOString();
-
-    salvaListino();
-    console.log("✅ calcolaMedieComponenti completata (solo storico)");
-    return nuoveMedie;
+        localStorage.setItem(storageKey(), JSON.stringify(state));
+    } catch (e) {
+        console.error("❌ Errore salvataggio immediato:", e);
+    }
 }
 
-// ============================================
-// FUNZIONI DI PRICING
-// ============================================
 
-function calculateRowPrice(row) {
-    let rate = pricingConfig.std;
-    let logic = "Standard";
 
-    const c = (row[COLS.CONTRATTO] || "").toUpperCase();
-    if (c.includes("OA")) rate = pricingConfig.oa;
-    else if (c.includes("OM")) rate = pricingConfig.om;
-    else if (c.includes("SA") || c.includes("P -")) rate = pricingConfig.sa;
-
-    let price = rate * (row._ore || 0);
-
-    const wt = (row[COLS.WORKTYPE] || "").toUpperCase();
-    if (wt.includes("AA") || wt.includes("PERICOLO")) {
-        price *= pricingConfig.urgencyMult;
-        logic = "Urgenza";
-    }
-
-    if (pricingConfig.fixedFee > 0 && (wt.includes("AA") || (row[COLS.WORK_PERFORMED] || "").includes("Reperibilità"))) {
-        price += pricingConfig.fixedFee;
-        logic += "+Fisso";
-    }
-
-    price = arrotondaPrezzo(price, pricingConfig.rounding);
-    row._suggestedPrice = Math.round(price * 100) / 100;
-    row._logic = logic;
-}
-
-// ============================================
-// FUNZIONI DI SCELTA INIZIALE
-// ============================================
-
-window.applicaPrezziVuoti = function () {
-    console.log("==========================================");
-    console.log("0️⃣ FUNZIONE: applicaPrezziVuoti()");
-    console.log("==========================================");
-
-    let contatore = 0;
-    appData.rawRows.forEach(row => {
-        if (!row._isHistory) {
-            row._suggestedPrice = 0;
-            row._logic = "Da definire";
-            contatore++;
+function loadState() {
+    if (!appData.fileName) return false;
+    try {
+        const raw = localStorage.getItem(storageKey());
+        if (!raw) return false;
+        const state = JSON.parse(raw);
+        if (state.venditore) {
+            appData.venditore = state.venditore;
+            return true;
         }
-    });
+    } catch (e) {
+        console.error("❌ Errore caricamento stato:", e);
+    }
+    return false;
+}
 
-    console.log(`✅ Azzerati ${contatore} interventi`);
+// ============================================
+// 5. CARICAMENTO STORICO
+// ============================================
 
-    Object.values(appData.jobGroups).forEach(g => {
-        g.totalPrice = g.rows.reduce((sum, r) => sum + (r._suggestedPrice || 0), 0);
-    });
+function setStoricoStatus(state, testo) {
+    const label = document.getElementById('storico-label');
+    const indicator = document.getElementById('storico-indicator');
+    if (!label || !indicator) return;
 
-    prezziInizializzati = true;
-    initUI();
-    window.calculateAnalytics?.();
-};
+    switch (state) {
+        case 'loading':
+            indicator.classList.remove('hidden');
+            label.textContent = testo || '...';
+            break;
+        case 'ok':
+            indicator.classList.add('hidden');
+            label.textContent = `📚 ${testo}`;
+            label.title = `${storicoInterventi?.interventi?.length || 0} interventi · ${testo} impianti`;
+            break;
+        case 'error':
+        default:
+            indicator.classList.add('hidden');
+            label.textContent = '📚';
+            label.title = 'Storico non caricato';
+    }
+}
 
-window.applicaPrezziMedi = function () {
-    console.log("==========================================");
-    console.log("💰 FUNZIONE: applicaPrezziMedi() - USA SOLO MEDIE STORICHE");
-    console.log("==========================================");
-    console.log("📊 appData.rawRows.length:", appData.rawRows.length);
-    console.log("📊 storicoInterventi:", window.storicoInterventi ? "Presente" : "Assente");
-    console.log("📊 appData.jobGroups:", Object.keys(appData.jobGroups).length, "gruppi");
-
-    let contatore = 0;
-    let senzaCodice = 0;
-    let senzaPrezzo = 0;
-
-    // Se non ci sono jobGroups, potrebbe essere troppo presto
-    if (Object.keys(appData.jobGroups).length === 0) {
-        console.warn("⚠️ Nessun jobGroup trovato, riprovo tra 500ms...");
-        setTimeout(window.applicaPrezziMedi, 500);
+// ── Costruisce indice impianti per lookup veloce ──
+function buildStoricoIndex() {
+    console.log("🏗️ Costruzione indice impianti...");
+    const startTime = performance.now();
+    
+    storicoIndex = new Map();
+    
+    if (!storicoInterventi?.interventi) {
+        console.log("⚠️ Nessuno storico da indicizzare");
         return;
     }
-
-    appData.rawRows.forEach((row) => {
-        if (!row._isHistory) {
-            const codice = row[COLS.COMP_CODE];
-            // ✅ USA SOLO LA MEDIA, IGNORA I PREZZI PERSONALIZZATI
-            const prezzoMedio = listinoPrezzi.medie?.[codice]?.media || null;
-
-            if (!codice) {
-                senzaCodice++;
-                row._suggestedPrice = 0;
-                row._logic = "Senza codice";
-            } else if (!prezzoMedio) {
-                senzaPrezzo++;
-                row._suggestedPrice = 0;
-                row._logic = "Nessuna media storica";
-            } else {
-                contatore++;
-                row._suggestedPrice = prezzoMedio;
-                row._logic = "Media storica";
-            }
+    
+    storicoInterventi.interventi.forEach(row => {
+        const imp = row[COLS.IMPIANTO] || row['Impiantodiriferimento (Job) (Job)'];
+        if (!imp) return;
+        
+        if (!storicoIndex.has(imp)) {
+            storicoIndex.set(imp, []);
         }
+        storicoIndex.get(imp).push(row);
     });
+    
+    const elapsed = (performance.now() - startTime).toFixed(0);
+    console.log(`✅ Indice costruito: ${storicoIndex.size} impianti, ${storicoInterventi.interventi.length} interventi in ${elapsed}ms`);
+}
 
-    console.log(`✅ Righe con media: ${contatore}`);
-    console.log(`⚠️ Senza codice: ${senzaCodice}`);
-    console.log(`⚠️ Senza prezzo medio: ${senzaPrezzo}`);
 
-    // Aggiorna i totali dei gruppi
-    Object.values(appData.jobGroups).forEach(g => {
-        g.totalPrice = g.rows.reduce((sum, r) => sum + (r._suggestedPrice || 0), 0);
-    });
 
-    prezziInizializzati = true;
-    console.log("🚀 Chiamo initUI()...");
-    initUI();
-    window.calculateAnalytics?.();
-    console.log("✅ applicaPrezziMedi() completata");
-};
 
-window.applicaPrezziDaJSON = function (sessionData) {
-    console.log("==========================================");
-    console.log("📦 FUNZIONE: applicaPrezziDaJSON()");
-    console.log("==========================================");
+async function caricaStoricoAvvio() {
+    console.log("📚 Caricamento storico in background");
+    setStoricoStatus('loading', '...');
 
-    const savedPrices = sessionData.prices || {};
-    let restoredCount = 0;
+    try {
+        const manifestResp = await fetch('sbolla_manifest.json');
+        if (manifestResp.ok) {
+            const manifest = await manifestResp.json();
+            console.log(`📦 Manifest: ${manifest.numChunks} chunk, ${manifest.totalInterventi} interventi`);
 
-    appData.rawRows.forEach((row, index) => {
-        const key = row[COLS.JOB_ID] + "_" + index;
-        if (!row._isHistory && savedPrices[key]) {
-            row._suggestedPrice = savedPrices[key];
-            row._logic = "Recuperato JSON";
-            restoredCount++;
-        } else if (!row._isHistory && !savedPrices[key]) {
-            row._suggestedPrice = 0;
-            row._logic = "Non presente in JSON";
+            const chunks = new Array(manifest.numChunks);
+            let completati = 0;
+
+            await Promise.all(manifest.chunks.map(async (chunkInfo) => {
+                const resp = await fetch(chunkInfo.fileName);
+                if (!resp.ok) throw new Error(`Errore chunk ${chunkInfo.index}`);
+                chunks[chunkInfo.index] = await resp.json();
+                completati++;
+                setStoricoStatus('loading', `${completati}/${manifest.numChunks}`);
+            }));
+
+            const tutti = chunks.flat();
+            storicoInterventi = {
+                fileName: manifest.fileName,
+                timestamp: manifest.timestamp,
+                interventi: tutti,
+                stats: manifest.stats
+            };
+
+               buildStoricoIndex();  // ✅ NUOVO
+
+            const impiantiUnici = new Set(tutti.map(r => r[COLS.IMPIANTO]).filter(Boolean)).size;
+
+
+
+
+            console.log(`✅ Storico: ${tutti.length} interventi, ${impiantiUnici} impianti`);
+            setStoricoStatus('ok', `${impiantiUnici}`);
+            mostraNotifica(`✅ Storico: ${tutti.length} interventi · ${impiantiUnici} impianti`, 'success');
+
+            aggiornaDebugPanel();
+            window.dispatchEvent(new CustomEvent('storicoCaricato'));
+            return;
         }
-    });
-
-    console.log(`✅ Ripristinati ${restoredCount} prezzi`);
-
-    if (sessionData.listino) {
-        listinoPrezzi = sessionData.listino;
-        salvaListino();
-        console.log("📋 Listino ripristinato");
+    } catch (e) {
+        console.log("⚠️ Manifest non trovato:", e.message);
     }
 
-    Object.values(appData.jobGroups).forEach(g => {
-        g.totalPrice = g.rows.reduce((sum, r) => sum + (r._suggestedPrice || 0), 0);
-    });
+    try {
+        const resp = await fetch('sbolla.json');
+        if (resp.ok) {
+            storicoInterventi = await resp.json();
 
-    prezziInizializzati = true;
-    initUI();
-    window.calculateAnalytics?.();
-};
+   buildStoricoIndex();  // ✅ NUOVO
 
-window.mostraSceltaIniziale = function () {
-    console.log("📋 Apertura modale scelta iniziale");
-
-    const uploadOverlay = document.getElementById('upload-overlay');
-    if (uploadOverlay) uploadOverlay.classList.add('hidden');
-
-    const totale = Object.keys(appData.jobGroups).length;
-    let storici = 0;
-    Object.values(appData.jobGroups).forEach(g => {
-        if (g.isHistory) storici++;
-    });
-    const daPrezzare = totale - storici;
-
-    document.getElementById('scelta-nome-file').textContent = `File: ${appData.fileName || 'sconosciuto'}`;
-    document.getElementById('scelta-totale').textContent = totale;
-    document.getElementById('scelta-storici').textContent = storici;
-    document.getElementById('scelta-da-prezzare').textContent = daPrezzare;
-
-    document.getElementById('scelta-iniziale-modal').classList.remove('hidden');
-};
-
-window.chiudiSceltaIniziale = function () {
-    document.getElementById('scelta-iniziale-modal').classList.add('hidden');
-};
-
-window.confermaSceltaIniziale = function () {
-    const scelta = document.querySelector('input[name="scelta-prezzi"]:checked').value;
-    console.log(`✅ Scelta effettuata: ${scelta}`);
-
-    if (scelta === 'vuoti') {
-        window.applicaPrezziVuoti();
-        chiudiSceltaIniziale();
-    } else if (scelta === 'json') {
-        document.getElementById('json-scelta-input').click();
-    } else if (scelta === 'medi') {
-        window.applicaPrezziMedi();
-        chiudiSceltaIniziale();
+            const impiantiUnici = new Set(storicoInterventi.interventi.map(r => r[COLS.IMPIANTO]).filter(Boolean)).size;
+            console.log(`✅ Storico (singolo): ${storicoInterventi.interventi.length}`);
+            setStoricoStatus('ok', `${impiantiUnici}`);
+            mostraNotifica(`✅ Storico: ${storicoInterventi.interventi.length} interventi`, 'success');
+            aggiornaDebugPanel();
+            window.dispatchEvent(new CustomEvent('storicoCaricato'));
+            return;
+        }
+    } catch (e) {
+        console.log("❌ Nessuno storico trovato");
     }
-};
 
-window.anteprimaJSON = function (input) {
+    storicoInterventi = null;
+    setStoricoStatus('error', '—');
+    mostraNotifica('⚠️ Storico non trovato (opzionale)', 'warning');
+}
+
+async function ricaricaStoricoDefault() {
+    if (!confirm('Ricaricare lo storico da sbolla_manifest.json?')) return;
+    await caricaStoricoAvvio();
+}
+
+async function caricaStoricoFile(input) {
     const file = input.files[0];
     if (!file) return;
 
-    console.log("📂 File JSON selezionato:", file.name);
+    setStoricoStatus('loading', '...');
 
-    const reader = new FileReader();
-    reader.onload = function (e) {
-        try {
-            const sessionData = JSON.parse(e.target.result);
-            jsonCaricatoTemp = sessionData;
+    try {
+        const text = await file.text();
+        const data = JSON.parse(text);
 
-            let prezziTrovati = 0;
-            let prezziApplicabili = 0;
-
-            if (sessionData.prices) {
-                prezziTrovati = Object.keys(sessionData.prices).length;
-                appData.rawRows.forEach((row, index) => {
-                    const key = row[COLS.JOB_ID] + "_" + index;
-                    if (sessionData.prices[key]) prezziApplicabili++;
-                });
+        if (data.numChunks && data.chunks) {
+            if (!confirm(`Manifest: ${data.numChunks} chunk.\n\nScaricare dalla stessa cartella?`)) {
+                input.value = '';
+                setStoricoStatus('ok', '—');
+                return;
             }
 
-            console.log(`📊 JSON: ${prezziTrovati} prezzi, ${prezziApplicabili} applicabili`);
+            mostraNotifica(`📦 Download di ${data.numChunks} chunk...`, 'info');
 
-            const conferma = confirm(
-                `📄 File: ${file.name}\n` +
-                `Prezzi trovati: ${prezziTrovati}\n` +
-                `Prezzi applicabili: ${prezziApplicabili}\n\n` +
-                `Applicare questi prezzi?`
-            );
+            const chunks = new Array(data.numChunks);
+            let completati = 0;
 
-            if (conferma) {
-                window.applicaPrezziDaJSON(sessionData);
-                chiudiSceltaIniziale();
-            } else {
-                jsonCaricatoTemp = null;
-                mostraSceltaIniziale();
-            }
+            await Promise.all(data.chunks.map(async (chunkInfo) => {
+                const resp = await fetch(chunkInfo.fileName);
+                if (!resp.ok) throw new Error(`Errore chunk ${chunkInfo.index}`);
+                chunks[chunkInfo.index] = await resp.json();
+                completati++;
+                setStoricoStatus('loading', `${completati}/${data.numChunks}`);
+            }));
 
-        } catch (err) {
-            alert("Errore nel caricamento del file JSON");
-            console.error(err);
+            const tutti = chunks.flat();
+            storicoInterventi = {
+                fileName: data.fileName,
+                timestamp: data.timestamp,
+                interventi: tutti,
+                stats: data.stats
+            };
+
+            const impianti = new Set(tutti.map(r => r[COLS.IMPIANTO]).filter(Boolean)).size;
+            setStoricoStatus('ok', `${impianti}`);
+            mostraNotifica(`✅ Storico: ${tutti.length} interventi · ${impianti} impianti`, 'success');
         }
-    };
-    reader.readAsText(file);
+        else if (data.interventi) {
+            storicoInterventi = data;
+
+            buildStoricoIndex();  // ✅ NUOVO
+            const impianti = new Set(data.interventi.map(r => r[COLS.IMPIANTO]).filter(Boolean)).size;
+            setStoricoStatus('ok', `${impianti}`);
+            mostraNotifica(`✅ Storico: ${data.interventi.length} interventi · ${impianti} impianti`, 'success');
+        }
+        else {
+            throw new Error('Formato non riconosciuto');
+        }
+
+        aggiornaDebugPanel();
+        window.dispatchEvent(new CustomEvent('storicoCaricato'));
+    } catch (err) {
+        console.error("❌ Errore:", err);
+        alert('Errore caricamento storico:\n' + err.message);
+        setStoricoStatus(storicoInterventi ? 'ok' : 'error', storicoInterventi ? '—' : '!');
+    }
+
     input.value = '';
-};
+}
 
 // ============================================
-// GESTIONE FILE EXCEL
+// 6. CARICAMENTO EXCEL IA
 // ============================================
 
-function handleFile(e) {
-    const file = e.target.files[0];
-    if (!file) return;
+function apriCaricaExcel() {
+    document.getElementById('fileInput').click();
+}
 
-    console.log("==========================================");
-    console.log("📂 Caricamento file:", file.name);
-    console.log("==========================================");
-
-    appData.fileName = file.name;
+async function loadExcelIA(file) {
+    console.log("📂 Caricamento Excel IA:", file.name);
 
     const loader = document.getElementById('loader');
     if (loader) loader.classList.remove('hidden');
-    const btnOverlay = document.querySelector('#upload-overlay button');
-    if (btnOverlay) btnOverlay.classList.add('hidden');
 
-    const reader = new FileReader();
-    reader.onload = function (e) {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+    try {
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: 'array', cellDates: false });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
 
-        console.log(`📊 Righe lette: ${jsonData.length}`);
-        setTimeout(() => processData(jsonData), 50);
-    };
-    reader.readAsArrayBuffer(file);
-}
+        console.log(`📊 ${aoa.length} righe dal foglio "${sheetName}"`);
 
-function processData(rows) {
-    console.log("🔄 Inizio processData()");
+        if (aoa.length < 2) throw new Error("File troppo piccolo");
+        const headers = aoa[0];
+        console.log(`📋 Header: ${headers.length} colonne`);
 
-    appData.rawRows = rows;
-    appData.uniqueVenditori.clear();
-    appData.uniqueWorkPerf.clear();
-    appData.uniqueContracts.clear();
-    appData.jobGroups = {};
+        const columnIndex = {};
+        headers.forEach((name, idx) => {
+            if (name) columnIndex[String(name).trim()] = idx;
+        });
 
-    rows.forEach((row, index) => {
-        row._id = index;
-        row._costo = parseFloat(row[COLS.COSTO]);
-        row._minuti = parseInt(row[COLS.TEMPO]) || 0;
-        row._ore = row._minuti / 60;
-        row._dataModifica = parseDate(row[COLS.DATA_MODIFICA]);
-        row._jobDate = parseDate(row[COLS.JOB_DATE]);
-        row._isHistory = (!isNaN(row._costo) && row._costo > 0);
-
-        // NON calcolare prezzi qui
-
-        if (row[COLS.VENDITORE]) appData.uniqueVenditori.add(row[COLS.VENDITORE]);
-        if (row[COLS.WORK_PERFORMED]) appData.uniqueWorkPerf.add(row[COLS.WORK_PERFORMED]);
-        if (row[COLS.CONTRATTO]) appData.uniqueContracts.add(row[COLS.CONTRATTO]);
-
-        const jid = row[COLS.JOB_ID];
-        if (!appData.jobGroups[jid]) {
-            appData.jobGroups[jid] = {
-                jobId: jid,
-                rows: [],
-                totalMin: 0,
-                totalPrice: 0,
-                masterRow: row,
-                isHistory: row._isHistory,
-                hasMultiple: false
-            };
+        const missing = REQUIRED_COLS.filter(c => !(c in columnIndex));
+        if (missing.length > 0) {
+            throw new Error(`Colonne obbligatorie mancanti: ${missing.join(', ')}`);
         }
 
-        const group = appData.jobGroups[jid];
-        group.rows.push(row);
-        group.totalMin += row._minuti;
-        if (row._isHistory) group.isHistory = true;
-    });
+        appData.fileName = file.name;
+        appData.aoa = aoa;
+        appData.headers = headers;
+        appData.columnIndex = columnIndex;
+        appData.dataStartRow = 1;
+        appData.venditore = {};
 
-    console.log(`📊 Gruppi creati: ${Object.keys(appData.jobGroups).length}`);
+        const hadState = loadState();
+        if (hadState) {
+            mostraNotifica(`📂 Ripristinate ${Object.keys(appData.venditore).length} modifiche precedenti`, 'info');
+        }
 
-    Object.values(appData.jobGroups).forEach(g => {
-        g.hasMultiple = g.rows.length > 1;
-        g.totalPrice = 0; // Tutti a zero inizialmente
-    });
+        processRows();
+        initUI();
 
-    console.log("📈 Calcolo medie componenti...");
-    calcolaMedieComponenti();
+        console.log("✅ Caricamento completato");
+        mostraNotifica(`✅ ${Object.keys(appData.jobGroups).length} job caricati`, 'success');
 
-    console.log("🖥️ Mostro scelta iniziale...");
-    mostraSceltaIniziale();
-
-    // Aggiorna debug panel
-    if (typeof window.aggiornaDebugPanel === 'function') {
-        window.aggiornaDebugPanel();
+    } catch (error) {
+        console.error("❌ Errore:", error);
+        alert("Errore caricamento:\n" + error.message);
+    } finally {
+        if (loader) loader.classList.add('hidden');
     }
 }
 
+function processRows() {
+    console.log("🔄 processRows()");
+
+    appData.rawRows = [];
+    appData.jobGroups = {};
+    appData.uniqueVenditori.clear();
+    appData.uniqueWorkPerf.clear();
+    appData.uniqueContracts.clear();
+
+    const ci = appData.columnIndex;
+
+    for (let i = appData.dataStartRow; i < appData.aoa.length; i++) {
+        const row = appData.aoa[i];
+        if (!row || row.every(c => c === '' || c === null || c === undefined)) continue;
+
+        const jobId = row[ci[COLS.JOB]];
+        if (!jobId) continue;
+
+        const processed = {
+            _id: i,
+            _jobId: jobId,
+            [COLS.JOB]: jobId,
+            [COLS.IMPIANTO]: row[ci[COLS.IMPIANTO]] || '',
+            [COLS.INDIRIZZO]: row[ci[COLS.INDIRIZZO]] || '',
+            [COLS.VENDITORE]: row[ci[COLS.VENDITORE]] || '',
+            [COLS.CONTRATTO]: row[ci[COLS.CONTRATTO]] || '',
+            [COLS.WORKTYPE]: row[ci[COLS.WORKTYPE]] || '',
+            [COLS.WORK_PERFORMED]: row[ci[COLS.WORK_PERFORMED]] || '',
+            [COLS.COMP_CODE]: row[ci[COLS.COMP_CODE]] || '',
+            [COLS.CATEGORIA]: row[ci[COLS.CATEGORIA]] || '',
+            [COLS.COMPONENTE]: row[ci[COLS.COMPONENTE]] || '',
+            [COLS.QUANTITA]: row[ci[COLS.QUANTITA]] || '',
+            [COLS.TECNICO]: row[ci[COLS.TECNICO]] || '',
+            [COLS.DESCRIZIONE]: row[ci[COLS.DESCRIZIONE]] || '',
+            [COLS.TEMPO]: row[ci[COLS.TEMPO]] || '',
+            [COLS.CLIENTE]: row[ci[COLS.CLIENTE]] || '',
+            [COLS.AMMINISTRATORE]: row[ci[COLS.AMMINISTRATORE]] || '',
+            _jobDate: parseDate(row[ci[COLS.JOB_DATE]]),
+            _scheduledDate: parseDate(row[ci[COLS.SCHEDULED_DATE]])
+        };
+
+        processed._ia = extractIAData(row, ci);
+
+        if (processed[COLS.VENDITORE]) appData.uniqueVenditori.add(processed[COLS.VENDITORE]);
+        if (processed[COLS.WORK_PERFORMED]) appData.uniqueWorkPerf.add(processed[COLS.WORK_PERFORMED]);
+        if (processed[COLS.CONTRATTO]) appData.uniqueContracts.add(processed[COLS.CONTRATTO]);
+
+        appData.rawRows.push(processed);
+
+        if (!appData.jobGroups[jobId]) {
+            appData.jobGroups[jobId] = {
+                jobId: jobId,
+                rows: [],
+                totalMin: 0,
+                masterRow: processed,
+                ia: processed._ia
+            };
+        }
+        const group = appData.jobGroups[jobId];
+        group.rows.push(processed);
+        group.totalMin += parseInt(processed[COLS.TEMPO]) || 0;
+    }
+
+    console.log(`📊 ${Object.keys(appData.jobGroups).length} job raggruppati`);
+
+    precompilaTuttiCosti();
+}
+
+function extractIAData(row, ci) {
+    const g = (key) => {
+        const idx = ci[key];
+        return idx !== undefined ? row[idx] : '';
+    };
+
+    return {
+        prezzoConsigliato: parseFloat(g(IA_COLS.PREZZO_CONSIGLIATO)) || 0,
+        fatturabilita: String(g(IA_COLS.FATTURABILITA) || '').trim(),
+        criticita: String(g(IA_COLS.CRITICITA) || '').trim(),
+        confidenza: String(g(IA_COLS.CONFIDENZA) || '').trim(),
+        motivazione: String(g(IA_COLS.MOTIVAZIONE) || '').trim(),
+        indicazione: String(g(IA_COLS.INDICAZIONE) || '').trim(),
+        analoghi: parseInt(g(IA_COLS.ANALOGHI)) || 0,
+        intervallo: String(g(IA_COLS.INTERVALLO) || '').trim(),
+        credito: String(g(IA_COLS.CREDITO) || '').trim(),
+        listino: parseFloat(g(IA_COLS.LISTINO)) || 0,
+        prezzoMedio: parseFloat(g(IA_COLS.PREZZO_MEDIO)) || 0,
+        storico: String(g(IA_COLS.STORICO) || '').trim(),
+        tipo: String(g(IA_COLS.TIPO) || '').trim()
+    };
+}
+
+function precompilaTuttiCosti() {
+    console.log("💰 Precompilazione COSTO da IA...");
+    let precompilati = 0;
+
+    Object.values(appData.jobGroups).forEach(group => {
+        if (appData.venditore[group.jobId]) return;
+
+        const ia = group.ia;
+        let costoIniziale = 0;
+        let statoIniziale = STATI.DA_RIVEDERE;
+
+        if (ia.fatturabilita === 'NO') {
+            costoIniziale = 0;
+            statoIniziale = STATI.AZZERATO;
+        } else {
+            costoIniziale = ia.prezzoConsigliato || 0;
+            statoIniziale = STATI.CONFERMATO;
+        }
+
+        appData.venditore[group.jobId] = {
+            costo: costoIniziale,
+            note: '',
+            stato: statoIniziale
+        };
+        precompilati++;
+    });
+
+    console.log(`✅ ${precompilati} job precompilati`);
+}
+
 // ============================================
-// FUNZIONI UI
+// 7. UI
 // ============================================
 
 function initUI() {
-    console.log("🖥️ initUI()");
-
+    document.getElementById('upload-overlay').classList.add('hidden');
     document.getElementById('sidebar').classList.remove('hidden');
     document.getElementById('main-content').classList.remove('hidden');
 
     populateSelect('filter-venditore', appData.uniqueVenditori);
-    populateSelect('filter-workperf', appData.uniqueWorkPerf);
     populateSelect('filter-contract', appData.uniqueContracts);
+    populateSelect('filter-workperf', appData.uniqueWorkPerf);
+
+    const indicazioni = new Set();
+    Object.values(appData.jobGroups).forEach(g => {
+        if (g.ia.indicazione) indicazioni.add(g.ia.indicazione);
+    });
+    populateSelect('filter-indicazione', indicazioni);
 
     applyFilters();
 }
@@ -610,14 +651,20 @@ function populateSelect(id, set) {
 }
 
 // ============================================
-// FILTRI E ORDINAMENTO
+// 8. FILTRI
 // ============================================
 
-window.applyFilters = function () {
+function applyFilters() {
     const text = document.getElementById('searchBox').value.toLowerCase();
     const venditore = document.getElementById('filter-venditore').value;
-    const workPerf = document.getElementById('filter-workperf').value;
     const contract = document.getElementById('filter-contract').value;
+    const workPerf = document.getElementById('filter-workperf').value;
+    const confidenza = document.getElementById('filter-confidenza').value;
+    const fatturab = document.getElementById('filter-fatturab').value;
+    const criticita = document.getElementById('filter-criticita').value;
+    const credito = document.getElementById('filter-credito').value;
+    const indicazione = document.getElementById('filter-indicazione').value;
+    const stato = document.getElementById('filter-stato').value;
     const showHistory = document.getElementById('toggle-history').checked;
 
     const dateStartVal = document.getElementById('filter-date-start').value;
@@ -627,19 +674,28 @@ window.applyFilters = function () {
 
     appData.displayList = Object.values(appData.jobGroups).filter(g => {
         const r = g.masterRow;
-
-        if (!showHistory && g.isHistory) return false;
+        const ia = g.ia;
+        const mod = appData.venditore[g.jobId] || {};
 
         if (text) {
-            const matchesJob = g.jobId.toLowerCase().includes(text);
-            const matchesIndirizzo = (r[COLS.INDIRIZZO] || "").toLowerCase().includes(text);
-            const matchesImpianto = (r[COLS.IMPIANTO] || "").toLowerCase().includes(text);
-            if (!matchesJob && !matchesIndirizzo && !matchesImpianto) return false;
+            const matches =
+                g.jobId.toLowerCase().includes(text) ||
+                (r[COLS.INDIRIZZO] || '').toLowerCase().includes(text) ||
+                (r[COLS.IMPIANTO] || '').toLowerCase().includes(text);
+            if (!matches) return false;
         }
 
-        if (venditore !== "ALL" && r[COLS.VENDITORE] !== venditore) return false;
-        if (workPerf !== "ALL" && r[COLS.WORK_PERFORMED] !== workPerf) return false;
-        if (contract !== "ALL" && r[COLS.CONTRATTO] !== contract) return false;
+        if (venditore !== 'ALL' && r[COLS.VENDITORE] !== venditore) return false;
+        if (contract !== 'ALL' && r[COLS.CONTRATTO] !== contract) return false;
+        if (workPerf !== 'ALL' && r[COLS.WORK_PERFORMED] !== workPerf) return false;
+
+        if (confidenza !== 'ALL' && ia.confidenza !== confidenza) return false;
+        if (fatturab !== 'ALL' && ia.fatturabilita !== fatturab) return false;
+        if (criticita !== 'ALL' && ia.criticita !== criticita) return false;
+        if (credito !== 'ALL' && ia.credito !== credito) return false;
+        if (indicazione !== 'ALL' && ia.indicazione !== indicazione) return false;
+
+        if (stato !== 'ALL' && mod.stato !== stato) return false;
 
         if (dateStart || dateEnd) {
             const d = r._jobDate;
@@ -659,13 +715,14 @@ window.applyFilters = function () {
                 if (dataInterventoFine > end) return false;
             }
         }
+
         return true;
     });
 
     applySorting();
-};
+}
 
-window.applySorting = function () {
+function applySorting() {
     const sortMode = document.getElementById('sort-order').value;
 
     appData.displayList.sort((a, b) => {
@@ -674,482 +731,1069 @@ window.applySorting = function () {
 
         if (sortMode === 'date-desc') return (rb._jobDate || 0) - (ra._jobDate || 0);
         if (sortMode === 'date-asc') return (ra._jobDate || 0) - (rb._jobDate || 0);
-        if (sortMode === 'impianto-asc') return (ra[COLS.IMPIANTO] || "").localeCompare(rb[COLS.IMPIANTO] || "");
-        if (sortMode === 'addr-asc') return (ra[COLS.INDIRIZZO] || "").localeCompare(rb[COLS.INDIRIZZO] || "");
+        if (sortMode === 'impianto-asc') return (ra[COLS.IMPIANTO] || '').localeCompare(rb[COLS.IMPIANTO] || '');
+        if (sortMode === 'addr-asc') return (ra[COLS.INDIRIZZO] || '').localeCompare(rb[COLS.INDIRIZZO] || '');
         return 0;
     });
 
     updateHeaderStats();
     renderTable();
-};
+}
+
+function resetFilters() {
+    document.getElementById('searchBox').value = '';
+    document.getElementById('filter-venditore').value = 'ALL';
+    document.getElementById('filter-contract').value = 'ALL';
+    document.getElementById('filter-workperf').value = 'ALL';
+    document.getElementById('filter-date-start').value = '';
+    document.getElementById('filter-date-end').value = '';
+    document.getElementById('filter-confidenza').value = 'ALL';
+    document.getElementById('filter-fatturab').value = 'ALL';
+    document.getElementById('filter-criticita').value = 'ALL';
+    document.getElementById('filter-credito').value = 'ALL';
+    document.getElementById('filter-indicazione').value = 'ALL';
+    document.getElementById('filter-stato').value = 'ALL';
+    document.getElementById('toggle-history').checked = false;
+    applyFilters();
+}
 
 // ============================================
-// RENDERING TABELLA
+// 9. RENDERING TABELLA
 // ============================================
 
+// ── Render completo tabella (batch) ──
 function renderTable() {
     const tbody = document.getElementById('pricing-table-body');
     if (!tbody) return;
-    tbody.innerHTML = "";
+    tbody.innerHTML = '';
 
-    appData.displayList.slice(0, 100).forEach(group => {
-        const tr = document.createElement('tr');
-        const r = group.masterRow;
-
-        const wp = r[COLS.WORK_PERFORMED] || "";
-        let wpClass = "text-slate-500";
-        if (wp.includes("Reperibilità")) wpClass = "wp-reperibilita";
-        else if (wp.includes("Normale")) wpClass = "wp-normale";
-        else if (wp.includes("consuntivo")) wpClass = "wp-consuntivo";
-
-        const isLocked = group.hasMultiple || group.isHistory;
-        const codiceComponente = r[COLS.COMP_CODE];
-        // ✅ LISTINO = prezzo personalizzato (se c'è) altrimenti media
-        const prezzoListino = getPrezzoListino(codiceComponente);
-        const hasListino = !group.isHistory && !isLocked && prezzoListino !== null;
-        const rowClass = hasListino ? 'hover:bg-indigo-50/30 border-l-2 border-indigo-200' : 'hover:bg-white';
-        const inputClass = group.isHistory ? "price-input price-historical" : "price-input";
-
-        let folderIcon = "";
-        if (group.hasMultiple) {
-            folderIcon = `<button onclick="openDetails('${group.jobId}')" class="text-blue-600 hover:bg-blue-50 p-1 rounded font-bold transition" title="Modifica Multipla">📂</button>`;
-        }
-
-        tr.className = rowClass + " border-b border-slate-200 transition-colors";
-
-        let prezzoCellContent = '';
-
-        if (!group.isHistory) {
-            prezzoCellContent = '<div class="flex items-center gap-1 justify-end">';
-            prezzoCellContent += `
-                <button onclick="setZeroPrice('${group.jobId}')" 
-                    class="hover:bg-slate-100 px-2 py-1.5 rounded border border-transparent hover:border-slate-300 transition text-sm font-bold ${hasListino ? '' : 'rounded-l-md'}"
-                    title="Azzera Prezzo">0️⃣</button>
-            `;
-
-            if (hasListino) {
-                const differenza = Math.abs(group.totalPrice - prezzoListino);
-                const giaApplicato = differenza < 0.01;
-                prezzoCellContent += `
-                    <button onclick="applicaPrezzoListino('${group.jobId}', ${prezzoListino})" 
-                        class="flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2 py-1.5 rounded-l-md border border-indigo-200 transition text-xs font-medium"
-                        title="💡 Prezzo listino (personalizzato o media): € ${prezzoListino}">
-                        <span class="text-sm">💡</span>
-                        <span class="font-mono font-bold">${prezzoListino}€</span>
-                        ${!giaApplicato ? '<span class="ml-1 w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>' : ''}
-                    </button>
-                `;
-            }
-
-            prezzoCellContent += `
-                <input type="number" 
-                    class="${inputClass} ${hasListino ? 'rounded-r-md rounded-l-none border-l-0' : 'rounded-md'}" 
-                    value="${group.totalPrice.toFixed(2)}"
-                    onchange="updateSingleJobPrice('${group.jobId}', this.value)"
-                    step="0.01"
-                    style="min-width: 90px; width: auto; max-width: 110px;">
-            `;
-            prezzoCellContent += '</div>';
-        } else {
-            prezzoCellContent = `
-                <div class="flex items-center gap-1 justify-end">
-                    <input type="number" class="${inputClass} rounded-md" value="${group.totalPrice.toFixed(2)}" disabled step="0.01" style="min-width: 90px;">
-                </div>
-            `;
-        }
-
-        tr.innerHTML = `
-            <td class="px-4 py-3 align-top">
-                <div class="font-bold text-slate-800 text-xs">${group.jobId}</div>
-                <div class="text-[11px] text-slate-500 mt-1 uppercase font-mono tracking-tight">${formatDateItalian(r._jobDate)}</div>
-            </td>
-            <td class="px-4 py-3 align-top">
-                <button onclick="cercaPerImpianto('${r[COLS.IMPIANTO]}')" 
-                    class="text-xs font-mono bg-slate-100 hover:bg-indigo-100 px-2 py-1 rounded w-fit text-slate-600 hover:text-indigo-700 border border-slate-200 hover:border-indigo-300 transition-all cursor-pointer">
-                    ${r[COLS.IMPIANTO]}
-                </button>
-            </td>
-            <td class="px-4 py-3 align-top">
-                <div class="text-sm font-extrabold text-slate-900 leading-tight tracking-tight">${r[COLS.INDIRIZZO]}</div>
-                <div class="text-[11px] text-slate-400 mt-1 flex items-center gap-1"><span class="text-xs">👤</span> ${r[COLS.VENDITORE] || "N.D."}</div>
-            </td>
-            <td class="px-4 py-3 align-top">
-                <span class="text-[10px] font-bold text-slate-500 bg-slate-50 border px-1 rounded uppercase tracking-tighter">${r[COLS.CONTRATTO]}</span>
-            </td>
-            <td class="px-4 py-3 align-top">
-                <div class="text-xs ${wpClass} uppercase tracking-wide font-bold mb-1">${wp}</div>
-                <div class="text-sm font-medium text-slate-700 leading-tight mb-1" title="${r[COLS.COMPONENTE]}">${r[COLS.COMPONENTE] || 'N/D'}</div>
-                ${codiceComponente ? `<div class="inline-block bg-indigo-100 text-indigo-800 font-mono font-bold text-sm px-2 py-0.5 rounded-md border border-indigo-200 mt-1">${codiceComponente}</div>` : ''}
-            </td>
-            <td class="px-4 py-3 align-top text-center">
-                <span class="text-xs font-mono font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">${group.totalMin}'</span>
-            </td>
-            <td class="px-4 py-3 align-top text-center">
-                <div class="flex justify-center items-center gap-2">
-                    <button onclick="openInfo('${group.jobId}')" class="text-slate-400 hover:text-blue-600 text-base transition transform hover:scale-110" title="Scheda Tecnica">ℹ️</button>
-                    <div class="relative group">
-                        <button class="text-slate-400 hover:text-amber-500 text-base transition transform hover:scale-110" 
-                                onmouseenter="mostraStatisticheCodice('${codiceComponente}', this)" title="Statistiche prezzo">📣</button>
-                        <div id="tooltip-${codiceComponente?.replace(/\s/g, '')}" class="hidden absolute bottom-full right-0 mb-2 w-64 bg-white rounded-lg shadow-xl border border-slate-200 p-3 text-left z-50 text-xs">Caricamento...</div>
-                    </div>
-                    ${folderIcon}
-                    <button onclick="esportaJobPDF('${group.jobId}')" class="text-slate-400 hover:text-red-500 text-base transition transform hover:scale-110" title="Esporta PDF">📄</button>
-                </div>
-            </td>
-            <td class="px-4 py-3 align-top text-right">${prezzoCellContent}</td>
-        `;
-
-        tbody.appendChild(tr);
-
-        // Riga anteprima impianto
-        const stats = getImpiantoStats(r[COLS.IMPIANTO]);
-        const trAnteprima = document.createElement('tr');
-        trAnteprima.className = "bg-indigo-50/30 text-[10px] border-b border-indigo-200";
-        trAnteprima.innerHTML = `
-            <td colspan="8" class="px-4 py-2">
-                <div class="flex items-center justify-between text-slate-600">
-                    <div class="flex items-center gap-2"><span class="text-indigo-400">└</span><span class="font-medium">Impianto ${r[COLS.IMPIANTO]}</span></div>
-                    <div class="flex items-center gap-4">
-                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-400"></span>Spesa storica: <span class="font-bold text-emerald-600">€ ${stats.spesaStorica}</span></span>
-                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-blue-400"></span>Ticket medio: <span class="font-bold text-blue-600">€ ${stats.ticketMedio}</span></span>
-                        <span class="text-slate-400 text-[9px]">(${stats.totaleInterventi} int.)</span>
-                    </div>
-                </div>
-            </td>
-        `;
-        tbody.appendChild(trAnteprima);
-    });
-}
-
-// ============================================
-// STATISTICHE IMPIANTO
-// ============================================
-
-function getImpiantoStats(impianto) {
-    if (!impianto) return {
-        totaleInterventi: 0,
-        spesaStorica: "0.00",
-        ticketMedio: "0.00"
-    };
-
-    // Usa una Map per tenere traccia dei job unici e del loro costo TOTALE
-    const jobMap = new Map(); // key: jobId, value: { costo: number, componenti: number }
-
-    // 1. PROCESSO STORICO (se presente)
-    if (window.storicoInterventi?.interventi) {
-        window.storicoInterventi.interventi.forEach(row => {
-            const rowImpianto = row[COLS.IMPIANTO] || row['Impiantodiriferimento (Job) (Job)'];
-            if (rowImpianto === impianto) {
-                const jobId = row[COLS.JOB_ID] || row['Job'];
-                const costo = parseFloat(row['COSTO']) || 0;
-                
-                if (!jobMap.has(jobId)) {
-                    // Primo componente di questo job
-                    jobMap.set(jobId, {
-                        costo: costo,
-                        componenti: 1,
-                        isHistory: true
-                    });
-                } else {
-                    // Altro componente dello stesso job
-                    const existing = jobMap.get(jobId);
-                    // NOTA: Il costo nello storico è tipicamente il costo TOTALE del job
-                    // in ogni riga, quindi NON lo sommiamo di nuovo
-                    existing.componenti++;
-                    jobMap.set(jobId, existing);
-                }
-            }
-        });
-    }
-
-    // 2. PROCESSO CORRENTE (appData.jobGroups)
-    // Per i job correnti, il costo è quello totale del gruppo
-    if (appData.jobGroups) {
-        Object.values(appData.jobGroups).forEach(group => {
-            if (group.masterRow && group.masterRow[COLS.IMPIANTO] === impianto) {
-                const jobId = group.jobId;
-                // Per i job correnti, prendiamo il prezzo suggerito o quello originale
-                const costo = group.isHistory 
-                    ? (group.masterRow._costo || 0)
-                    : (group.totalPrice || 0);
-                
-                if (!jobMap.has(jobId)) {
-                    jobMap.set(jobId, {
-                        costo: costo,
-                        componenti: group.rows.length,
-                        isHistory: group.isHistory
-                    });
-                }
-            }
-        });
-    }
-
-    // 3. CALCOLA STATISTICHE
-    let totaleInterventi = 0;
-    let spesaStorica = 0;
-
-    jobMap.forEach((value, jobId) => {
-        totaleInterventi++;
-        // Solo i job storici contribuiscono alla spesa storica
-        if (value.isHistory && value.costo > 0) {
-            spesaStorica += value.costo;
-        }
-    });
-
-    const ticketMedio = totaleInterventi > 0 
-        ? (spesaStorica / totaleInterventi).toFixed(2) 
-        : "0.00";
-
-    console.log(`📊 Stats impianto ${impianto}: ${totaleInterventi} job unici, spesa ${spesaStorica.toFixed(2)}, ticket medio ${ticketMedio}`);
-
-    return {
-        totaleInterventi: totaleInterventi,
-        spesaStorica: spesaStorica.toFixed(2),
-        ticketMedio: ticketMedio
-    };
-}
-
-// ============================================
-// FUNZIONI DI SUPPORTO
-// ============================================
-
-window.cercaPerImpianto = function (codiceImpianto) {
-    if (!codiceImpianto) return;
-    document.getElementById('searchBox').value = codiceImpianto;
-    applyFilters();
-    salvaRicercaCorrente();
-};
-
-window.setZeroPrice = function (jid) {
-    const group = appData.jobGroups[jid];
-    if (!group) return;
-    group.rows.forEach(r => { r._suggestedPrice = 0; r._logic = "Azzerato Manuale"; });
-    group.totalPrice = 0;
-    updateHeaderStats();
-    window.calculateAnalytics?.();
-    saveState();
-    renderTable();
-};
-
-window.updateSingleJobPrice = function (jid, val) {
-    const group = appData.jobGroups[jid];
-    if (group && !group.hasMultiple) {
-        group.masterRow._suggestedPrice = parseFloat(val);
-        group.totalPrice = parseFloat(val);
-        updateHeaderStats();
-        window.calculateAnalytics?.();
-        saveState();
-    }
-};
-
-window.updateTaskPrice = function (jid, idx, val) {
-    const group = appData.jobGroups[jid];
-    if (group) {
-        group.rows[idx]._suggestedPrice = parseFloat(val);
-        group.totalPrice = group.rows.reduce((sum, r) => sum + (r._suggestedPrice || 0), 0);
-        updateHeaderStats();
-        window.calculateAnalytics?.();
-        saveState();
-    }
-};
-
-window.massAdjust = function (factor) {
+    // DocumentFragment per inserimento batch (più veloce)
+    const fragment = document.createDocumentFragment();
+    
     appData.displayList.forEach(group => {
-        if (group.isHistory) return;
-        group.rows.forEach(row => { row._suggestedPrice = (row._suggestedPrice || 0) * factor; });
-        group.totalPrice = group.rows.reduce((sum, r) => sum + (r._suggestedPrice || 0), 0);
+        const tr = buildRow(group);
+        fragment.appendChild(tr);
     });
-    renderTable();
-    updateHeaderStats();
-    window.calculateAnalytics?.();
-    saveState();
-};
-
-window.applicaPrezzoListino = function (jid, prezzo) {
-    const group = appData.jobGroups[jid];
-    if (!group || group.isHistory) return;
-    group.totalPrice = prezzo;
-    group.rows.forEach(row => { row._suggestedPrice = prezzo / group.rows.length; });
-    updateHeaderStats();
-    window.calculateAnalytics?.();
-    saveState();
-    renderTable();
-};
-
-// ============================================
-// GESTIONE STATO E PERSISTENZA
-// ============================================
-
-function saveState() {
-    if (!appData.fileName) return;
-    const state = {};
-    appData.rawRows.forEach((row, idx) => {
-        if (!row._isHistory && row._suggestedPrice !== undefined) {
-            state[row[COLS.JOB_ID] + "_" + idx] = row._suggestedPrice;
-        }
-    });
-    const fullState = { prices: state, listino: listinoPrezzi, timestamp: new Date().toISOString() };
-    localStorage.setItem("SP_FULL_STATE_" + appData.fileName, JSON.stringify(fullState));
+    
+    tbody.appendChild(fragment);
 }
 
-function loadState(fileName) {
-    const saved = localStorage.getItem("SP_FULL_STATE_" + fileName);
-    if (!saved) return null;
-    try {
-        const fullState = JSON.parse(saved);
-        if (fullState.listino) {
-            listinoPrezzi = fullState.listino;
-            salvaListino();
-        }
-        return fullState.prices || null;
-    } catch (e) {
-        return null;
+// ── Costruisci una singola riga ──
+function buildRow(group) {
+    const tr = document.createElement('tr');
+    tr.id = `row-${group.jobId}`;
+    
+    const r = group.masterRow;
+    const ia = group.ia;
+    const mod = appData.venditore[group.jobId] || { costo: 0, note: '', stato: STATI.DA_RIVEDERE };
+
+    const wp = r[COLS.WORK_PERFORMED] || '';
+    let wpClass = 'text-slate-500';
+    if (wp.includes('Reperibilità')) wpClass = 'wp-reperibilita';
+    else if (wp.includes('Normale')) wpClass = 'wp-normale';
+    else if (wp.includes('consuntivo')) wpClass = 'wp-consuntivo';
+
+    let rowClass = 'hover:bg-slate-50';
+    if (ia.fatturabilita === 'NO') rowClass = 'row-critical';
+    else if (ia.confidenza === 'BASSA' || ia.fatturabilita === 'DA VERIFICARE') rowClass = 'row-warning';
+
+    const isModified = mod.stato === STATI.MODIFICATO;
+    const isAzzerato = mod.stato === STATI.AZZERATO;
+    const inputClass = isModified ? 'modified' : (isAzzerato ? 'azzera' : '');
+
+    tr.className = `${rowClass} border-b border-slate-200 transition-colors`;
+
+    tr.innerHTML = `
+        <td class="px-2 py-2 align-top">
+            <div class="font-bold text-slate-800 text-xs">${group.jobId}</div>
+            <div class="text-[10px] text-slate-500 mt-0.5 font-mono">${formatDateItalian(r._jobDate)}</div>
+        </td>
+        <td class="px-2 py-2 align-top">
+            <button onclick="cercaPerImpianto('${r[COLS.IMPIANTO]}')" class="text-[10px] font-mono bg-slate-100 hover:bg-indigo-100 px-1.5 py-0.5 rounded text-slate-600 hover:text-indigo-700 border border-slate-200 transition-all truncate max-w-full">
+                ${r[COLS.IMPIANTO]}
+            </button>
+        </td>
+        <td class="px-2 py-2 align-top">
+            <div class="text-xs font-bold text-slate-900 leading-tight truncate" title="${r[COLS.INDIRIZZO]}">${r[COLS.INDIRIZZO]}</div>
+            <div class="text-[10px] text-slate-400 mt-0.5 truncate">👤 ${r[COLS.VENDITORE] || 'N.D.'}</div>
+        </td>
+        <td class="px-2 py-2 align-top">
+            <span class="text-[9px] font-bold text-slate-500 bg-slate-50 border px-1 rounded uppercase truncate inline-block max-w-full">${r[COLS.CONTRATTO]}</span>
+        </td>
+        <td class="px-2 py-2 align-top">
+            <div class="text-[10px] ${wpClass} uppercase font-bold mb-0.5 truncate">${wp}</div>
+            <div class="text-xs font-medium text-slate-700 leading-tight truncate" title="${r[COLS.COMPONENTE]}">${r[COLS.COMPONENTE] || 'N/D'}</div>
+            ${r[COLS.COMP_CODE] ? `<div class="inline-block bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px] px-1.5 py-0.5 rounded border border-indigo-200 mt-0.5">${r[COLS.COMP_CODE]}</div>` : ''}
+        </td>
+        <td class="px-2 py-2 align-top text-right">
+            ${renderIACell(ia)}
+        </td>
+        <td class="px-2 py-2 align-top text-center">
+            <span class="text-[10px] font-mono font-bold text-slate-600 bg-slate-100 px-1 py-0.5 rounded">${group.totalMin}'</span>
+        </td>
+        <td class="px-2 py-2 align-top text-center">
+            <div class="flex justify-center items-center gap-0.5">
+                <button onclick="openInfo('${group.jobId}')" class="text-slate-400 hover:text-blue-600 text-sm p-0.5" title="Scheda Tecnica">ℹ️</button>
+                ${group.rows.length > 1 ? `<button onclick="openDetails('${group.jobId}')" class="text-blue-600 hover:bg-blue-50 p-0.5 rounded text-sm" title="Multi-task">📂</button>` : ''}
+                <button onclick="esportaJobPDF('${group.jobId}')" class="text-slate-400 hover:text-red-500 text-sm p-0.5" title="Esporta PDF">📄</button>
+            </div>
+        </td>
+        <td class="px-2 py-2 align-top text-right">
+            <div class="flex items-center gap-0.5 justify-end">
+                <button onclick="azzeraCosto('${group.jobId}')" 
+                    class="text-slate-400 hover:text-red-600 hover:bg-red-50 px-1 py-0.5 rounded transition text-xs font-bold flex-shrink-0"
+                    title="Azzera prezzo">0️⃣</button>
+                <input type="number"
+                    class="price-input ${inputClass}"
+                    value="${mod.costo}"
+                    onchange="salvaCosto('${group.jobId}', this.value)"
+                    step="0.01"
+                    min="0">
+            </div>
+        </td>
+        <td class="px-2 py-2 align-top">
+            <textarea class="note-input" rows="2" placeholder="Note..." onchange="salvaNota('${group.jobId}', this.value)">${mod.note || ''}</textarea>
+        </td>
+    `;
+
+    return tr;
+}
+
+// ── Aggiorna solo la riga di un job (incrementale) ──
+function aggiornaRiga(jobId) {
+    const group = appData.jobGroups[jobId];
+    if (!group) return;
+    
+    const oldRow = document.getElementById(`row-${jobId}`);
+    if (!oldRow) return;
+    
+    // Verifica se la riga è ancora visibile (potrebbe essere stata filtrata fuori)
+    const stillVisible = appData.displayList.some(g => g.jobId === jobId);
+    
+    if (!stillVisible) {
+        oldRow.remove();
+        return;
     }
+    
+    const newRow = buildRow(group);
+    oldRow.replaceWith(newRow);
 }
 
-window.downloadSession = function () {
-    const state = {};
-    appData.rawRows.forEach((row, idx) => {
-        if (!row._isHistory && row._suggestedPrice !== undefined) {
-            state[row[COLS.JOB_ID] + "_" + idx] = row._suggestedPrice;
-        }
-    });
-    const sessionData = {
-        fileName: appData.fileName,
-        timestamp: new Date().toISOString(),
-        prices: state,
-        listino: listinoPrezzi
+function renderIACell(ia) {
+    const badge = badgeConfidenza(ia.confidenza);
+    const fatturBadge = badgeFatturabilita(ia.fatturabilita);
+
+    return `
+        <div class="ia-cell">
+            <span class="ia-price">${formatEuro(ia.prezzoConsigliato)}</span>
+            <div class="flex gap-0.5 justify-end flex-wrap">
+                ${fatturBadge}
+                ${badge}
+            </div>
+        </div>
+    `;
+}
+
+function badgeConfidenza(conf) {
+    const map = { 'ALTA': 'badge-green', 'MEDIA': 'badge-yellow', 'BASSA': 'badge-red' };
+    const cls = map[conf] || 'badge-gray';
+    return `<span class="badge ${cls}">${conf || '—'}</span>`;
+}
+
+function badgeFatturabilita(f) {
+    const map = { 'SÌ': 'badge-green', 'SI': 'badge-green', 'NO': 'badge-red', 'DA VERIFICARE': 'badge-orange' };
+    const cls = map[f] || 'badge-gray';
+    return `<span class="badge ${cls}">${f || '—'}</span>`;
+}
+
+// ============================================
+// 10. EDITING
+// ============================================
+
+function salvaCosto(jobId, valore) {
+    const v = parseFloat(valore) || 0;
+    const group = appData.jobGroups[jobId];
+    if (!group) return;
+
+    const prev = appData.venditore[jobId] || { costo: 0, note: '', stato: STATI.DA_RIVEDERE };
+    const costoIA = group.ia.prezzoConsigliato;
+
+    let nuovoStato;
+    if (v === 0 && costoIA > 0) nuovoStato = STATI.AZZERATO;
+    else if (v === costoIA) nuovoStato = STATI.CONFERMATO;
+    else nuovoStato = STATI.MODIFICATO;
+
+    appData.venditore[jobId] = {
+        ...prev,
+        costo: v,
+        stato: nuovoStato
     };
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(sessionData));
-    const link = document.createElement('a');
-    link.href = dataStr;
-    link.download = "sessione_sbolla_" + new Date().toISOString().slice(0, 10) + ".json";
-    link.click();
-};
 
-window.loadSessionFile = function (input) {
-    const file = input.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = function (e) {
-        try {
-            const sessionData = JSON.parse(e.target.result);
-            if (sessionData.fileName !== appData.fileName) {
-                if (!confirm(`File diverso: ${sessionData.fileName}. Continuare?`)) return;
-            }
-            const savedPrices = sessionData.prices || {};
-            let restoredCount = 0;
-            appData.rawRows.forEach((row, index) => {
-                const key = row[COLS.JOB_ID] + "_" + index;
-                if (!row._isHistory && savedPrices[key]) {
-                    row._suggestedPrice = savedPrices[key];
-                    row._logic = "Recuperato JSON";
-                    restoredCount++;
-                }
-            });
-            if (sessionData.listino) {
-                listinoPrezzi = sessionData.listino;
-                salvaListino();
-            }
-            Object.values(appData.jobGroups).forEach(g => {
-                g.totalPrice = g.rows.reduce((sum, r) => sum + (r._suggestedPrice || 0), 0);
-            });
-            saveState();
-            applyFilters();
-            window.calculateAnalytics?.();
-            renderTable();
-            alert(`Sessione caricata! ${restoredCount} prezzi ripristinati.`);
-        } catch (err) {
-            alert("Errore nel caricamento");
-        }
+    saveState();
+    updateHeaderStats();
+    aggiornaRiga(jobId); // ✅ incrementale
+}
+
+function salvaNota(jobId, testo) {
+    const prev = appData.venditore[jobId] || { costo: 0, note: '', stato: STATI.DA_RIVEDERE };
+    appData.venditore[jobId] = {
+        ...prev,
+        note: String(testo || '').trim()
     };
-    reader.readAsText(file);
-    input.value = '';
-};
+    saveState();
+    // Non serve aggiornare la riga: il textarea ha già il valore
+}
 
-// ============================================
-// EXPORT EXCEL
-// ============================================
+function azzeraCosto(jobId) {
+    const group = appData.jobGroups[jobId];
+    if (!group) return;
 
-window.exportExcel = function () {
-    const exportData = appData.rawRows.map(row => {
-        if (row._isHistory) return row;
-        return { ...row, "COSTO": (row._suggestedPrice || 0).toFixed(2), "NOTE_SMART_PRICING": `Logic: ${row._logic}` };
+    const prev = appData.venditore[jobId] || { costo: 0, note: '', stato: STATI.DA_RIVEDERE };
+    appData.venditore[jobId] = {
+        ...prev,
+        costo: 0,
+        stato: STATI.AZZERATO
+    };
+    saveState();
+    updateHeaderStats();
+    aggiornaRiga(jobId); // ✅ incrementale
+}
+function confermaTutti() {
+    const daConfermare = Object.values(appData.jobGroups).filter(g => {
+        const mod = appData.venditore[g.jobId];
+        return mod && mod.stato === STATI.DA_RIVEDERE;
     });
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Export_Prezzato");
-    XLSX.writeFile(wb, "Master_Prezzato.xlsx");
-};
 
-window.exportFiltered = function () {
-    let filteredRows = [];
-    appData.displayList.forEach(group => filteredRows.push(...group.rows));
-    if (filteredRows.length === 0) { alert("Nessun dato"); return; }
-    const exportData = filteredRows.map(row => {
-        if (row._isHistory) return row;
-        return { ...row, "COSTO": (row._suggestedPrice || 0).toFixed(2), "NOTE_SMART_PRICING": `Logic: ${row._logic}` };
+    if (daConfermare.length === 0) {
+        alert('Nessun job da confermare.\n\nTutti i job sono già stati confermati o modificati.');
+        return;
+    }
+
+    if (!confirm(`Confermare ${daConfermare.length} job con il prezzo IA?\n\nI prezzi già modificati verranno preservati.`)) return;
+
+    daConfermare.forEach(g => {
+        appData.venditore[g.jobId] = {
+            costo: g.ia.prezzoConsigliato,
+            note: appData.venditore[g.jobId]?.note || '',
+            stato: STATI.CONFERMATO
+        };
     });
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Vista_Filtrata");
-    XLSX.writeFile(wb, `Sbolla_Filtro_${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.xlsx`);
-};
+
+    saveState();
+    updateHeaderStats();
+    renderTable();
+    mostraNotifica(`✅ ${daConfermare.length} job confermati`, 'success');
+}
 
 // ============================================
-// HEADER STATS
+// 11. HEADER STATS
 // ============================================
 
 function updateHeaderStats() {
-    const total = appData.displayList.filter(g => !g.isHistory).reduce((sum, g) => sum + (g.totalPrice || 0), 0);
-    document.getElementById('header-total').innerText = "€ " + total.toLocaleString('it-IT', { maximumFractionDigits: 0 });
-    document.getElementById('row-count').innerText = appData.displayList.length.toLocaleString();
-}
+    let totIA = 0;
+    let totVend = 0;
 
-// ============================================
-// STORICO RICERCHE
-// ============================================
+    appData.displayList.forEach(g => {
+        totIA += g.ia.prezzoConsigliato || 0;
+        const mod = appData.venditore[g.jobId];
+        totVend += mod?.costo || 0;
+    });
 
-function caricaStoricoRicerche() {
-    const saved = localStorage.getItem("SP_STORICO_RICERCHE");
-    if (saved) { try { storicoRicerche = JSON.parse(saved); } catch (e) { storicoRicerche = []; } }
-}
+    const delta = totVend - totIA;
+    document.getElementById('header-total-ia').textContent = formatEuro(totIA);
+    document.getElementById('header-total-vend').textContent = formatEuro(totVend);
 
-function salvaStoricoRicerche() {
-    localStorage.setItem("SP_STORICO_RICERCHE", JSON.stringify(storicoRicerche));
-}
-
-function generaNomeRicerca(filtri) {
-    const parti = [];
-    if (filtri.testo) parti.push(`"${filtri.testo}"`);
-    if (filtri.venditore && filtri.venditore !== "ALL") parti.push(filtri.venditore);
-    if (filtri.contratto && filtri.contratto !== "ALL") parti.push(filtri.contratto);
-    if (filtri.tipo && filtri.tipo !== "ALL") parti.push(filtri.tipo);
-    if (filtri.dataInizio || filtri.dataFine) {
-        const inizio = filtri.dataInizio ? filtri.dataInizio.split('-').reverse().join('/') : '...';
-        const fine = filtri.dataFine ? filtri.dataFine.split('-').reverse().join('/') : '...';
-        parti.push(`${inizio}→${fine}`);
+    const deltaEl = document.getElementById('header-total-delta');
+    if (delta === 0) {
+        deltaEl.textContent = '';
+    } else {
+        const sign = delta > 0 ? '+' : '';
+        deltaEl.textContent = `(${sign}${formatEuro(delta)})`;
+        deltaEl.className = delta > 0 ? 'text-[10px] text-red-400 ml-1' : 'text-[10px] text-emerald-400 ml-1';
     }
-    if (!filtri.mostraStorico) parti.push("no storico");
-    return parti.length > 0 ? parti.join(" · ") : "Tutti gli interventi";
+
+    document.getElementById('row-count').innerText = appData.displayList.length;
 }
 
-window.salvaRicercaCorrente = function () {
+// ============================================
+// 12. SCHEDA TECNICA
+// ============================================
+
+function openInfo(jobId) {
+    const group = appData.jobGroups[jobId];
+    if (!group) return;
+
+    const modal = document.getElementById('info-modal');
+    modal.dataset.currentJobId = jobId;
+
+    const r = group.masterRow;
+    const ia = group.ia;
+    const mod = appData.venditore[jobId] || { costo: ia.prezzoConsigliato, note: '', stato: STATI.DA_RIVEDERE };
+
+    const html = `
+        ${renderSezioneIA(ia)}
+        ${renderSezioneIntervento(group)}
+        ${renderSezioneTimeline(r[COLS.IMPIANTO])}
+        ${group.rows.length > 1 ? renderSezioneComponenti(group) : ''}
+        ${renderSezioneDecisione(jobId, mod, ia)}
+    `;
+
+    document.getElementById('info-modal-content').innerHTML = html;
+    modal.classList.remove('hidden');
+
+    setTimeout(() => {
+        const inputCosto = document.getElementById('info-costo-input');
+        if (inputCosto) {
+           inputCosto.addEventListener('change', (e) => {
+    salvaCosto(jobId, e.target.value);
+    // ✅ NON ricaricare la scheda: l'input è già aggiornato
+    // Aggiorna solo il badge di stato
+    const badgeContainer = document.querySelector('#info-modal .bg-blue-100');
+    if (badgeContainer) {
+        const mod = appData.venditore[jobId];
+        const newBadge = {
+            [STATI.CONFERMATO]: '<span class="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-1 rounded uppercase">✅ Confermato (IA)</span>',
+            [STATI.MODIFICATO]: '<span class="bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-1 rounded uppercase">✏️ Modificato</span>',
+            [STATI.AZZERATO]: '<span class="bg-red-100 text-red-700 text-[10px] font-bold px-2 py-1 rounded uppercase">0️⃣ Azzerato</span>',
+            [STATI.DA_RIVEDERE]: '<span class="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-1 rounded uppercase">⏳ Da rivedere</span>'
+        };
+        // Trova e sostituisci il badge esistente
+        const existingBadge = badgeContainer.querySelector('span:last-child');
+        if (existingBadge && newBadge[mod.stato]) {
+            existingBadge.outerHTML = newBadge[mod.stato];
+        }
+    }
+});
+        }
+        const inputNote = document.getElementById('info-note-input');
+        if (inputNote) {
+            inputNote.addEventListener('change', (e) => {
+                salvaNota(jobId, e.target.value);
+            });
+        }
+    }, 10);
+}
+
+function renderSezioneIA(ia) {
+    if (!ia) return '';
+
+    const colori = {
+        'ALTA': { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700' },
+        'MEDIA': { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700' },
+        'BASSA': { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700' }
+    };
+    const cConf = colori[ia.confidenza] || { bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-700' };
+
+    const coloriFatt = {
+        'SÌ': { bg: 'bg-emerald-100', text: 'text-emerald-800' },
+        'SI': { bg: 'bg-emerald-100', text: 'text-emerald-800' },
+        'NO': { bg: 'bg-red-100', text: 'text-red-800' },
+        'DA VERIFICARE': { bg: 'bg-orange-100', text: 'text-orange-800' }
+    };
+    const cFatt = coloriFatt[ia.fatturabilita] || { bg: 'bg-slate-100', text: 'text-slate-600' };
+
+    const coloriCrit = { 'ALTO': 'text-red-600', 'MEDIO': 'text-amber-600', 'BASSO': 'text-emerald-600' };
+
+    return `
+        <div class="border-2 ${cConf.border} rounded-xl overflow-hidden">
+            <div class="${cConf.bg} px-5 py-3 border-b ${cConf.border} flex justify-between items-center">
+                <h3 class="font-bold ${cConf.text} flex items-center gap-2 text-base">🤖 Consiglio IA</h3>
+                <div class="flex gap-2 items-center">
+                    <span class="text-[10px] font-bold ${cFatt.bg} ${cFatt.text} px-2 py-1 rounded uppercase tracking-wide">${ia.fatturabilita || '—'}</span>
+                    <span class="text-[10px] font-bold ${cFatt.bg} ${cFatt.text} px-2 py-1 rounded uppercase tracking-wide">Conf: ${ia.confidenza || '—'}</span>
+                </div>
+            </div>
+            <div class="p-5 bg-white">
+                <div class="flex items-baseline gap-3 mb-4 pb-4 border-b border-slate-100">
+                    <div class="text-xs font-bold text-slate-400 uppercase">Prezzo suggerito</div>
+                    <div class="text-3xl font-bold font-mono text-blue-700">${formatEuro(ia.prezzoConsigliato)}</div>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-400 uppercase mb-1">Criticità Impianto</div>
+                        <div class="text-lg font-bold ${coloriCrit[ia.criticita] || 'text-slate-600'}">${ia.criticita || '—'}</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-400 uppercase mb-1">Credito Commerciale</div>
+                        <div class="text-lg font-bold text-slate-700">${ia.credito || '—'}</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-400 uppercase mb-1">Analoghi utilizzati</div>
+                        <div class="text-lg font-bold font-mono text-slate-700">${ia.analoghi}</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-400 uppercase mb-1">Intervallo Storico</div>
+                        <div class="text-lg font-bold font-mono text-slate-700">${ia.intervallo || '—'}</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 rounded-lg p-3 mb-4 border border-slate-100">
+                    <div class="text-[10px] font-bold text-slate-400 uppercase mb-1">Indicazione Commerciale</div>
+                    <div class="text-sm font-bold text-slate-700">${ia.indicazione || '—'}</div>
+                </div>
+
+                ${ia.motivazione ? `
+                    <div class="bg-blue-50 rounded-lg p-4 border-l-4 border-blue-400">
+                        <div class="text-[10px] font-bold text-blue-600 uppercase mb-2">📝 Motivazione</div>
+                        <div class="text-sm text-slate-700 italic leading-relaxed">"${ia.motivazione}"</div>
+                    </div>
+                ` : ''}
+            </div>
+        </div>
+    `;
+}
+
+function renderSezioneIntervento(group) {
+    const r = group.masterRow;
+    const wp = r[COLS.WORK_PERFORMED] || '';
+    let wpColor = 'text-slate-600';
+    if (wp.includes('Reperibilità')) wpColor = 'text-red-600';
+    else if (wp.includes('Normale')) wpColor = 'text-emerald-600';
+    else if (wp.includes('consuntivo')) wpColor = 'text-blue-600';
+
+    return `
+        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div class="px-5 py-3 bg-slate-50 border-b border-slate-200">
+                <h3 class="font-bold text-slate-700 flex items-center gap-2">
+                    📋 Dettaglio Intervento
+                    <span class="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full font-mono">${group.jobId}</span>
+                </h3>
+            </div>
+            <div class="p-5">
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-400 uppercase mb-1">Data Intervento</div>
+                        <div class="text-sm font-semibold text-slate-700 font-mono">${formatDateItalian(r._jobDate)}</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-400 uppercase mb-1">Contratto</div>
+                        <div class="text-sm font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded inline-block">${r[COLS.CONTRATTO] || '—'}</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-400 uppercase mb-1">Tipo Lavoro</div>
+                        <div class="text-sm font-bold ${wpColor}">${wp || '—'}</div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-400 uppercase mb-1">Impianto</div>
+                        <div class="text-sm font-bold text-slate-700">${r[COLS.IMPIANTO] || '—'}</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-400 uppercase mb-1">Indirizzo</div>
+                        <div class="text-sm font-bold text-slate-700">${r[COLS.INDIRIZZO] || '—'}</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-400 uppercase mb-1">Cliente</div>
+                        <div class="text-sm text-slate-700">${r[COLS.CLIENTE] || '—'}</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-400 uppercase mb-1">Amministratore</div>
+                        <div class="text-sm text-slate-700">${r[COLS.AMMINISTRATORE] || '—'}</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-400 uppercase mb-1">Venditore</div>
+                        <div class="text-sm text-slate-700">${r[COLS.VENDITORE] || '—'}</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-400 uppercase mb-1">Tecnico</div>
+                        <div class="text-sm text-slate-700">${r[COLS.TECNICO] || '—'}</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 rounded-lg p-4 border border-slate-100">
+                    <div class="text-[10px] font-bold text-slate-400 uppercase mb-2">🔧 Componente</div>
+                    <div class="text-sm font-bold text-slate-800 mb-1">${r[COLS.COMPONENTE] || 'N/D'}</div>
+                    <div class="text-xs text-slate-500 mb-2">${r[COLS.CATEGORIA] || ''}</div>
+                    ${r[COLS.COMP_CODE] ? `<div class="inline-block bg-indigo-100 text-indigo-800 font-mono font-bold text-xs px-2 py-0.5 rounded">${r[COLS.COMP_CODE]}</div>` : ''}
+                    <span class="ml-2 text-xs text-slate-500">Qtà: <strong>${r[COLS.QUANTITA] || 1}</strong></span>
+                    <span class="ml-3 text-xs text-slate-500">Durata: <strong>${group.totalMin}'</strong></span>
+                </div>
+
+                ${r[COLS.DESCRIZIONE] ? `
+                    <div class="mt-4">
+                        <div class="text-[10px] font-bold text-slate-400 uppercase mb-2">📝 Task Description</div>
+                        <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-slate-700 leading-relaxed">
+                            ${r[COLS.DESCRIZIONE]}
+                        </div>
+                    </div>
+                ` : ''}
+            </div>
+        </div>
+    `;
+}
+
+function renderSezioneTimeline(impianto) {
+    if (!impianto) {
+        return `<div class="bg-white rounded-xl border border-slate-200 p-5 text-center text-slate-400 text-sm">Impianto non specificato</div>`;
+    }
+
+    if (!storicoInterventi?.interventi) {
+        return `
+            <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div class="px-5 py-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                    <h3 class="font-bold text-slate-700">📅 Timeline Impianto</h3>
+                    <span class="text-xs text-slate-400 font-mono">${impianto}</span>
+                </div>
+                <div class="p-8 text-center">
+                    <div class="loader-ring mx-auto mb-3"></div>
+                    <div class="text-sm text-slate-500 font-medium">⏳ Storico in caricamento...</div>
+                </div>
+            </div>
+        `;
+    }
+
+    // ✅ Lookup O(1) tramite indice
+    const interventi = storicoIndex.get(impianto) || [];
+
+    if (interventi.length === 0) {
+        return `
+            <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div class="px-5 py-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                    <h3 class="font-bold text-slate-700">📅 Timeline Impianto</h3>
+                    <span class="text-xs text-slate-400 font-mono">${impianto}</span>
+                </div>
+                <div class="p-5 text-center text-slate-400 text-sm">Nessun intervento precedente trovato</div>
+            </div>
+        `;
+    }
+
+    const jobMap = new Map();
+    interventi.forEach(row => {
+        const jid = row[COLS.JOB];
+        const costo = parseFloat(row['COSTO']) || 0;
+        const dataRaw = row[COLS.JOB_DATE];
+        let data = null;
+        if (dataRaw instanceof Date) data = dataRaw;
+        else if (typeof dataRaw === 'number') data = new Date(Math.round((dataRaw - 25569) * 86400 * 1000));
+        else if (dataRaw) data = new Date(dataRaw);
+
+        if (!jobMap.has(jid)) {
+            jobMap.set(jid, {
+                jobId: jid, data, costo,
+                workPerformed: row[COLS.WORK_PERFORMED] || '',
+                componente: row[COLS.COMPONENTE] || '',
+                descrizione: row[COLS.DESCRIZIONE] || '',
+                righe: 1
+            });
+        } else {
+            jobMap.get(jid).righe++;
+        }
+    });
+
+    const jobs = Array.from(jobMap.values()).sort((a, b) => (b.data || 0) - (a.data || 0));
+    const totInterventi = jobs.length;
+    const spesaStorica = jobs.reduce((s, j) => s + (j.costo > 0 ? j.costo : 0), 0);
+    const ticketMedio = totInterventi > 0 ? spesaStorica / totInterventi : 0;
+    const timelineJobs = jobs.slice(0, 15);
+
+    const timelineHtml = timelineJobs.map(j => {
+        const dataStr = j.data ? formatDateItalian(j.data) : '—';
+        const descShort = j.descrizione.length > 60 ? j.descrizione.substring(0, 60) + '…' : j.descrizione;
+        return `
+            <div class="flex items-start gap-3 py-2 border-b border-slate-100 last:border-0">
+                <div class="text-[10px] font-mono text-slate-400 w-20 flex-shrink-0 pt-0.5">${dataStr}</div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-0.5">
+                        <span class="text-xs font-bold text-slate-700 font-mono">${j.jobId}</span>
+                        ${j.righe > 1 ? `<span class="text-[9px] bg-slate-100 text-slate-500 px-1 rounded">${j.righe} comp.</span>` : ''}
+                    </div>
+                    ${j.componente ? `<div class="text-xs text-slate-600 truncate">${j.componente}</div>` : ''}
+                    ${descShort ? `<div class="text-[10px] text-slate-400 italic truncate">${descShort}</div>` : ''}
+                </div>
+                <div class="text-sm font-mono font-bold text-emerald-600 flex-shrink-0 pt-0.5">${formatEuro(j.costo)}</div>
+            </div>
+        `;
+    }).join('');
+
+    return `
+        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div class="px-5 py-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                <h3 class="font-bold text-slate-700 flex items-center gap-2">
+                    📅 Timeline Impianto
+                    <span class="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">${totInterventi}</span>
+                </h3>
+                <span class="text-xs text-slate-400 font-mono">${impianto}</span>
+            </div>
+            <div class="grid grid-cols-3 divide-x divide-slate-100 border-b border-slate-100">
+                <div class="p-4 text-center">
+                    <div class="text-[10px] font-bold text-slate-400 uppercase">Interventi Totali</div>
+                    <div class="text-2xl font-bold text-slate-800">${totInterventi}</div>
+                </div>
+                <div class="p-4 text-center">
+                    <div class="text-[10px] font-bold text-slate-400 uppercase">Spesa Storica</div>
+                    <div class="text-2xl font-bold text-emerald-600 font-mono">${formatEuro(spesaStorica)}</div>
+                </div>
+                <div class="p-4 text-center">
+                    <div class="text-[10px] font-bold text-slate-400 uppercase">Ticket Medio</div>
+                    <div class="text-2xl font-bold text-blue-600 font-mono">${formatEuro(ticketMedio)}</div>
+                </div>
+            </div>
+            <div class="p-4 max-h-96 overflow-y-auto">
+                ${timelineHtml}
+                ${jobs.length > 15 ? `<div class="text-center text-xs text-slate-400 mt-3">… e altri ${jobs.length - 15} interventi</div>` : ''}
+            </div>
+        </div>
+    `;
+}
+
+function renderSezioneComponenti(group) {
+    if (group.rows.length <= 1) return '';
+
+    const comps = group.rows.map((row, idx) => `
+        <tr class="hover:bg-slate-50 border-b border-slate-100">
+            <td class="px-3 py-2 text-xs font-mono text-slate-500">${idx + 1}</td>
+            <td class="px-3 py-2">
+                <div class="font-bold text-xs text-slate-700">${row[COLS.COMPONENTE] || '—'}</div>
+                <div class="text-[10px] text-slate-400">${row[COLS.CATEGORIA] || ''}</div>
+            </td>
+            <td class="px-3 py-2 text-xs text-slate-600">${row[COLS.DESCRIZIONE] || '—'}</td>
+            <td class="px-3 py-2 text-center text-xs font-bold">${row[COLS.QUANTITA] || 1}</td>
+            <td class="px-3 py-2 text-center text-xs font-mono">${row[COLS.TEMPO] || 0}'</td>
+        </tr>
+    `).join('');
+
+    return `
+        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div class="px-5 py-3 bg-slate-50 border-b border-slate-200">
+                <h3 class="font-bold text-slate-700">🔧 Componenti del Job (${group.rows.length})</h3>
+            </div>
+            <table class="w-full text-sm">
+                <thead class="bg-slate-50 text-xs uppercase text-slate-500">
+                    <tr>
+                        <th class="px-3 py-2 text-left w-8">#</th>
+                        <th class="px-3 py-2 text-left">Componente</th>
+                        <th class="px-3 py-2 text-left">Descrizione</th>
+                        <th class="px-3 py-2 text-center w-16">Qtà</th>
+                        <th class="px-3 py-2 text-center w-16">Min</th>
+                    </tr>
+                </thead>
+                <tbody>${comps}</tbody>
+            </table>
+        </div>
+    `;
+}
+
+function renderSezioneDecisione(jobId, mod, ia) {
+    const isAzzerato = mod.stato === STATI.AZZERATO;
+
+    const statoBadge = {
+        [STATI.CONFERMATO]: '<span class="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-1 rounded uppercase">✅ Confermato (IA)</span>',
+        [STATI.MODIFICATO]: '<span class="bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-1 rounded uppercase">✏️ Modificato</span>',
+        [STATI.AZZERATO]: '<span class="bg-red-100 text-red-700 text-[10px] font-bold px-2 py-1 rounded uppercase">0️⃣ Azzerato</span>',
+        [STATI.DA_RIVEDERE]: '<span class="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-1 rounded uppercase">⏳ Da rivedere</span>'
+    };
+
+    return `
+        <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-300 overflow-hidden">
+            <div class="px-5 py-3 bg-blue-100 border-b border-blue-200 flex justify-between items-center">
+                <h3 class="font-bold text-blue-800 flex items-center gap-2">✏️ Decisione Venditore</h3>
+                ${statoBadge[mod.stato] || ''}
+            </div>
+            <div class="p-5 bg-white">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2">Prezzo Finale (€)</label>
+                        <div class="flex gap-2">
+                            <input type="number" 
+                                id="info-costo-input"
+                                class="price-input text-2xl font-bold py-3 px-4 flex-1"
+                                value="${mod.costo}" 
+                                step="0.01" 
+                                min="0">
+                            <button onclick="azzeraCosto('${jobId}'); openInfo('${jobId}');" 
+                                class="bg-red-100 hover:bg-red-200 text-red-700 border border-red-300 px-4 py-3 rounded font-bold transition whitespace-nowrap">
+                                0️⃣ Azzera
+                            </button>
+                        </div>
+                        <div class="mt-2 text-xs text-slate-400">
+                            IA suggerisce: <span class="font-mono font-bold text-slate-600">${formatEuro(ia.prezzoConsigliato)}</span>
+                            ${mod.costo !== ia.prezzoConsigliato && !isAzzerato
+                                ? `<span class="ml-2 text-amber-600 font-bold">Δ ${formatEuro(mod.costo - ia.prezzoConsigliato)}</span>`
+                                : ''}
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2">Note per l'inserimento dati</label>
+                        <textarea 
+                            id="info-note-input"
+                            class="note-input w-full"
+                            rows="3"
+                            placeholder="Annotazioni per chi inserirà i dati nel gestionale...">${mod.note || ''}</textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function closeInfo() {
+    document.getElementById('info-modal').classList.add('hidden');
+}
+
+function openDetails(jobId) {
+    const group = appData.jobGroups[jobId];
+    if (!group) return;
+
+    document.getElementById('modal-title').innerText = `Job: ${jobId}`;
+    document.getElementById('modal-subtitle').innerText = `${group.rows.length} righe · ${group.masterRow[COLS.INDIRIZZO]}`;
+
+    const tbody = document.getElementById('modal-body');
+    tbody.innerHTML = group.rows.map((row, idx) => `
+        <tr class="hover:bg-slate-50 border-b border-slate-100">
+            <td class="px-4 py-3 text-center">
+                <button onclick="closeDetails(); openInfo('${jobId}');" class="text-slate-300 hover:text-blue-500">ℹ️</button>
+            </td>
+            <td class="px-4 py-3">
+                <div class="font-bold text-xs text-slate-700">${row[COLS.COMPONENTE]}</div>
+                <div class="text-[10px] text-slate-400 uppercase">${row[COLS.CATEGORIA]}</div>
+            </td>
+            <td class="px-4 py-3">
+                <div class="text-xs text-slate-600">${row[COLS.DESCRIZIONE]}</div>
+                <div class="text-[10px] text-slate-400 italic">Tecnico: ${row[COLS.TECNICO]}</div>
+            </td>
+            <td class="px-4 py-3 text-center text-xs font-bold">${row[COLS.QUANTITA]}</td>
+            <td class="px-4 py-3 text-center text-xs font-mono bg-slate-50 rounded">${row[COLS.TEMPO]}'</td>
+        </tr>
+    `).join('');
+
+    document.getElementById('details-modal').classList.remove('hidden');
+}
+
+function closeDetails() {
+    document.getElementById('details-modal').classList.add('hidden');
+}
+
+// ============================================
+// 13. EXPORT EXCEL
+// ============================================
+
+function exportExcel() {
+    if (!appData.fileName || appData.aoa.length === 0) {
+        alert('Nessun file caricato');
+        return;
+    }
+
+    try {
+        const out = appData.aoa.map(row => [...row]);
+        const ci = appData.columnIndex;
+        const idxJob = ci[COLS.JOB];
+        const idxCosto = ci[COLS.COSTO];
+        const idxNote = ci[COLS.NOTE];
+
+        let scritti = 0;
+        for (let i = appData.dataStartRow; i < out.length; i++) {
+            const row = out[i];
+            if (!row || !row.length) continue;
+            const jobId = row[idxJob];
+            if (!jobId) continue;
+
+            const mod = appData.venditore[jobId];
+            if (mod) {
+                row[idxCosto] = mod.costo;
+                row[idxNote] = mod.note || '';
+                scritti++;
+            }
+        }
+
+        console.log(`📝 Scritti COSTO+NOTE per ${scritti} righe`);
+
+        const ws = XLSX.utils.aoa_to_sheet(out);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Interventi');
+
+        // ✅ Genera blob, poi download manuale sicuro
+        const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([wbout], { type: 'application/octet-stream' });
+
+        const nomeBase = appData.fileName.replace(/\.xlsx?$/i, '');
+        const dataOggi = new Date().toISOString().slice(0, 10);
+        const nomeOutput = `${nomeBase}_prezzato_${dataOggi}.xlsx`;
+
+        downloadBlob(blob, nomeOutput);
+        mostraNotifica(`✅ Esportato: ${nomeOutput}`, 'success');
+    } catch (e) {
+        console.error(e);
+        alert('Errore export: ' + e.message);
+    }
+}
+
+function exportFiltered() {
+    if (appData.displayList.length === 0) {
+        alert('Nessun dato da esportare');
+        return;
+    }
+
+    try {
+        const headerRow = [...appData.headers];
+        const out = [headerRow];
+
+        const ci = appData.columnIndex;
+        const idxCosto = ci[COLS.COSTO];
+        const idxNote = ci[COLS.NOTE];
+
+        appData.displayList.forEach(group => {
+            group.rows.forEach(row => {
+                const originalRow = appData.aoa[row._id];
+                if (!originalRow) return;
+
+                const newRow = [...originalRow];
+                const mod = appData.venditore[group.jobId];
+                if (mod) {
+                    newRow[idxCosto] = mod.costo;
+                    newRow[idxNote] = mod.note || '';
+                }
+                out.push(newRow);
+            });
+        });
+
+        const ws = XLSX.utils.aoa_to_sheet(out);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Filtrato');
+
+        // ✅ Stessa tecnica sicura
+        const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([wbout], { type: 'application/octet-stream' });
+
+        const nomeBase = appData.fileName.replace(/\.xlsx?$/i, '');
+        const dataOggi = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+        const nomeOutput = `${nomeBase}_FILTRATO_${dataOggi}.xlsx`;
+
+        downloadBlob(blob, nomeOutput);
+        mostraNotifica(`✅ Filtrato: ${appData.displayList.length} job`, 'success');
+    } catch (e) {
+        console.error('Errore export filtrato:', e);
+        alert('Errore export filtrato:\n' + e.message);
+    }
+}
+
+function esportaJobPDF(jobId) {
+    const group = appData.jobGroups[jobId];
+    if (!group) { alert('Job non trovato'); return; }
+
+    const r = group.masterRow;
+    const ia = group.ia;
+    const mod = appData.venditore[jobId] || { costo: ia.prezzoConsigliato, note: '' };
+
+    try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const margin = 18;
+        let y = margin;
+
+        doc.setFillColor(15, 28, 46);
+        doc.rect(0, 0, pageWidth, 22, 'F');
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+        doc.text('SBOLLA MANAGER', margin, 12);
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(170, 190, 210);
+        doc.text('Buono Prezzo del King', margin, 18);
+        doc.setFontSize(8);
+        doc.text(`Generato il ${new Date().toLocaleString('it-IT')}`, pageWidth - margin, 18, { align: 'right' });
+
+        y = 32;
+
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(30, 43, 58);
+        doc.text(`JOB ${jobId}`, margin, y);
+        y += 8;
+
+        const dati = [
+            ['Impianto', r[COLS.IMPIANTO] || '—'],
+            ['Indirizzo', r[COLS.INDIRIZZO] || '—'],
+            ['Data Intervento', formatDateItalian(r._jobDate)],
+            ['Contratto', r[COLS.CONTRATTO] || '—'],
+            ['Tipo Lavoro', r[COLS.WORK_PERFORMED] || '—']
+        ];
+
+        doc.autoTable({
+            startY: y,
+            body: dati,
+            theme: 'plain',
+            styles: { fontSize: 10, cellPadding: { top: 1.5, bottom: 1.5, left: 0, right: 0 } },
+            columnStyles: {
+                0: { fontStyle: 'bold', cellWidth: 45, textColor: [100, 116, 139] },
+                1: { cellWidth: 130, textColor: [15, 23, 42] }
+            },
+            margin: { left: margin, right: margin }
+        });
+
+        y = doc.lastAutoTable.finalY + 8;
+
+        doc.setDrawColor(203, 213, 225);
+        doc.line(margin, y, pageWidth - margin, y);
+        y += 6;
+
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Componente', margin, y);
+        y += 6;
+
+        const componenti = [
+            ['Descrizione', r[COLS.COMPONENTE] || '—'],
+            ['Categoria', r[COLS.CATEGORIA] || '—'],
+            ['Codice', r[COLS.COMP_CODE] || '—'],
+            ['Quantità', r[COLS.QUANTITA] || '1'],
+            ['Durata', `${group.totalMin}'`]
+        ];
+
+        doc.autoTable({
+            startY: y,
+            body: componenti,
+            theme: 'plain',
+            styles: { fontSize: 10, cellPadding: { top: 1.5, bottom: 1.5, left: 0, right: 0 } },
+            columnStyles: {
+                0: { fontStyle: 'bold', cellWidth: 45, textColor: [100, 116, 139] },
+                1: { cellWidth: 130, textColor: [15, 23, 42] }
+            },
+            margin: { left: margin, right: margin }
+        });
+
+        y = doc.lastAutoTable.finalY + 6;
+
+        if (r[COLS.DESCRIZIONE]) {
+            if (y > 240) { doc.addPage(); y = margin; }
+            doc.line(margin, y, pageWidth - margin, y);
+            y += 6;
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'bold');
+            doc.text('Descrizione Lavoro', margin, y);
+            y += 5;
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(71, 85, 105);
+            const lines = doc.splitTextToSize(r[COLS.DESCRIZIONE], pageWidth - 2 * margin);
+            doc.text(lines, margin, y);
+            y += lines.length * 4 + 4;
+        }
+
+        if (mod.note) {
+            if (y > 240) { doc.addPage(); y = margin; }
+            doc.line(margin, y, pageWidth - margin, y);
+            y += 6;
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'bold');
+            doc.text('Note', margin, y);
+            y += 5;
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+            const lines = doc.splitTextToSize(mod.note, pageWidth - 2 * margin);
+            doc.text(lines, margin, y);
+            y += lines.length * 4 + 4;
+        }
+
+        if (y > 250) { doc.addPage(); y = margin; }
+        const boxY = Math.max(y + 6, 260);
+        doc.setFillColor(240, 253, 244);
+        doc.rect(margin, boxY, pageWidth - 2 * margin, 20, 'F');
+        doc.setDrawColor(16, 185, 129);
+        doc.setLineWidth(0.5);
+        doc.rect(margin, boxY, pageWidth - 2 * margin, 20, 'S');
+
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(4, 120, 87);
+        doc.text('PREZZO FINALE', margin + 4, boxY + 8);
+        doc.setFontSize(16);
+        doc.text(formatEuro(mod.costo), pageWidth - margin - 4, boxY + 13, { align: 'right' });
+
+        const pageCount = doc.internal.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i++) {
+            doc.setPage(i);
+            doc.setFontSize(7);
+            doc.setTextColor(148, 163, 184);
+            doc.text(`Pagina ${i} di ${pageCount}`, pageWidth - margin, 290, { align: 'right' });
+            doc.text('Sbolla Manager v4', margin, 290);
+        }
+
+      const nomeFile = `Job_${jobId}_${new Date().toISOString().slice(0, 10)}.pdf`;
+const pdfBlob = doc.output('blob');
+downloadBlob(pdfBlob, nomeFile);
+        mostraNotifica(`📄 PDF: ${nomeFile}`, 'success');
+    } catch (e) {
+        console.error('Errore PDF:', e);
+        alert('Errore generazione PDF:\n' + e.message);
+    }
+}
+
+// ============================================
+// 14. RICERCHE SALVATE
+// ============================================
+
+const RICERCHE_KEY = 'SP_V4_RICERCHE';
+
+function caricaRicercheSalvate() {
+    try {
+        const raw = localStorage.getItem(RICERCHE_KEY);
+        if (raw) storicoRicerche = JSON.parse(raw);
+    } catch (e) { storicoRicerche = []; }
+    aggiornaMenuRicerche();
+}
+
+function salvaRicercaCorrente() {
     const filtro = {
-        testo: document.getElementById('searchBox').value,
+        testo: document.getElementById('searchBox').value.trim(),
         venditore: document.getElementById('filter-venditore').value,
         contratto: document.getElementById('filter-contract').value,
         tipo: document.getElementById('filter-workperf').value,
         dataInizio: document.getElementById('filter-date-start').value,
         dataFine: document.getElementById('filter-date-end').value,
+        confidenza: document.getElementById('filter-confidenza').value,
+        fatturab: document.getElementById('filter-fatturab').value,
+        criticita: document.getElementById('filter-criticita').value,
+        credito: document.getElementById('filter-credito').value,
+        indicazione: document.getElementById('filter-indicazione').value,
+        stato: document.getElementById('filter-stato').value,
         mostraStorico: document.getElementById('toggle-history').checked,
         timestamp: new Date().toISOString()
     };
+
+    const hasFilter = Object.entries(filtro).some(([k, v]) => {
+        if (k === 'timestamp' || k === 'mostraStorico') return false;
+        if (typeof v === 'boolean') return v === true;
+        return v && v !== 'ALL' && v !== '';
+    });
+
+    if (!hasFilter) { alert('Nessun filtro attivo da salvare'); return; }
+
     filtro.nome = generaNomeRicerca(filtro);
+    storicoRicerche = storicoRicerche.filter(r => r.nome !== filtro.nome);
     storicoRicerche = [filtro, ...storicoRicerche].slice(0, 10);
-    salvaStoricoRicerche();
-    aggiornaMenuRicerche();
-};
+
+    try {
+        localStorage.setItem(RICERCHE_KEY, JSON.stringify(storicoRicerche));
+        aggiornaMenuRicerche();
+        mostraNotifica(`💾 Ricerca salvata: "${filtro.nome}"`, 'success');
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function generaNomeRicerca(filtri) {
+    const parti = [];
+    if (filtri.testo) parti.push(`"${filtri.testo}"`);
+    if (filtri.venditore && filtri.venditore !== 'ALL') parti.push(filtri.venditore.split(' ')[0]);
+    if (filtri.contratto && filtri.contratto !== 'ALL') parti.push(filtri.contratto);
+    if (filtri.tipo && filtri.tipo !== 'ALL') parti.push(filtri.tipo);
+    if (filtri.confidenza && filtri.confidenza !== 'ALL') parti.push(`Conf:${filtri.confidenza}`);
+    if (filtri.fatturab && filtri.fatturab !== 'ALL') parti.push(`Fatt:${filtri.fatturab}`);
+    if (filtri.indicazione && filtri.indicazione !== 'ALL') parti.push(filtri.indicazione);
+    if (filtri.dataInizio || filtri.dataFine) {
+        const i = filtri.dataInizio ? filtri.dataInizio.split('-').reverse().join('/') : '...';
+        const f = filtri.dataFine ? filtri.dataFine.split('-').reverse().join('/') : '...';
+        parti.push(`${i}→${f}`);
+    }
+    return parti.length > 0 ? parti.join(' · ') : 'Ricerca senza nome';
+}
 
 function applicaRicerca(filtro) {
     document.getElementById('searchBox').value = filtro.testo || '';
@@ -1158,1498 +1802,316 @@ function applicaRicerca(filtro) {
     document.getElementById('filter-workperf').value = filtro.tipo || 'ALL';
     document.getElementById('filter-date-start').value = filtro.dataInizio || '';
     document.getElementById('filter-date-end').value = filtro.dataFine || '';
+    document.getElementById('filter-confidenza').value = filtro.confidenza || 'ALL';
+    document.getElementById('filter-fatturab').value = filtro.fatturab || 'ALL';
+    document.getElementById('filter-criticita').value = filtro.criticita || 'ALL';
+    document.getElementById('filter-credito').value = filtro.credito || 'ALL';
+    document.getElementById('filter-indicazione').value = filtro.indicazione || 'ALL';
+    document.getElementById('filter-stato').value = filtro.stato || 'ALL';
     document.getElementById('toggle-history').checked = filtro.mostraStorico || false;
     applyFilters();
+    mostraNotifica(`🔍 Filtro applicato: "${filtro.nome}"`, 'info');
+}
+
+function rimuoviRicerca(index) {
+    if (!confirm(`Rimuovere la ricerca "${storicoRicerche[index].nome}"?`)) return;
+    storicoRicerche.splice(index, 1);
+    try {
+        localStorage.setItem(RICERCHE_KEY, JSON.stringify(storicoRicerche));
+        aggiornaMenuRicerche();
+    } catch (e) { console.error(e); }
 }
 
 function aggiornaMenuRicerche() {
     const container = document.getElementById('ricerche-salvate');
     if (!container) return;
-    container.innerHTML = '';
-    storicoRicerche.forEach((ricerca, index) => {
-        const btn = document.createElement('button');
-        btn.className = 'w-full text-left bg-slate-50 hover:bg-slate-100 text-slate-600 rounded px-2 py-1.5 text-[10px] transition flex items-center justify-between group';
-        btn.onclick = () => applicaRicerca(ricerca);
-        const data = new Date(ricerca.timestamp);
-        const oggi = new Date();
-        const diffGiorni = Math.floor((oggi - data) / (1000 * 60 * 60 * 24));
-        let dataLabel = diffGiorni === 0 ? 'oggi' : diffGiorni === 1 ? 'ieri' : `${diffGiorni} gg fa`;
-        btn.innerHTML = `<span class="truncate flex-1" title="${ricerca.nome}">${ricerca.nome}</span><span class="text-slate-400 text-[8px] ml-1">${dataLabel}</span>`;
-        container.appendChild(btn);
-    });
+
     if (storicoRicerche.length === 0) {
         container.innerHTML = '<div class="text-slate-400 text-[10px] text-center py-2">Nessuna ricerca salvata</div>';
+        return;
     }
+
+    container.innerHTML = storicoRicerche.map((r, idx) => {
+        const data = new Date(r.timestamp);
+        const oggi = new Date();
+        const diff = Math.floor((oggi - data) / (1000 * 60 * 60 * 24));
+        let dataLabel;
+        if (diff === 0) dataLabel = 'oggi';
+        else if (diff === 1) dataLabel = 'ieri';
+        else if (diff < 7) dataLabel = `${diff}gg`;
+        else dataLabel = data.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' });
+
+        return `
+            <div class="group flex items-center gap-1 bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 rounded transition">
+                <button onclick="applicaRicerca(storicoRicerche[${idx}])" 
+                    class="flex-1 text-left px-2 py-1.5 text-[10px] text-slate-700 hover:text-indigo-700 transition truncate"
+                    title="${r.nome}">
+                    <div class="truncate font-medium">${r.nome}</div>
+                    <div class="text-slate-400 text-[8px] mt-0.5">${dataLabel}</div>
+                </button>
+                <button onclick="rimuoviRicerca(${idx})" 
+                    class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 px-1.5 py-1 transition text-xs"
+                    title="Rimuovi">×</button>
+            </div>
+        `;
+    }).join('');
+}
+
+function clearRicerche() {
+    if (storicoRicerche.length === 0) return;
+    if (!confirm(`Cancellare tutte le ${storicoRicerche.length} ricerche salvate?`)) return;
+    storicoRicerche = [];
+    try {
+        localStorage.removeItem(RICERCHE_KEY);
+        aggiornaMenuRicerche();
+        mostraNotifica('🗑️ Cronologia ricerche cancellata', 'info');
+    } catch (e) { console.error(e); }
 }
 
 // ============================================
-// DEBUG PANEL
+// 15. MENU / DEBUG
 // ============================================
 
-window.toggleDebugPanel = function () {
+function toggleSettingsMenu() {
+    document.getElementById('settings-menu').classList.toggle('hidden');
+}
+
+function toggleDebugPanel() {
     const panel = document.getElementById('debug-storico-panel');
     panel.classList.toggle('hidden');
     if (!panel.classList.contains('hidden')) aggiornaDebugPanel();
-};
+}
 
-window.nascondiDebugPanel = function () {
+function nascondiDebugPanel() {
     document.getElementById('debug-storico-panel').classList.add('hidden');
-};
+}
 
-window.aggiornaDebugPanel = function () {
-    if (window.storicoInterventi?.interventi) {
-        const interventi = window.storicoInterventi.interventi;
-        let storici = 0, nuovi = 0;
-        const codiciUnici = new Set();
+function aggiornaDebugPanel() {
+    if (storicoInterventi?.interventi) {
+        const interventi = storicoInterventi.interventi;
+        const impianti = new Set();
         interventi.forEach(row => {
-            const costo = parseFloat(row['COSTO']);
-            if (!isNaN(costo) && costo > 0) storici++; else nuovi++;
-            const codice = row[COLS?.COMP_CODE || 'ComponentCode (LocalComponent) (Component)'];
-            if (codice) codiciUnici.add(codice);
+            const imp = row[COLS.IMPIANTO];
+            if (imp) impianti.add(imp);
         });
         document.getElementById('debug-totale').textContent = interventi.length;
-        document.getElementById('debug-storici').textContent = storici;
-        document.getElementById('debug-nuovi').textContent = nuovi;
-        document.getElementById('debug-codici').textContent = codiciUnici.size;
-        document.getElementById('debug-data').textContent = new Date(window.storicoInterventi.timestamp).toLocaleString('it-IT');
-        document.getElementById('debug-nomefile').textContent = window.storicoInterventi.fileName || 'Sconosciuto';
+        document.getElementById('debug-impianti').textContent = impianti.size;
+        document.getElementById('debug-data').textContent = new Date(storicoInterventi.timestamp).toLocaleString('it-IT');
+        document.getElementById('debug-nomefile').textContent = storicoInterventi.fileName || 'Sconosciuto';
         document.getElementById('debug-stats').classList.remove('hidden');
         document.getElementById('debug-file').classList.remove('hidden');
-        document.getElementById('debug-status').innerHTML = '<div class="text-emerald-600 flex items-center gap-1"><span>✅</span> Storico caricato</div>';
+        document.getElementById('debug-status').innerHTML = '<div class="text-emerald-600">✅ Storico caricato</div>';
     } else {
-        document.getElementById('debug-status').innerHTML = '<div class="text-amber-600 flex items-center gap-1"><span>⚠️</span> Nessuno storico</div>';
+        document.getElementById('debug-status').innerHTML = '<div class="text-amber-600">⚠️ Nessuno storico</div>';
         document.getElementById('debug-stats').classList.add('hidden');
         document.getElementById('debug-file').classList.add('hidden');
     }
-    if (appData.fileName) {
-        let correntiStorici = 0, correntiNuovi = 0;
-        Object.values(appData.jobGroups).forEach(g => { if (g.isHistory) correntiStorici++; else correntiNuovi++; });
-        document.getElementById('debug-corrente-nome').textContent = appData.fileName;
-        document.getElementById('debug-corrente-stats').innerHTML = `${correntiNuovi} da prezzare · ${correntiStorici} storici`;
-        document.getElementById('debug-corrente').classList.remove('hidden');
-    } else {
-        document.getElementById('debug-corrente').classList.add('hidden');
-    }
-};
+}
 
-window.ricaricaStorico = function () {
+function ricaricaStorico() {
     location.reload();
-};
+}
 
-window.caricaStoricoFile = function (input) {
+// ============================================
+// 16. SESSIONE
+// ============================================
+
+function downloadSession() {
+    if (!appData.fileName) { alert('Nessun file caricato'); return; }
+    const sessionData = {
+        version: 'v4',
+        fileName: appData.fileName,
+        timestamp: new Date().toISOString(),
+        venditore: appData.venditore
+    };
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(sessionData, null, 2));
+    const link = document.createElement('a');
+    link.href = dataStr;
+    link.download = `sessione_${appData.fileName.replace(/\.xlsx?$/i, '')}_${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+}
+
+function loadSessionFile(input) {
     const file = input.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = function (e) {
         try {
-            window.storicoInterventi = JSON.parse(e.target.result);
-            alert(`Storico caricato: ${window.storicoInterventi.interventi.length} interventi`);
-            aggiornaDebugPanel();
-            calcolaMedieComponenti();
-            renderTable();
+            const data = JSON.parse(e.target.result);
+            if (data.venditore) {
+                appData.venditore = data.venditore;
+                saveState();
+                renderTable();
+                updateHeaderStats();
+                mostraNotifica(`📂 ${Object.keys(data.venditore).length} job ripristinati`, 'success');
+            }
         } catch (err) {
-            alert("Errore nel caricamento");
+            alert('Errore caricamento sessione');
         }
     };
     reader.readAsText(file);
     input.value = '';
-};
-
-// ============================================
-// MODALI
-// ============================================
-
-window.openDetails = function (jid) {
-    const group = appData.jobGroups[jid];
-    if (!group) return;
-    document.getElementById('modal-title').innerText = `Job: ${jid}`;
-    document.getElementById('modal-subtitle').innerText = `${group.rows.length} righe - ${group.masterRow[COLS.INDIRIZZO]}`;
-    const tbody = document.getElementById('modal-body');
-    tbody.innerHTML = "";
-    group.rows.forEach((row, idx) => {
-        const tr = document.createElement('tr');
-        tr.className = "hover:bg-slate-50 border-b border-slate-100";
-        tr.innerHTML = `
-            <td class="px-4 py-3 text-center"><button onclick="openInfo('${jid}')" class="text-slate-300 hover:text-blue-500">ℹ️</button></td>
-            <td class="px-4 py-3"><div class="font-bold text-xs text-slate-700">${row[COLS.COMPONENTE]}</div><div class="text-[10px] text-slate-400 uppercase">${row[COLS.CATEGORIA]}</div></td>
-            <td class="px-4 py-3"><div class="text-xs text-slate-600">${row[COLS.DESCRIZIONE]}</div><div class="text-[10px] text-slate-400 italic">Tecnico: ${row[COLS.TECNICO]}</div></td>
-            <td class="px-4 py-3 text-center text-xs font-bold">${row[COLS.QUANTITA]}</td>
-            <td class="px-4 py-3 text-center text-xs font-mono bg-slate-50 rounded">${row._minuti}'</td>
-            <td class="px-4 py-3 text-right">
-                <input type="number" class="price-input border border-slate-300 p-1.5" value="${row._suggestedPrice?.toFixed(2) || '0.00'}" ${group.isHistory ? 'disabled' : ''} onchange="updateTaskPrice('${jid}', ${idx}, this.value)">
-            </td>
-        `;
-        tbody.appendChild(tr);
-    });
-    document.getElementById('details-modal').classList.remove('hidden');
-};
-
-window.closeDetails = function () {
-    document.getElementById('details-modal').classList.add('hidden');
-    renderTable();
-    updateHeaderStats();
-};
-
-window.openInfo = function (jid) {
-    console.log("==========================================");
-    console.log("ℹ️ Apertura scheda tecnica per job:", jid);
-    console.log("==========================================");
-
-    const group = appData.jobGroups[jid];
-    if (!group) {
-        console.error("❌ Gruppo non trovato:", jid);
-        return;
-    }
-
-    const r = group.masterRow;
-    const impianto = r[COLS.IMPIANTO];
-
-    console.log("🏢 Impianto:", impianto);
-
-    // ============================================
-    // Raccogli TUTTI gli interventi per QUESTO impianto (storico + corrente)
-    // MA SOLO UNA VOLTA PER JOB (non per riga/componente)
-    // ============================================
-    const interventiPerJob = new Map(); // usa Map con jobId come key
-
-    // 1. PRENDI DALLO STORICO (se presente) - UN JOB UNA VOLTA
-    if (window.storicoInterventi?.interventi) {
-        console.log("📚 Processo storico:", window.storicoInterventi.interventi.length, "righe totali");
-
-        // Raggruppa per jobId dallo storico
-        const storicoPerJob = new Map();
-        
-        window.storicoInterventi.interventi.forEach(row => {
-            const rowImpianto = row[COLS.IMPIANTO] || row['Impiantodiriferimento (Job) (Job)'];
-            if (rowImpianto === impianto) {
-                const jobId = row[COLS.JOB_ID] || row['Job'];
-                
-                if (!storicoPerJob.has(jobId)) {
-                    // Determina data
-                    let data = null;
-                    const dataRaw = row[COLS.JOB_DATE] || row['JobCompletedDate (Job) (Job)'];
-                    if (dataRaw) {
-                        if (dataRaw instanceof Date) data = dataRaw;
-                        else if (typeof dataRaw === 'number') data = new Date(Math.round((dataRaw - 25569) * 86400 * 1000));
-                        else data = new Date(dataRaw);
-                    }
-
-                    storicoPerJob.set(jobId, {
-                        jobId: jobId,
-                        data: data,
-                        workPerformed: row[COLS.WORK_PERFORMED] || row['LocalWorkPerformed'] || "",
-                        isHistory: true,
-                        costoOriginale: parseFloat(row['COSTO']) || 0,
-                        prezzoAttuale: parseFloat(row['COSTO']) || 0,
-                        riassunto: row[COLS.COMPONENTE] || row['LocalComponent'] || '',
-                        rowCount: 1 // per debug
-                    });
-                } else {
-                    // Aggiorna il conteggio righe per debug
-                    const existing = storicoPerJob.get(jobId);
-                    existing.rowCount++;
-                    // Se troviamo una descrizione migliore, aggiorniamo
-                    if (!existing.riassunto && (row[COLS.COMPONENTE] || row['LocalComponent'])) {
-                        existing.riassunto = row[COLS.COMPONENTE] || row['LocalComponent'];
-                    }
-                    storicoPerJob.set(jobId, existing);
-                }
-            }
-        });
-
-        // Aggiungi alla mappa principale
-        storicoPerJob.forEach((value, key) => {
-            interventiPerJob.set(key, value);
-        });
-    }
-
-    // 2. PRENDI DAL CORRENTE (appData.jobGroups) - UN JOB UNA VOLTA
-    console.log("📄 Processo corrente:", Object.keys(appData.jobGroups).length, "gruppi");
-
-    Object.values(appData.jobGroups).forEach(g => {
-        if (g.masterRow[COLS.IMPIANTO] === impianto) {
-            if (!interventiPerJob.has(g.jobId)) {
-                const componentiPrincipali = g.rows.slice(0, 2).map(row => row[COLS.COMPONENTE]).filter(c => c).join(", ");
-                const descrizioneBreve = g.rows[0]?.[COLS.DESCRIZIONE] || "";
-                const riassunto = componentiPrincipali || descrizioneBreve.substring(0, 30) + (descrizioneBreve.length > 30 ? "..." : "");
-
-                interventiPerJob.set(g.jobId, {
-                    jobId: g.jobId,
-                    data: g.masterRow._jobDate,
-                    workPerformed: g.masterRow[COLS.WORK_PERFORMED] || "",
-                    isHistory: g.isHistory,
-                    costoOriginale: g.masterRow._costo || 0,
-                    prezzoAttuale: g.totalPrice || 0,
-                    riassunto: riassunto || "Nessuna descrizione",
-                    rowCount: g.rows.length
-                });
-            }
-        }
-    });
-
-    // Converti la Map in array per facilità di uso
-    const interventiImpianto = Array.from(interventiPerJob.values());
-    
-    console.log(`📊 Trovati ${interventiImpianto.length} interventi UNICI per impianto ${impianto}`);
-
-    // ============================================
-    // CALCOLA KPI (CORRETTI - per JOB, non per riga)
-    // ============================================
-    const totaleInterventi = interventiImpianto.length;
-    const spesaStorica = interventiImpianto
-        .filter(i => i.isHistory)
-        .reduce((sum, i) => sum + i.costoOriginale, 0);
-    const ticketMedio = totaleInterventi > 0 ? (spesaStorica / totaleInterventi).toFixed(2) : "0.00";
-    const interventiInCorso = interventiImpianto.filter(i => !i.isHistory).length;
-
-    console.log(`📈 KPI (corretti): totale=${totaleInterventi}, spesa=${spesaStorica.toFixed(2)}, ticket=${ticketMedio}, inCorso=${interventiInCorso}`);
-
-    // ============================================
-    // CONTEGGI PER TIPOLOGIA (per JOB, non per riga)
-    // ============================================
-    const conteggioTipi = {
-        Normale: interventiImpianto.filter(i => i.workPerformed.includes("Normale")).length,
-        Reperibilità: interventiImpianto.filter(i => i.workPerformed.includes("Reperibilità")).length,
-        Consuntivo: interventiImpianto.filter(i => i.workPerformed.includes("consuntivo")).length,
-        Altro: interventiImpianto.filter(i =>
-            !i.workPerformed.includes("Normale") &&
-            !i.workPerformed.includes("Reperibilità") &&
-            !i.workPerformed.includes("consuntivo")
-        ).length
-    };
-
-    // ============================================
-    // TIMELINE (ordinata per data, per JOB unici)
-    // ============================================
-    const timeline = [...interventiImpianto]
-        .sort((a, b) => (b.data || 0) - (a.data || 0))
-        .slice(0, 30);
-
-    // ... il resto della funzione rimane invariato ...
-    // (dalla generazione dell'HTML in poi è uguale)
-    
-    // FUNZIONI DI AGGIORNAMENTO PREZZO (invariate)
-    const aggiornaPrezzo = (nuovoPrezzo) => {
-        console.log(`💰 Aggiorno prezzo job ${jid} da ${group.totalPrice} a ${nuovoPrezzo}`);
-        if (group.isHistory) return;
-
-        if (group.totalPrice > 0) {
-            const rapporto = nuovoPrezzo / group.totalPrice;
-            group.rows.forEach(row => {
-                row._suggestedPrice = Math.round((row._suggestedPrice || 0) * rapporto * 100) / 100;
-            });
-        } else {
-            const prezzoPerRiga = nuovoPrezzo / group.rows.length;
-            group.rows.forEach(row => {
-                row._suggestedPrice = prezzoPerRiga;
-            });
-        }
-
-        group.totalPrice = nuovoPrezzo;
-        updateHeaderStats();
-        if (typeof window.calculateAnalytics === 'function') window.calculateAnalytics();
-        saveState();
-        renderTable();
-        openInfo(jid);
-    };
-
-    const aggiornaPrezzoZero = () => {
-        console.log(`0️⃣ Azzero prezzo job ${jid}`);
-        if (group.isHistory) return;
-        group.rows.forEach(r => {
-            r._suggestedPrice = 0;
-            r._logic = "Azzerato da scheda";
-        });
-        group.totalPrice = 0;
-        updateHeaderStats();
-        if (typeof window.calculateAnalytics === 'function') window.calculateAnalytics();
-        saveState();
-        renderTable();
-        openInfo(jid);
-    };
-
-    window.aggiornaPrezzo = aggiornaPrezzo;
-    window.aggiornaPrezzoZero = aggiornaPrezzoZero;
-
-    // GENERA LISTA COMPONENTI DEL JOB CORRENTE (invariata)
-    const compList = group.rows.map((row, idx) => {
-        const codice = row[COLS.COMP_CODE];
-        return `
-        <li class="border-b border-slate-100 pb-2 last:border-0">
-            <div class="flex justify-between items-center">
-                <div class="flex-1">
-                    <div class="flex items-center gap-2">
-                        <span class="font-bold text-slate-700">${row[COLS.COMPONENTE] || 'N/D'}</span>
-                        <span class="text-xs bg-slate-100 px-1 rounded">Qt: ${row[COLS.QUANTITA] || 1}</span>
-                        ${codice ? `<span class="text-[10px] font-mono text-indigo-400">${codice}</span>` : ''}
-                    </div>
-                    <div class="text-slate-500 italic mt-1 text-[11px]">${row[COLS.DESCRIZIONE] || "Nessuna descrizione"}</div>
-                </div>
-                ${!group.isHistory ? `
-                    <div class="ml-4 flex items-center gap-2">
-                        <div class="relative group">
-                            <button class="text-amber-500 hover:text-amber-600 text-lg" 
-                                    onmouseenter="mostraStatisticheCodice('${codice || ''}', this)" 
-                                    title="Statistiche prezzo">📣</button>
-                            <div id="tooltip-${codice ? codice.replace(/\s/g, '') : 'none'}" 
-                                 class="hidden absolute bottom-full right-0 mb-2 w-64 bg-white rounded-lg shadow-xl border border-slate-200 p-3 text-left z-50 text-xs">
-                                Caricamento...
-                            </div>
-                        </div>
-                        <input type="number" 
-                               class="price-input text-sm py-1 w-24" 
-                               value="${(row._suggestedPrice || 0).toFixed(2)}" 
-                               onchange="updateTaskPrice('${jid}', ${idx}, this.value); renderTable(); setTimeout(() => openInfo('${jid}'), 50)" 
-                               step="0.01">
-                    </div>
-                ` : `
-                    <div class="ml-4 font-mono text-sm font-bold text-emerald-600">€ ${(row._suggestedPrice || 0).toFixed(2)}</div>
-                `}
-            </div>
-        </li>
-    `}).join("");
-
-    // GENERA TIMELINE HTML (usando i dati corretti per JOB)
-    const timelineHtml = timeline.map(i => {
-        const dataFormattata = i.data ? formatDateItalian(i.data) : "Data sconosciuta";
-        const badgeClass = i.isHistory
-            ? "bg-slate-100 text-slate-600 border-slate-200"
-            : "bg-blue-100 text-blue-700 border-blue-200 animate-pulse";
-        const stato = i.isHistory ? "STORICO" : "IN CORSO";
-
-        return `
-        <div class="py-2 px-3 border-b border-slate-100 last:border-0 hover:bg-slate-50 transition">
-            <div class="flex items-start justify-between gap-2">
-                <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2 flex-wrap mb-1">
-                        <span class="text-xs font-mono text-slate-400">${dataFormattata}</span>
-                        <span class="text-xs font-bold text-slate-700">${i.jobId}</span>
-                        <span class="text-[10px] px-2 py-0.5 rounded-full border ${badgeClass} font-bold whitespace-nowrap">${stato}</span>
-                        ${i.rowCount > 1 ? `<span class="text-[9px] bg-slate-100 text-slate-500 px-1 rounded">${i.rowCount} comp.</span>` : ''}
-                    </div>
-                    <div class="text-[11px] text-slate-600 mb-1 line-clamp-2">
-                        <span class="font-medium text-slate-500">🔧</span> ${i.riassunto || 'N/D'}
-                    </div>
-                    <div class="flex items-center justify-between">
-                        <div class="text-[10px] text-slate-400">
-                            <span class="bg-slate-100 px-1.5 py-0.5 rounded">${i.workPerformed || 'N/D'}</span>
-                        </div>
-                        ${i.isHistory
-                ? `<span class="text-xs font-mono font-bold text-emerald-600">€ ${i.costoOriginale.toFixed(2)}</span>`
-                : `<span class="text-xs font-mono text-blue-400">€ ${(i.prezzoAttuale || 0).toFixed(2)}</span>`
-            }
-                    </div>
-                </div>
-            </div>
-        </div>
-    `}).join("");
-
-    // COSTRUISCI HTML COMPLETO (invariato)
-    const html = `
-        <!-- KPI Cards -->
-        <div class="grid grid-cols-4 gap-4 mb-6">
-            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                <div class="text-[10px] text-slate-400 uppercase font-bold">Interventi Totali</div>
-                <div class="text-3xl font-bold text-slate-800">${totaleInterventi}</div>
-                <div class="text-[10px] text-slate-400 mt-1">job unici sull'impianto</div>
-            </div>
-            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                <div class="text-[10px] text-slate-400 uppercase font-bold">Spesa Storica</div>
-                <div class="text-2xl font-bold text-emerald-600 font-mono">€ ${spesaStorica.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-            </div>
-            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                <div class="text-[10px] text-slate-400 uppercase font-bold">Ticket Medio</div>
-                <div class="text-2xl font-bold text-blue-600 font-mono">€ ${ticketMedio}</div>
-            </div>
-            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                <div class="text-[10px] text-slate-400 uppercase font-bold">In Corso</div>
-                <div class="text-3xl font-bold text-blue-600">${interventiInCorso}</div>
-            </div>
-        </div>
-
-        <!-- Due Colonne: Timeline + Dettaglio -->
-        <div class="grid grid-cols-5 gap-6 mb-6">
-            <!-- Timeline Interventi -->
-            <div class="col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div class="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-                    <h4 class="font-bold text-slate-700 text-sm flex items-center gap-2">
-                        📅 Timeline Interventi
-                        <span class="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">${timeline.length}</span>
-                    </h4>
-                </div>
-                <div class="overflow-y-auto max-h-[500px] p-2">
-                    <div class="space-y-1">
-                        ${timelineHtml || "<p class='text-slate-400 text-xs p-4'>Nessun intervento precedente</p>"}
-                    </div>
-                </div>
-            </div>
-
-            <!-- Dettaglio Job Corrente -->
-            <div class="col-span-3 space-y-4">
-                <!-- Anagrafica + Prezzo -->
-                <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                    <div class="flex justify-between items-start mb-3">
-                        <h4 class="font-bold text-blue-900 flex items-center gap-2">🏢 Anagrafica</h4>
-                        
-                        ${!group.isHistory ? `
-                            <div class="flex items-center gap-2 bg-white p-2 rounded-lg border border-blue-200 shadow-sm">
-                                <div class="text-right">
-                                    <div class="text-[10px] text-slate-400 uppercase">Prezzo</div>
-                                    <input type="number" 
-                                        id="prezzo-corrente-input"
-                                        class="price-input text-lg font-bold w-28 text-right"
-                                        value="${(group.totalPrice || 0).toFixed(2)}"
-                                        step="0.01">
-                                </div>
-                                <button onclick="aggiornaPrezzo(parseFloat(document.getElementById('prezzo-corrente-input').value))" 
-                                    class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-bold transition shadow-sm">
-                                    Applica
-                                </button>
-                                <button onclick="aggiornaPrezzoZero()" 
-                                    class="bg-white hover:bg-red-50 text-red-600 border border-red-200 px-3 py-2 rounded-lg text-xs font-bold transition shadow-sm">
-                                    0️⃣
-                                </button>
-                            </div>
-                        ` : `
-                            <div class="bg-white p-2 rounded-lg border border-slate-200">
-                                <span class="text-xs text-slate-500">Prezzo storico:</span>
-                                <span class="text-xl font-bold font-mono text-emerald-600 ml-2">€ ${(group.totalPrice || 0).toFixed(2)}</span>
-                            </div>
-                        `}
-                    </div>
-                    
-                    <!-- CONTRATTO in evidenza -->
-                    <div class="mb-4 pb-3 border-b border-blue-100">
-                        <span class="text-[10px] text-slate-400 uppercase font-bold block">Contratto</span>
-                        <div class="text-lg font-extrabold text-blue-600 bg-blue-50 px-3 py-2 rounded-lg inline-block mt-1">
-                            ${r[COLS.CONTRATTO] || 'N/D'}
-                        </div>
-                    </div>
-                    
-                    <div class="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                            <p><span class="text-[10px] text-slate-400 uppercase font-bold block">Indirizzo</span> 
-                               <span class="font-bold text-slate-800 text-base">${r[COLS.INDIRIZZO] || 'N/D'}</span></p>
-                            <p><span class="text-[10px] text-slate-400 uppercase font-bold block">Cliente</span> 
-                               <span class="text-slate-700">${r[COLS.CLIENTE] || 'N/D'}</span></p>
-                            <p><span class="text-[10px] text-slate-400 uppercase font-bold block">Amministratore</span> 
-                               <span class="text-slate-700">${r[COLS.AMMINISTRATORE] || 'N/D'}</span></p>
-                        </div>
-                        <div>
-                            <p><span class="text-[10px] text-slate-400 uppercase font-bold block">Venditore</span> 
-                               <span class="text-slate-700">${r[COLS.VENDITORE] || 'N/D'}</span></p>
-                            <p><span class="text-[10px] text-slate-400 uppercase font-bold block">Tecnico</span> 
-                               <span class="text-slate-700">${r[COLS.TECNICO] || 'N/D'}</span></p>
-                            <p><span class="text-[10px] text-slate-400 uppercase font-bold block">Data Esecuzione</span> 
-                               <span class="text-slate-700 font-mono">${formatDateItalian(r._jobDate)}</span></p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Analisi Tipologie -->
-                <div class="bg-white p-4 rounded-xl border border-slate-200">
-                    <h4 class="font-bold text-slate-700 mb-3 text-sm flex items-center gap-2">📊 Distribuzione Tipologie</h4>
-                    <div class="grid grid-cols-4 gap-2">
-                        <div class="text-center p-2 bg-green-50 rounded-lg border border-green-100">
-                            <div class="text-lg font-bold text-green-600">${conteggioTipi.Normale}</div>
-                            <div class="text-[10px] text-green-800">Normale</div>
-                        </div>
-                        <div class="text-center p-2 bg-red-50 rounded-lg border border-red-100">
-                            <div class="text-lg font-bold text-red-600">${conteggioTipi.Reperibilità}</div>
-                            <div class="text-[10px] text-red-800">Reperibilità</div>
-                        </div>
-                        <div class="text-center p-2 bg-blue-50 rounded-lg border border-blue-100">
-                            <div class="text-lg font-bold text-blue-600">${conteggioTipi.Consuntivo}</div>
-                            <div class="text-[10px] text-blue-800">Consuntivo</div>
-                        </div>
-                        <div class="text-center p-2 bg-slate-50 rounded-lg border border-slate-200">
-                            <div class="text-lg font-bold text-slate-600">${conteggioTipi.Altro}</div>
-                            <div class="text-[10px] text-slate-600">Altro</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Componenti del Job Corrente -->
-                <div class="bg-white p-4 rounded-xl border border-slate-200">
-                    <h4 class="font-bold text-slate-700 mb-3 text-sm flex items-center gap-2">
-                        🔧 Componenti (${group.rows.length})
-                        ${group.hasMultiple && !group.isHistory ?
-            '<span class="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">Modifica direttamente qui sotto</span>' : ''}
-                    </h4>
-                    <ul class="text-xs space-y-3 max-h-40 overflow-y-auto pr-2">
-                        ${compList}
-                    </ul>
-                </div>
-                
-                <!-- Nota storico -->
-                ${window.storicoInterventi ? `
-                <div class="text-[10px] text-slate-400 text-right italic">
-                    📚 Dati storici inclusi: ${interventiImpianto.filter(i => i.isHistory).length} interventi precedenti
-                </div>
-                ` : ''}
-            </div>
-        </div>
-    `;
-
-    document.getElementById('info-modal-content').innerHTML = html;
-
-    const modal = document.getElementById('info-modal').querySelector('.max-w-3xl');
-    if (modal) {
-        modal.classList.remove('max-w-3xl');
-        modal.classList.add('max-w-6xl');
-    }
-
-    document.getElementById('info-modal').classList.remove('hidden');
-
-    console.log("✅ Scheda tecnica visualizzata con statistiche corrette");
-};
-
-// ============================================
-// STATISTICHE CODICE (TOOLTIP)
-// ============================================
-
-window.mostraStatisticheCodice = function (codice, elemento) {
-    if (!codice) return;
-    const tooltipId = `tooltip-${codice.replace(/\s/g, '')}`;
-    const tooltip = document.getElementById(tooltipId);
-    if (!tooltip) return;
-
-    const stats = calcolaStatisticheCodice(codice);
-
-    tooltip.innerHTML = `
-        <div class="text-xs">
-            <div class="font-bold text-amber-600 mb-2 flex items-center gap-1"><span>📊</span> Statistiche ${codice}</div>
-            <div class="space-y-2">
-                <div><div class="text-slate-400 text-[10px]">Ultimi 5 prezzi</div><div class="font-mono text-slate-700">${stats.ultimiPrezzi}</div></div>
-                <div class="grid grid-cols-2 gap-2"><div><div class="text-slate-400 text-[10px]">Media</div><div class="font-bold text-blue-600">€ ${stats.media}</div></div><div><div class="text-slate-400 text-[10px]">Max</div><div class="font-bold text-emerald-600">€ ${stats.max}</div></div></div>
-                <div><div class="text-slate-400 text-[10px]">Più frequente</div><div class="font-medium">€ ${stats.modale} (${stats.frequenza} volte)</div></div>
-            </div>
-        </div>
-    `;
-
-    tooltip.classList.remove('hidden');
-    setTimeout(() => tooltip.classList.add('hidden'), 3000);
-};
-
-function calcolaStatisticheCodice(codice) {
-    if (!codice) {
-        return { ultimiPrezzi: 'Nessun dato', media: '0', max: '0', modale: '0', frequenza: 0 };
-    }
-    
-    const prezzi = [];
-    
-    // ✅ 1. Prendi i prezzi dallo STORICO
-    if (window.storicoInterventi?.interventi) {
-        window.storicoInterventi.interventi.forEach(row => {
-            const rowCodice = row[COLS.COMP_CODE] || row['ComponentCode (LocalComponent) (Component)'];
-            const costo = parseFloat(row['COSTO']);
-            if (rowCodice === codice && !isNaN(costo) && costo > 0) {
-                prezzi.push(costo);
-            }
-        });
-    }
-    
-    // ✅ 2. Prendi anche i prezzi correnti (se presenti)
-    if (appData.rawRows) {
-        appData.rawRows.forEach(row => {
-            if (row[COLS.COMP_CODE] === codice && (row._suggestedPrice || 0) > 0) {
-                prezzi.push(row._suggestedPrice);
-            }
-        });
-    }
-
-    if (prezzi.length === 0) {
-        return { ultimiPrezzi: 'Nessun dato', media: '0', max: '0', modale: '0', frequenza: 0 };
-    }
-
-    // Ordina per data? Non abbiamo la data, ma possiamo prendere gli ultimi 5 come sono
-    const ultimi = prezzi.slice(-5).reverse().map(p => `€ ${p}`).join(', ');
-    const media = (prezzi.reduce((a, b) => a + b, 0) / prezzi.length).toFixed(2);
-    const max = Math.max(...prezzi).toFixed(2);
-
-    // Calcola il prezzo più frequente (modale)
-    const frequenze = {};
-    prezzi.forEach(p => frequenze[p] = (frequenze[p] || 0) + 1);
-    let modale = prezzi[0];
-    let maxFreq = 0;
-    Object.entries(frequenze).forEach(([p, f]) => {
-        if (f > maxFreq) {
-            modale = p;
-            maxFreq = f;
-        }
-    });
-
-    return { 
-        ultimiPrezzi: ultimi, 
-        media, 
-        max, 
-        modale, 
-        frequenza: maxFreq 
-    };
 }
 
 // ============================================
-// LISTINO MODALE
+// 17. NAVIGAZIONE
 // ============================================
 
-window.apriListinoModal = function () {
-    const tbody = document.getElementById('listino-table-body');
-    const statsDiv = document.getElementById('listino-stats');
-    if (!tbody) return;
-
-    const medie = listinoPrezzi.medie || {};
-    const codici = Object.keys(medie).sort();
-
-    if (statsDiv) {
-        statsDiv.innerHTML = `<span class="font-bold text-indigo-600">${codici.length}</span> codici unici trovati <span class="ml-4 text-xs bg-slate-100 px-2 py-1 rounded">Ultimo calcolo: ${listinoPrezzi.lastUpdate ? new Date(listinoPrezzi.lastUpdate).toLocaleString() : 'Mai'}</span>`;
+function switchTab(tab) {
+    document.getElementById('main-content').classList.toggle('hidden', tab !== 'pricing');
+    document.getElementById('view-analytics').classList.toggle('hidden', tab !== 'analytics');
+    document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+    document.getElementById('tab-btn-' + tab)?.classList.add('active');
+    if (tab === 'analytics' && typeof window.aggiornaSezioneAnalisi === 'function') {
+        window.aggiornaSezioneAnalisi();
     }
-
-    tbody.innerHTML = '';
-    codici.forEach(codice => {
-        const data = medie[codice];
-        if (!data) return;
-        const prezzoPersonalizzato = listinoPrezzi.prezzi[codice] || '';
-        const prezzoMedio = data.media ? data.media.toFixed(2) : '0.00';
-        const isPersonalizzato = prezzoPersonalizzato && data.media && Math.abs(parseFloat(prezzoPersonalizzato) - data.media) > 0.01;
-        const tr = document.createElement('tr');
-        tr.className = `hover:bg-slate-50 ${isPersonalizzato ? 'bg-indigo-50/50' : ''}`;
-        tr.innerHTML = `
-            <td class="px-4 py-3 font-mono font-bold text-slate-700">${codice}</td>
-            <td class="px-4 py-3 text-slate-500 text-xs">${data.categoria || 'N/D'}</td>
-            <td class="px-4 py-3 text-slate-600 text-xs max-w-[250px]" title="${data.descrizione || ''}">${(data.descrizione || 'Nessuna descrizione').substring(0, 50)}${(data.descrizione || '').length > 50 ? '...' : ''}</td>
-            <td class="px-4 py-3 text-right font-mono text-xs text-slate-400">${data.occorrenze || 0}</td>
-            <td class="px-4 py-3 text-right font-mono font-bold text-slate-600">€ ${prezzoMedio}</td>
-            <td class="px-4 py-3 text-right">
-                <div class="flex items-center gap-2 justify-end">
-                    <input type="number" class="listino-input w-28 text-right border border-slate-300 rounded-lg px-3 py-1.5 font-mono text-sm focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400" data-codice="${codice}" value="${prezzoPersonalizzato}" placeholder="${prezzoMedio}" step="0.01" min="0">
-                    <button onclick="this.closest('tr').querySelector('.listino-input').value = '${prezzoMedio}'" class="text-xs text-indigo-400 hover:text-indigo-600 transition px-2 py-1 rounded hover:bg-indigo-50" title="Reset alla media">↩️</button>
-                </div>
-            </td>
-        `;
-        tbody.appendChild(tr);
-    });
-    document.getElementById('listino-modal').classList.remove('hidden');
-};
-
-window.chiudiListinoModal = function () {
-    document.getElementById('listino-modal').classList.add('hidden');
-};
-
-window.salvaListinoDaModal = function () {
-    const inputs = document.querySelectorAll('.listino-input');
-    const nuoviPrezzi = {};
-    inputs.forEach(input => {
-        const codice = input.dataset.codice;
-        const valore = parseFloat(input.value);
-        if (!isNaN(valore) && valore >= 0) nuoviPrezzi[codice] = valore;
-    });
-    listinoPrezzi.prezzi = nuoviPrezzi;
-    salvaListino();
-    chiudiListinoModal();
-    renderTable();
-    alert(`Listino salvato! ${Object.keys(nuoviPrezzi).length} prezzi aggiornati.`);
-};
-
-window.ricalcolaMedie = function () {
-    calcolaMedieComponenti();
-    apriListinoModal();
-};
+}
 
 // ============================================
-// EXPORT/IMPORT LISTINO EXCEL
+// 18. NOTIFICHE
 // ============================================
 
-window.esportaListinoExcel = function () {
-    const dati = [];
-    const codici = Object.keys(listinoPrezzi.medie).sort();
-    codici.forEach(codice => {
-        const media = listinoPrezzi.medie[codice] || {};
-        dati.push({
-            'Codice': codice,
-            'Categoria': media.categoria || '',
-            'Descrizione': media.descrizione || '',
-            'Occorrenze': media.occorrenze || 0,
-            'Prezzo Medio (€)': media.media || 0,
-            'Prezzo Listino (€)': listinoPrezzi.prezzi[codice] || media.media || 0
-        });
-    });
-    const ws = XLSX.utils.json_to_sheet(dati);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Listino");
-    XLSX.writeFile(wb, `Listino_Componenti_${new Date().toISOString().slice(0, 10)}.xlsx`);
-};
-
-window.importaListinoExcel = function (input) {
-    const file = input.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = function (e) {
-        try {
-            const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: 'array' });
-            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-            const jsonData = XLSX.utils.sheet_to_json(worksheet);
-            let importati = 0;
-            jsonData.forEach(row => {
-                const codice = row['Codice'];
-                const prezzoListino = parseFloat(row['Prezzo Listino (€)']);
-                if (codice && !isNaN(prezzoListino) && prezzoListino >= 0) {
-                    listinoPrezzi.prezzi[codice] = prezzoListino;
-                    importati++;
-                }
-            });
-            if (importati > 0) {
-                salvaListino();
-                renderTable();
-                alert(`✅ Importati ${importati} prezzi.`);
-            } else {
-                alert("⚠️ Nessun prezzo valido.");
-            }
-        } catch (err) {
-            alert("Errore nel caricamento");
-        }
+function mostraNotifica(testo, tipo) {
+    const container = document.getElementById('notif-container');
+    const n = document.createElement('div');
+    const colors = {
+        success: 'border-emerald-200 text-emerald-600',
+        warning: 'border-amber-200 text-amber-600',
+        error: 'border-red-200 text-red-600',
+        info: 'border-blue-200 text-blue-600'
     };
-    reader.readAsArrayBuffer(file);
-    input.value = '';
-};
+    const icons = { success: '✅', warning: '⚠️', error: '❌', info: 'ℹ️' };
+
+    n.className = `bg-white rounded-lg shadow-xl border p-3 animate-slide-up ${colors[tipo] || colors.info}`;
+    n.innerHTML = `
+        <div class="flex items-start gap-2">
+            <span class="text-lg">${icons[tipo] || icons.info}</span>
+            <div class="text-sm font-medium">${testo}</div>
+        </div>
+    `;
+    container.appendChild(n);
+    setTimeout(() => n.remove(), 4000);
+}
 
 // ============================================
-// SETTINGS
+// 19. RICERCA IMPIANTO
 // ============================================
 
-window.toggleSettings = function () {
-    const modal = document.getElementById('settings-modal');
-    if (modal.classList.contains('hidden')) {
-        document.getElementById('cfg-oa').value = pricingConfig.oa;
-        document.getElementById('cfg-om').value = pricingConfig.om;
-        document.getElementById('cfg-sa').value = pricingConfig.sa;
-        document.getElementById('cfg-urg').value = pricingConfig.urgencyMult;
-        document.getElementById('cfg-rounding').value = pricingConfig.rounding || 5;
-    }
-    modal.classList.toggle('hidden');
-};
-
-window.saveSettings = function () {
-    pricingConfig.oa = parseFloat(document.getElementById('cfg-oa').value);
-    pricingConfig.om = parseFloat(document.getElementById('cfg-om').value);
-    pricingConfig.sa = parseFloat(document.getElementById('cfg-sa').value);
-    pricingConfig.urgencyMult = parseFloat(document.getElementById('cfg-urg').value);
-    pricingConfig.rounding = parseInt(document.getElementById('cfg-rounding').value);
-
-    appData.rawRows.forEach(row => { if (!row._isHistory) calculateRowPrice(row); });
-    Object.values(appData.jobGroups).forEach(g => { if (!g.isHistory) g.totalPrice = g.rows.reduce((sum, r) => sum + (r._suggestedPrice || 0), 0); });
-
-    localStorage.setItem("SP_ROUNDING", pricingConfig.rounding);
-    toggleSettings();
+function cercaPerImpianto(codice) {
+    if (!codice) return;
+    document.getElementById('searchBox').value = codice;
     applyFilters();
-    window.calculateAnalytics?.();
-    saveState();
-    alert("Prezzi ricalcolati con arrotondamento a " + pricingConfig.rounding + "€");
-};
+}
 
 // ============================================
-// MENU SETTINGS
+// 20. AUTO-REFRESH SCHEDA TECNICA
 // ============================================
 
-window.toggleSettingsMenu = function () {
-    document.getElementById('settings-menu').classList.toggle('hidden');
-};
-
-document.addEventListener('click', function (e) {
-    const menu = document.getElementById('settings-menu');
-    const container = document.getElementById('settings-menu-container');
-    if (menu && !menu.classList.contains('hidden') && !container.contains(e.target)) {
-        menu.classList.add('hidden');
+window.addEventListener('storicoCaricato', () => {
+    const modal = document.getElementById('info-modal');
+    if (modal && !modal.classList.contains('hidden')) {
+        const jobId = modal.dataset.currentJobId;
+        if (jobId) {
+            console.log("🔄 Storico arrivato, aggiorno scheda tecnica");
+            openInfo(jobId);
+        }
     }
 });
 
 // ============================================
-// UTILITIES
+// 21. INIZIALIZZAZIONE
 // ============================================
 
-window.switchTab = function (t) {
-    document.getElementById('main-content').classList.toggle('hidden', t !== 'pricing');
-    document.getElementById('view-analytics').classList.toggle('hidden', t !== 'analytics');
-    document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
-    document.getElementById('tab-btn-' + t).classList.add('active');
-    if (t === 'analytics' && typeof window.aggiornaSezioneAnalisi === 'function') {
-        window.aggiornaSezioneAnalisi();
-    }
-};
-
-window.resetFilters = function () {
-    document.getElementById('searchBox').value = "";
-    document.getElementById('filter-venditore').value = "ALL";
-    document.getElementById('filter-workperf').value = "ALL";
-    document.getElementById('filter-contract').value = "ALL";
-    document.getElementById('filter-date-start').value = "";
-    document.getElementById('filter-date-end').value = "";
-    document.getElementById('toggle-history').checked = false;
-    applyFilters();
-};
-
-// ============================================
-// ANALYTICS (base, il resto in analisi.js)
-// ============================================
-
-window.calculateAnalytics = function () {
-    // Delega a analisi.js se presente
-    if (typeof window.aggiornaSezioneAnalisi === 'function') {
-        window.aggiornaSezioneAnalisi();
-    }
-};
-
-// ============================================
-// INIZIALIZZAZIONE
-// ============================================
-
-// Inizializzazione al caricamento del DOM
 document.addEventListener('DOMContentLoaded', () => {
-    console.log("🚀 DOM caricato, inizializzo app.js...");
+    console.log("🚀 DOM caricato — init Sbolla v4");
 
     const fileInput = document.getElementById('fileInput');
-    if (fileInput) fileInput.addEventListener('change', handleFile);
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) loadExcelIA(e.target.files[0]);
+        });
+    }
 
     const searchBox = document.getElementById('searchBox');
     if (searchBox) searchBox.addEventListener('keyup', debounce(applyFilters, 300));
 
-    caricaListino();
-    caricaStoricoRicerche();
-    aggiornaMenuRicerche();
+    document.addEventListener('click', (e) => {
+        const menu = document.getElementById('settings-menu');
+        const container = document.getElementById('settings-menu-container');
+        if (menu && !menu.classList.contains('hidden') && container && !container.contains(e.target)) {
+            menu.classList.add('hidden');
+        }
+    });
 
-    const savedRounding = localStorage.getItem("SP_ROUNDING");
-    if (savedRounding) pricingConfig.rounding = parseInt(savedRounding);
+    caricaRicercheSalvate();
+    caricaStoricoAvvio();
 
-    // Verifica se lo storico è già stato caricato dallo script iniziale
-    if (window.storicoInterventi) {
-        console.log("📚 Storico già disponibile:", window.storicoInterventi.interventi.length, "interventi");
-        // Ricalcola medie con lo storico
-        setTimeout(() => {
-            calcolaMedieComponenti();
-        }, 100);
-    } else {
-        console.log("⏳ In attesa del caricamento storico...");
-        // Prova a ricontrollare dopo 1 secondo
-        setTimeout(() => {
-            if (window.storicoInterventi) {
-                console.log("📚 Storico ora disponibile");
-                calcolaMedieComponenti();
-            }
-        }, 1000);
-    }
-
-    console.log("✅ app.js inizializzato");
+    console.log("✅ Sbolla v4 pronto");
 });
 
 // ============================================
-// NUOVE FUNZIONI: CARICA SOLO STORICO + CARICA EXCEL AGGIUNTIVO
+// 22. ESPOSIZIONE GLOBALE
 // ============================================
 
-// Variabile per tracciare se siamo in modalità solo storico
-window.soloStoricoMode = false;
-
-window.caricaSoloStorico = function () {
-    console.log("==========================================");
-    console.log("📚 FUNZIONE: caricaSoloStorico()");
-    console.log("==========================================");
-
-    // Verifica se lo storico è disponibile
-    if (!window.storicoInterventi || !window.storicoInterventi.interventi) {
-        alert("❌ Nessuno storico disponibile. Carica prima un file sbolla.json usando il pulsante '📚 Storico'");
-        return;
-    }
-
-    // Nascondi l'overlay
-    const uploadOverlay = document.getElementById('upload-overlay');
-    if (uploadOverlay) uploadOverlay.classList.add('hidden');
-
-    // Imposta modalità solo storico
-    window.soloStoricoMode = true;
-
-    // Prepara i dati dagli interventi storici
-    const storicoRows = window.storicoInterventi.interventi.map((row, index) => {
-        // Calcola minuti dal tempo lavoro (se presente)
-        let minuti = 0;
-        const tempoRaw = row['Tempo Lavoro (Job) (Job)'] || row['Tempo Lavoro (Job) (Job)'];
-        if (tempoRaw) {
-            minuti = parseInt(tempoRaw) || 0;
-        }
-
-        // Data job
-        let jobDate = null;
-        const dateRaw = row['JobCompletedDate (Job) (Job)'] || row['JobCompletedDate (Job) (Job)'];
-        if (dateRaw) {
-            if (dateRaw instanceof Date) jobDate = dateRaw;
-            else if (typeof dateRaw === 'number') jobDate = new Date(Math.round((dateRaw - 25569) * 86400 * 1000));
-            else jobDate = new Date(dateRaw);
-        }
-
-        return {
-            ...row,
-            _id: index,
-            _costo: parseFloat(row['COSTO']) || 0,
-            _minuti: minuti,
-            _ore: minuti / 60,
-            _jobDate: jobDate,
-            _isHistory: true,  // Marca come storico
-            _suggestedPrice: parseFloat(row['COSTO']) || 0,
-            _logic: "Storico",
-            _soloStorico: true
-        };
-    });
-
-    console.log(`📊 Caricati ${storicoRows.length} interventi dallo storico`);
-
-    if (storicoRows.length === 0) {
-        alert("⚠️ Nessun intervento valido trovato nello storico");
-        return;
-    }
-
-    // Popola appData
-    appData.rawRows = storicoRows;
-    appData.uniqueVenditori.clear();
-    appData.uniqueWorkPerf.clear();
-    appData.uniqueContracts.clear();
-    appData.jobGroups = {};
-    appData.fileName = "SOLO_STORICO_" + (window.storicoInterventi.fileName || "sbolla.json");
-
-    // Crea i gruppi per job
-    storicoRows.forEach((row, index) => {
-        const jid = row['Job'] || row['Job'] || `STORICO_${index}`;
-        if (!appData.jobGroups[jid]) {
-            appData.jobGroups[jid] = {
-                jobId: jid,
-                rows: [],
-                totalMin: 0,
-                totalPrice: 0,
-                masterRow: row,
-                isHistory: true,
-                hasMultiple: false,
-                isSoloStorico: true
-            };
-        }
-
-        const group = appData.jobGroups[jid];
-        group.rows.push(row);
-        group.totalMin += row._minuti;
-        group.totalPrice += (row._suggestedPrice || 0);
-    });
-
-    // Calcola totali
-    Object.values(appData.jobGroups).forEach(g => {
-        g.hasMultiple = g.rows.length > 1;
-    });
-
-    // Raccogli unique values per filtri
-    storicoRows.forEach(row => {
-        if (row['Venditore (LocalUnitId) (Impianto)']) appData.uniqueVenditori.add(row['Venditore (LocalUnitId) (Impianto)']);
-        if (row['LocalWorkPerformed']) appData.uniqueWorkPerf.add(row['LocalWorkPerformed']);
-        if (row['Contract template (LocalUnitId) (Impianto)']) appData.uniqueContracts.add(row['Contract template (LocalUnitId) (Impianto)']);
-    });
-
-    // Calcola medie componenti
-    calcolaMedieComponenti();
-
-    // Mostra pulsante "Carica Excel" nell'header
-    const btnCaricaExcel = document.getElementById('btn-carica-excel');
-    if (btnCaricaExcel) btnCaricaExcel.classList.remove('hidden');
-
-    // Inizializza UI
-    initUI();
-
-    // Aggiorna debug panel
-    if (typeof window.aggiornaDebugPanel === 'function') {
-        window.aggiornaDebugPanel();
-    }
-
-    console.log("✅ Modalità solo storico attivata");
-};
-
-window.apriCaricaExcel = function () {
-    console.log("==========================================");
-    console.log("➕ FUNZIONE: apriCaricaExcel()");
-    console.log("==========================================");
-
-    // Crea un input file temporaneo
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.xlsx, .xls, .csv';
-    input.onchange = function (e) {
-        const file = e.target.files[0];
-        if (file) {
-            window.caricaExcelAggiuntivo(file);
-        }
-    };
-    input.click();
-};
-
-window.caricaExcelAggiuntivo = function (file) {
-    console.log("📂 Caricamento Excel aggiuntivo:", file.name);
-
-    const reader = new FileReader();
-    reader.onload = function (e) {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
-
-        console.log(`📊 Righe lette dal nuovo Excel: ${jsonData.length}`);
-
-        // Processa i nuovi dati e AGGIUNGILI a quelli esistenti
-        window.processAggiuntivoData(jsonData, file.name);
-    };
-    reader.readAsArrayBuffer(file);
-};
-
-window.processAggiuntivoData = function (rows, fileName) {
-    console.log("🔄 Inizio processAggiuntivoData()");
-
-    // Identifica i job già esistenti per evitare duplicati
-    const existingJobIds = new Set(Object.keys(appData.jobGroups));
-
-    let nuoviCount = 0;
-    let skipCount = 0;
-
-    // Prepara le nuove righe
-    const newRows = [];
-
-    rows.forEach((row, index) => {
-        const jid = row[COLS.JOB_ID];
-
-        // Se il job esiste già, salta (evita duplicati)
-        if (existingJobIds.has(jid)) {
-            skipCount++;
-            return;
-        }
-
-        // Processa la nuova riga
-        const processedRow = {
-            ...row,
-            _id: appData.rawRows.length + index,
-            _costo: parseFloat(row[COLS.COSTO]),
-            _minuti: parseInt(row[COLS.TEMPO]) || 0,
-            _ore: (parseInt(row[COLS.TEMPO]) || 0) / 60,
-            _dataModifica: parseDate(row[COLS.DATA_MODIFICA]),
-            _jobDate: parseDate(row[COLS.JOB_DATE]),
-            _isHistory: false,  // I nuovi job NON sono storici
-            _suggestedPrice: 0,
-            _logic: "Nuovo da Excel"
-        };
-
-        newRows.push(processedRow);
-        nuoviCount++;
-
-        // Aggiungi a unique sets per filtri
-        if (row[COLS.VENDITORE]) appData.uniqueVenditori.add(row[COLS.VENDITORE]);
-        if (row[COLS.WORK_PERFORMED]) appData.uniqueWorkPerf.add(row[COLS.WORK_PERFORMED]);
-        if (row[COLS.CONTRATTO]) appData.uniqueContracts.add(row[COLS.CONTRATTO]);
-
-        // Crea o aggiorna il gruppo
-        if (!appData.jobGroups[jid]) {
-            appData.jobGroups[jid] = {
-                jobId: jid,
-                rows: [],
-                totalMin: 0,
-                totalPrice: 0,
-                masterRow: processedRow,
-                isHistory: false,
-                hasMultiple: false,
-                isSoloStorico: false
-            };
-        }
-
-        const group = appData.jobGroups[jid];
-        group.rows.push(processedRow);
-        group.totalMin += processedRow._minuti;
-        group.totalPrice += processedRow._suggestedPrice;
-    });
-
-    // Aggiorna hasMultiple per i nuovi gruppi
-    Object.values(appData.jobGroups).forEach(g => {
-        g.hasMultiple = g.rows.length > 1;
-    });
-
-    // Aggiungi le nuove righe a rawRows
-    appData.rawRows.push(...newRows);
-
-    console.log(`✅ Aggiunti ${nuoviCount} nuovi interventi, saltati ${skipCount} duplicati`);
-
-    // Ricalcola medie componenti con i nuovi dati
-    calcolaMedieComponenti();
-
-    // Aggiorna i filtri (popola i select con i nuovi valori)
-    populateSelect('filter-venditore', appData.uniqueVenditori);
-    populateSelect('filter-workperf', appData.uniqueWorkPerf);
-    populateSelect('filter-contract', appData.uniqueContracts);
-
-    // Applica filtri e renderizza
-    applyFilters();
-
-    // Mostra notifica
-    mostraNotificaAggiuntiva(`✅ Aggiunti ${nuoviCount} nuovi interventi`, 'success');
-
-    console.log("✅ processAggiuntivoData completato");
-};
-
-function mostraNotificaAggiuntiva(testo, tipo) {
-    const notifica = document.createElement('div');
-    notifica.className = `fixed bottom-4 right-4 z-50 bg-white rounded-lg shadow-xl border p-4 max-w-sm animate-slide-up ${tipo === 'success' ? 'border-emerald-200' : 'border-amber-200'
-        }`;
-    notifica.innerHTML = `
-        <div class="flex items-start gap-3">
-            <span class="text-2xl">${tipo === 'success' ? '✅' : '⚠️'}</span>
-            <div>
-                <h4 class="font-bold ${tipo === 'success' ? 'text-emerald-600' : 'text-amber-600'}">${testo}</h4>
-                <p class="text-xs text-slate-500 mt-1">I nuovi job hanno prezzo € 0 di default</p>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(notifica);
-    setTimeout(() => {
-        if (notifica) notifica.remove();
-    }, 4000);
-}
-
-// Override della funzione renderTable per gestire i prezzi readonly in modalità solo storico
-const originalRenderTable = window.renderTable;
-window.renderTable = function () {
-    // Se siamo in modalità solo storico, assicuriamoci che tutti i prezzi siano readonly
-    if (window.soloStoricoMode) {
-        // Forza tutti i gruppi come history per disabilitare i campi
-        Object.values(appData.jobGroups).forEach(g => {
-            g.isHistory = true;
-            g.isSoloStorico = true;
-        });
-    }
-    // Chiama la funzione originale
-    originalRenderTable();
-};
-
-// Aggiungi funzione per chiudere modalità solo storico (opzionale)
-window.esciModalitaSoloStorico = function () {
-    if (confirm("Vuoi uscire dalla modalità solo storico? I dati non salvati andranno persi.")) {
-        window.soloStoricoMode = false;
-        // Ricarica la pagina per resettare tutto
-        location.reload();
-    }
-};
-
-// ============================================
-// NUOVE FUNZIONI: ESPORTAZIONE PDF SINGOLO JOB
-// ============================================
-
-window.esportaJobPDF = function (jid) {
-    console.log("📄 Esportazione PDF per job:", jid);
-
-    const group = appData.jobGroups[jid];
-    if (!group) {
-        console.error("Job non trovato:", jid);
-        return;
-    }
-
-    const row = group.masterRow;
-
-    // Prepara i dati per il PDF
-    const jobData = {
-        id: jid,
-        data: formatDateItalian(row._jobDate),
-        impianto: row[COLS.IMPIANTO] || "N/D",
-        indirizzo: row[COLS.INDIRIZZO] || "N/D",
-        venditore: row[COLS.VENDITORE] || "N/D",
-        contratto: row[COLS.CONTRATTO] || "N/D",
-        tipoIntervento: row[COLS.WORK_PERFORMED] || "N/D",
-        durataMinuti: group.totalMin,
-        durataOre: (group.totalMin / 60).toFixed(1),
-        prezzoTotale: group.totalPrice || 0,
-        cliente: row[COLS.CLIENTE] || "N/D",
-        amministratore: row[COLS.AMMINISTRATORE] || "N/D",
-        tecnico: row[COLS.TECNICO] || "N/D",
-        componenti: []
-    };
-
-    // Raccogli i componenti
-    group.rows.forEach((r, idx) => {
-        jobData.componenti.push({
-            codice: r[COLS.COMP_CODE] || "N/D",
-            componente: r[COLS.COMPONENTE] || "N/D",
-            categoria: r[COLS.CATEGORIA] || "N/D",
-            descrizione: r[COLS.DESCRIZIONE] || "N/D",
-            quantita: r[COLS.QUANTITA] || 1,
-            prezzo: r._suggestedPrice || 0
-        });
-    });
-
-    // Genera il PDF
-    generaPDF(jobData);
-};
-
-function generaPDF(jobData) {
-    // Usa jsPDF con window.jspdf
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 15;
-    let y = margin;
-
-    // ========== INTESTAZIONE ==========
-    doc.setFontSize(20);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(37, 99, 235); // blue-600
-    doc.text("Sbolla Manager", margin, y);
-
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(100, 116, 139); // slate-500
-    doc.text("Report Intervento", margin, y + 7);
-
-    // Riga separatrice
-    y += 12;
-    doc.setDrawColor(203, 213, 225);
-    doc.line(margin, y, pageWidth - margin, y);
-    y += 8;
-
-    // ========== DATI JOB ==========
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(15, 23, 42);
-    doc.text(`Job: ${jobData.id}`, margin, y);
-    y += 6;
-
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(71, 85, 105);
-
-    // Griglia dati job
-    const jobFields = [
-        ["Data intervento:", jobData.data],
-        ["Impianto:", jobData.impianto],
-        ["Indirizzo:", jobData.indirizzo],
-        ["Venditore:", jobData.venditore],
-        ["Cliente:", jobData.cliente],
-        ["Amministratore:", jobData.amministratore],
-        ["Tecnico:", jobData.tecnico],
-        ["Contratto:", jobData.contratto],
-        ["Tipo intervento:", jobData.tipoIntervento],
-        ["Durata:", `${jobData.durataMinuti}' (${jobData.durataOre} ore)`],
-    ];
-
-    let col1X = margin;
-    let col2X = margin + 45;
-    let rowHeight = 5;
-
-    jobFields.forEach((field, idx) => {
-        const yPos = y + (idx * rowHeight);
-        if (yPos > 260) {
-            doc.addPage();
-            y = margin;
-        }
-        doc.setFont("helvetica", "bold");
-        doc.text(field[0], col1X, yPos);
-        doc.setFont("helvetica", "normal");
-        doc.text(field[1], col2X, yPos);
-    });
-
-    y += jobFields.length * rowHeight + 5;
-
-    // ========== TABELLA COMPONENTI ==========
-    if (y > 250) {
-        doc.addPage();
-        y = margin;
-    }
-
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(15, 23, 42);
-    doc.text("Componenti", margin, y);
-    y += 5;
-
-    // Prepara i dati per la tabella
-    const tableData = jobData.componenti.map(comp => [
-        comp.codice,
-        comp.componente.length > 30 ? comp.componente.substring(0, 27) + "..." : comp.componente,
-        comp.quantita,
-        `€ ${comp.prezzo.toFixed(2)}`
-    ]);
-
-    // Usa autoTable
-    doc.autoTable({
-        startY: y,
-        head: [["Codice", "Componente", "Qtà", "Prezzo"]],
-        body: tableData,
-        theme: 'striped',
-        headStyles: {
-            fillColor: [59, 130, 246],
-            textColor: 255,
-            fontStyle: 'bold',
-            fontSize: 9
-        },
-        bodyStyles: {
-            fontSize: 8
-        },
-        columnStyles: {
-            0: { cellWidth: 30 },
-            1: { cellWidth: 80 },
-            2: { cellWidth: 15, halign: 'center' },
-            3: { cellWidth: 25, halign: 'right' }
-        },
-        margin: { left: margin, right: margin },
-        didDrawPage: function (data) {
-            // Footer su ogni pagina
-            const pageCount = doc.internal.getNumberOfPages();
-            for (let i = 1; i <= pageCount; i++) {
-                doc.setPage(i);
-                doc.setFontSize(8);
-                doc.setTextColor(148, 163, 184);
-                doc.text(
-                    `Documento generato il ${new Date().toLocaleString('it-IT')}`,
-                    margin,
-                    doc.internal.pageSize.getHeight() - 10
-                );
-                doc.text(
-                    `Pagina ${i} di ${pageCount}`,
-                    pageWidth - margin - 20,
-                    doc.internal.pageSize.getHeight() - 10
-                );
-            }
-        }
-    });
-
-    // Ottieni l'Y finale dopo la tabella
-    let finalY = doc.lastAutoTable.finalY + 8;
-
-    // ========== TOTALE ==========
-    if (finalY > 270) {
-        doc.addPage();
-        finalY = margin;
-    }
-
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(16, 185, 129);
-    doc.text(`TOTALE: € ${jobData.prezzoTotale.toFixed(2)}`, pageWidth - margin - 40, finalY);
-
-    // ========== NOTE ==========
-    finalY += 10;
-    if (finalY < 270) {
-        doc.setFontSize(8);
-        doc.setFont("helvetica", "italic");
-        doc.setTextColor(148, 163, 184);
-        doc.text("* Questo documento è stato generato automaticamente da Sbolla Manager", margin, doc.internal.pageSize.getHeight() - 15);
-    }
-
-    // Salva il PDF
-    doc.save(`Job_${jobData.id}_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.pdf`);
-}
-
-// ============================================
-// ESPOSIZIONE FUNZIONI GLOBALI
-// ============================================
-
-// Funzioni principali
-window.handleFile = handleFile;
-window.processData = processData;
-window.initUI = initUI;
-window.renderTable = renderTable;
+window.loadExcelIA = loadExcelIA;
+window.apriCaricaExcel = apriCaricaExcel;
 window.applyFilters = applyFilters;
 window.applySorting = applySorting;
-window.updateHeaderStats = updateHeaderStats;
-window.saveState = saveState;
-window.loadState = loadState;
-
-// Funzioni di pricing
-window.calculateRowPrice = calculateRowPrice;
-window.applicaPrezzoListino = applicaPrezzoListino;
-window.setZeroPrice = setZeroPrice;
-window.updateSingleJobPrice = updateSingleJobPrice;
-window.updateTaskPrice = updateTaskPrice;
-window.massAdjust = massAdjust;
-window.arrotondaPrezzo = arrotondaPrezzo;
-
-// Funzioni listino
-window.getPrezzoListino = getPrezzoListino;
-window.getCategoriaPerCodice = getCategoriaPerCodice;
-window.calcolaMedieComponenti = calcolaMedieComponenti;
-window.salvaListino = salvaListino;
-window.caricaListino = caricaListino;
-window.apriListinoModal = apriListinoModal;
-window.chiudiListinoModal = chiudiListinoModal;
-window.salvaListinoDaModal = salvaListinoDaModal;
-window.ricalcolaMedie = ricalcolaMedie;
-window.esportaListino = esportaListino;
-window.importaListinoFile = importaListinoFile;
-window.esportaListinoExcel = esportaListinoExcel;
-window.importaListinoExcel = importaListinoExcel;
-
-// Funzioni scelta iniziale
-window.mostraSceltaIniziale = mostraSceltaIniziale;
-window.chiudiSceltaIniziale = chiudiSceltaIniziale;
-window.confermaSceltaIniziale = confermaSceltaIniziale;
-window.anteprimaJSON = anteprimaJSON;
-window.applicaPrezziMedi = applicaPrezziMedi;
-window.applicaPrezziVuoti = applicaPrezziVuoti;
-window.applicaPrezziDaJSON = applicaPrezziDaJSON;
-
-// Funzioni modali
+window.resetFilters = resetFilters;
+window.salvaCosto = salvaCosto;
+window.salvaNota = salvaNota;
+window.azzeraCosto = azzeraCosto;
+window.confermaTutti = confermaTutti;
+window.openInfo = openInfo;
+window.closeInfo = closeInfo;
 window.openDetails = openDetails;
 window.closeDetails = closeDetails;
-window.openInfo = openInfo;
-window.toggleSettings = toggleSettings;
-window.saveSettings = saveSettings;
-window.toggleSettingsMenu = toggleSettingsMenu;
-
-// Funzioni statistiche
-window.getImpiantoStats = getImpiantoStats;
-window.mostraStatisticheCodice = mostraStatisticheCodice;
-window.calcolaStatisticheCodice = calcolaStatisticheCodice;
-
-// Funzioni ricerca e filtri
-window.cercaPerImpianto = cercaPerImpianto;
-window.resetFilters = resetFilters;
-window.salvaRicercaCorrente = salvaRicercaCorrente;
-window.aggiornaMenuRicerche = aggiornaMenuRicerche;
-window.caricaStoricoRicerche = caricaStoricoRicerche;
-window.salvaStoricoRicerche = salvaStoricoRicerche;
-
-// Funzioni export
 window.exportExcel = exportExcel;
 window.exportFiltered = exportFiltered;
-window.downloadSession = downloadSession;
-window.loadSessionFile = loadSessionFile;
-
-// Funzioni debug
+window.esportaJobPDF = esportaJobPDF;
+window.cercaPerImpianto = cercaPerImpianto;
+window.salvaRicercaCorrente = salvaRicercaCorrente;
+window.applicaRicerca = applicaRicerca;
+window.rimuoviRicerca = rimuoviRicerca;
+window.aggiornaMenuRicerche = aggiornaMenuRicerche;
+window.clearRicerche = clearRicerche;
+window.caricaRicercheSalvate = caricaRicercheSalvate;
+window.toggleSettingsMenu = toggleSettingsMenu;
 window.toggleDebugPanel = toggleDebugPanel;
 window.nascondiDebugPanel = nascondiDebugPanel;
 window.aggiornaDebugPanel = aggiornaDebugPanel;
 window.ricaricaStorico = ricaricaStorico;
+window.ricaricaStoricoDefault = ricaricaStoricoDefault;
 window.caricaStoricoFile = caricaStoricoFile;
-window.getTuttiInterventi = getTuttiInterventi;
-
-// Funzioni utility
-window.formatDateItalian = formatDateItalian;
-window.parseDate = parseDate;
-window.debounce = debounce;
+window.downloadSession = downloadSession;
+window.loadSessionFile = loadSessionFile;
 window.switchTab = switchTab;
-
-// Inizializzazione al caricamento del DOM
-document.addEventListener('DOMContentLoaded', () => {
-    console.log("🚀 DOM caricato, inizializzo app.js...");
-
-    const fileInput = document.getElementById('fileInput');
-    if (fileInput) fileInput.addEventListener('change', handleFile);
-
-    const searchBox = document.getElementById('searchBox');
-    if (searchBox) searchBox.addEventListener('keyup', debounce(applyFilters, 300));
-
-    caricaListino();
-    caricaStoricoRicerche();
-    aggiornaMenuRicerche();
-
-    const savedRounding = localStorage.getItem("SP_ROUNDING");
-    if (savedRounding) pricingConfig.rounding = parseInt(savedRounding);
-
-    // Controlla se c'è un file storico da caricare (già gestito nello script iniziale)
-    console.log("✅ app.js inizializzato");
-});
+window.mostraNotifica = mostraNotifica;
+window.formatEuro = formatEuro;
+window.formatDateItalian = formatDateItalian;
+window.debounce = debounce;
+window.renderIACell = renderIACell;
+window.badgeConfidenza = badgeConfidenza;
+window.badgeFatturabilita = badgeFatturabilita;
 
 console.log("✅ Tutte le funzioni di app.js esposte globalmente");
+
+
+// ── DIAGNOSTICA: intercetta tentativi di navigazione ──
+window.addEventListener('beforeunload', (e) => {
+    console.warn('🚨 beforeunload triggered!');
+    console.trace();
+});
+
+// ── DIAGNOSTICA: intercetta errori globali ──
+window.addEventListener('error', (e) => {
+    console.error('🚨 Errore globale:', e.message, e.filename, e.lineno);
+});
+
+// ── DIAGNOSTICA: intercetta click su link ──
+document.addEventListener('click', (e) => {
+    const target = e.target.closest('a, button');
+    if (target) {
+        console.log('🖱️ Click su:', target.tagName, target.href || target.onclick || target.textContent?.substring(0, 30));
+    }
+}, true);
