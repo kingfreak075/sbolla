@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ispeziona File IA — Sbolla Manager v4</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f1f5f9;
+            color: #0f172a;
+            padding: 24px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: #0f172a;
+            color: white;
+            padding: 20px 28px;
+            border-radius: 12px;
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header h1 {
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+
+        header p {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            margin-top: 4px;
+        }
+
+        header .badge {
+            background: #1e40af;
+            color: white;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        .card h2 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .upload-zone {
+            border: 3px dashed #cbd5e1;
+            border-radius: 12px;
+            padding: 48px 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #f8fafc;
+        }
+
+        .upload-zone:hover {
+            border-color: #3b82f6;
+            background: #eff6ff;
+        }
+
+        .upload-zone.dragover {
+            border-color: #10b981;
+            background: #ecfdf5;
+        }
+
+        .upload-zone .icon {
+            font-size: 3rem;
+            margin-bottom: 12px;
+        }
+
+        .upload-zone .title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .upload-zone .subtitle {
+            font-size: 0.85rem;
+            color: #64748b;
+        }
+
+        /* Contratto */
+        .contract-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .contract-item {
+            padding: 12px 16px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            border: 1px solid;
+        }
+
+        .contract-item.ok {
+            background: #ecfdf5;
+            border-color: #a7f3d0;
+            color: #065f46;
+        }
+
+        .contract-item.ko {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #991b1b;
+        }
+
+        .contract-item .label {
+            font-weight: 600;
+        }
+
+        .contract-item .value {
+            font-family: monospace;
+            font-weight: 700;
+        }
+
+        /* Table colonne */
+        .col-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        .col-table thead {
+            background: #f1f5f9;
+        }
+
+        .col-table th {
+            text-align: left;
+            padding: 10px 14px;
+            font-weight: 700;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #475569;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .col-table td {
+            padding: 10px 14px;
+            border-bottom: 1px solid #f1f5f9;
+            vertical-align: top;
+        }
+
+        .col-table tr:hover td {
+            background: #f8fafc;
+        }
+
+        .col-idx {
+            font-family: monospace;
+            color: #64748b;
+            font-weight: 700;
+            width: 50px;
+        }
+
+        .col-letter {
+            font-family: monospace;
+            color: #94a3b8;
+            font-weight: 700;
+            width: 40px;
+        }
+
+        .col-name {
+            font-weight: 600;
+            color: #0f172a;
+            max-width: 320px;
+            word-break: break-word;
+        }
+
+        .col-name.highlight-costo {
+            color: #dc2626;
+        }
+
+        .col-name.highlight-note {
+            color: #0891b2;
+        }
+
+        .col-name.highlight-ia {
+            color: #7c3aed;
+        }
+
+        .col-type {
+            width: 90px;
+            font-size: 0.75rem;
+            color: #475569;
+        }
+
+        .col-sample {
+            font-size: 0.75rem;
+            color: #64748b;
+            font-family: monospace;
+            max-width: 200px;
+            word-break: break-word;
+        }
+
+        .col-unique {
+            font-size: 0.75rem;
+            color: #475569;
+            max-width: 280px;
+        }
+
+        .pill {
+            display: inline-block;
+            background: #e0e7ff;
+            color: #3730a3;
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin: 2px 2px 0 0;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+
+        .pill.green { background: #d1fae5; color: #065f46; }
+        .pill.red { background: #fee2e2; color: #991b1b; }
+        .pill.yellow { background: #fef3c7; color: #92400e; }
+        .pill.gray { background: #f1f5f9; color: #475569; }
+
+        /* Azioni */
+        .actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 16px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            font-family: inherit;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+        }
+        .btn-primary:hover { background: #2563eb; }
+
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+        .btn-success:hover { background: #059669; }
+
+        .btn-secondary {
+            background: #f1f5f9;
+            color: #475569;
+            border: 1px solid #cbd5e1;
+        }
+        .btn-secondary:hover { background: #e2e8f0; }
+
+        .btn-danger {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+        .btn-danger:hover { background: #fecaca; }
+
+        /* Stats */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 14px;
+        }
+
+        .stat-card .label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            font-weight: 700;
+            color: #64748b;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .stat-card .value {
+            font-size: 1.6rem;
+            font-weight: 800;
+            font-family: monospace;
+            color: #0f172a;
+        }
+
+        .stat-card .value.blue { color: #2563eb; }
+        .stat-card .value.green { color: #059669; }
+        .stat-card .value.red { color: #dc2626; }
+        .stat-card .value.purple { color: #7c3aed; }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 0.85rem;
+            border-left: 4px solid;
+        }
+
+        .alert-info {
+            background: #eff6ff;
+            border-color: #3b82f6;
+            color: #1e40af;
+        }
+
+        .alert-success {
+            background: #ecfdf5;
+            border-color: #10b981;
+            color: #065f46;
+        }
+
+        .alert-warning {
+            background: #fffbeb;
+            border-color: #f59e0b;
+            color: #92400e;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+
+    <header>
+        <div>
+            <h1>🔍 Ispeziona File IA</h1>
+            <p>Tool di validazione del contratto colonne — Sbolla Manager v4</p>
+        </div>
+        <div class="badge">SOLO LETTURA</div>
+    </header>
+
+    <!-- Upload -->
+    <div class="card">
+        <h2>📂 Carica il file Excel IA</h2>
+        <div class="upload-zone" id="uploadZone">
+            <div class="icon">📊</div>
+            <div class="title">Trascina qui il file Excel IA</div>
+            <div class="subtitle">oppure clicca per selezionare — .xlsx, .xls</div>
+        </div>
+        <input type="file" id="fileInput" accept=".xlsx,.xls" class="hidden">
+    </div>
+
+    <!-- Contratto -->
+    <div class="card hidden" id="contractCard">
+        <h2>✅ Validazione Contratto Colonne</h2>
+        <div class="contract-grid" id="contractGrid"></div>
+    </div>
+
+    <!-- Statistiche -->
+    <div class="card hidden" id="statsCard">
+        <h2>📊 Statistiche File</h2>
+        <div class="stats-grid" id="statsGrid"></div>
+    </div>
+
+    <!-- Colonne -->
+    <div class="card hidden" id="columnsCard">
+        <h2>📋 Struttura Colonne</h2>
+        <div style="overflow-x: auto;">
+            <table class="col-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Ltr</th>
+                        <th>Nome colonna</th>
+                        <th>Tipo</th>
+                        <th>Esempio</th>
+                        <th>Valori unici</th>
+                    </tr>
+                </thead>
+                <tbody id="columnsBody"></tbody>
+            </table>
+        </div>
+
+        <div class="actions">
+            <button class="btn btn-success" onclick="exportJSON()">
+                💾 Esporta specifica JSON
+            </button>
+            <button class="btn btn-primary" onclick="copySpec()">
+                📋 Copia specifica
+            </button>
+            <button class="btn btn-danger" onclick="reset()">
+                ↺ Ricomincia
+            </button>
+        </div>
+    </div>
+
+</div>
+
+<script>
+// ── Configurazione contratto atteso ──
+const CONTRACT = {
+    headerRow: 0,
+    costoIndex: 23,
+    noteIndex: 24,
+    jobIndex: 3,
+    // Colonne obbligatorie (per nome)
+    required: {
+        'Job': 3,
+        'Impiantodiriferimento (Job) (Job)': 4,
+        'Indrizzo Edificio (LocalUnitId) (Impianto)': 5,
+        'Venditore (LocalUnitId) (Impianto)': 7,
+        'Contract template (LocalUnitId) (Impianto)': 11,
+        'LocalWorkPerformed': 13,
+        'ComponentCode (LocalComponent) (Component)': 14,
+        'LocalComponentCategory': 15,
+        'LocalComponent': 16,
+        'TaskDescription': 19,
+        'Tempo Lavoro (Job) (Job)': 20,
+        'COSTO': 23,
+        'NOTE': 24,
+        'FATTURABILITÀ': 29,
+        'PREZZO CONSIGLIATO': 30,
+        'CRITICITÀ IMPIANTO': 31,
+        'CONFIDENZA': 32,
+        'MOTIVAZIONE': 33,
+        'INDICAZIONE COMMERCIALE': 34,
+        'ANALOGHI UTILIZZATI': 35,
+        'INTERVALLO STORICO': 36,
+        'CREDITO COMMERCIALE': 37,
+    },
+    iaColumns: [
+        'FATTURABILITÀ',
+        'CONFIDENZA',
+        'CRITICITÀ IMPIANTO',
+        'INDICAZIONE COMMERCIALE',
+        'CREDITO COMMERCIALE',
+    ]
+};
+
+let inspectionData = null;
+
+// ── Lettera Excel da indice (0-based) ──
+function colLetter(idx) {
+    let s = '';
+    let n = idx;
+    while (n >= 0) {
+        s = String.fromCharCode(65 + (n % 26)) + s;
+        n = Math.floor(n / 26) - 1;
+    }
+    return s;
+}
+
+// ── Formatta data seriale Excel ──
+function formatCell(v) {
+    if (v === undefined || v === null || v === '') return '';
+    if (typeof v === 'number') {
+        // Prova a interpretarlo come data seriale
+        if (v > 40000 && v < 60000) {
+            try {
+                const d = XLSX.SSF.parse_date_code(v);
+                if (d) {
+                    return `${String(d.d).padStart(2,'0')}/${String(d.m).padStart(2,'0')}/${d.y} ${String(d.H).padStart(2,'0')}:${String(d.M).padStart(2,'0')}`;
+                }
+            } catch(e) {}
+        }
+        return String(v);
+    }
+    return String(v);
+}
+
+// ── Tipo dato ──
+function detectType(values) {
+    const nonEmpty = values.filter(v => v !== undefined && v !== null && v !== '');
+    if (nonEmpty.length === 0) return 'vuoto';
+    const nums = nonEmpty.filter(v => typeof v === 'number');
+    const dates = nonEmpty.filter(v => typeof v === 'number' && v > 40000 && v < 60000);
+    if (dates.length > nonEmpty.length * 0.8) return 'data';
+    if (nums.length > nonEmpty.length * 0.8) return 'numero';
+    return 'testo';
+}
+
+// ── Upload ──
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+
+uploadZone.addEventListener('click', () => fileInput.click());
+
+uploadZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    uploadZone.classList.add('dragover');
+});
+
+uploadZone.addEventListener('dragleave', () => {
+    uploadZone.classList.remove('dragover');
+});
+
+uploadZone.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadZone.classList.remove('dragover');
+    if (e.dataTransfer.files.length > 0) {
+        handleFile(e.dataTransfer.files[0]);
+    }
+});
+
+fileInput.addEventListener('change', e => {
+    if (e.target.files.length > 0) {
+        handleFile(e.target.files[0]);
+    }
+});
+
+function handleFile(file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, { type: 'array', cellDates: false });
+        const sheetName = wb.SheetNames[0];
+        const sheet = wb.Sheets[sheetName];
+        const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
+        
+        inspect(file.name, sheetName, aoa);
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+function inspect(fileName, sheetName, aoa) {
+    if (aoa.length === 0) {
+        alert('File vuoto');
+        return;
+    }
+
+    const headers = aoa[0];
+    const dataRows = aoa.slice(1).filter(r => r.some(c => c !== undefined && c !== null && c !== ''));
+
+    // Raccolta valori per colonna
+    const valuesByCol = headers.map(() => []);
+    dataRows.forEach(row => {
+        headers.forEach((_, i) => {
+            const v = row[i];
+            if (v !== undefined && v !== null && v !== '') {
+                valuesByCol[i].push(v);
+            }
+        });
+    });
+
+    // Specifica colonne
+    const columns = headers.map((name, i) => {
+        const vals = valuesByCol[i];
+        const uniq = [...new Set(vals.map(v => String(v)))];
+        return {
+            index: i,
+            letter: colLetter(i),
+            name: name || '(vuota)',
+            type: detectType(vals),
+            sample: formatCell(vals[0]),
+            uniqueCount: uniq.length,
+            uniqueValues: uniq.length <= 20 ? uniq : null,
+            uniquePreview: uniq.length > 20 ? uniq.slice(0, 5) : null,
+            totalValues: vals.length,
+            isCosto: i === CONTRACT.costoIndex,
+            isNote: i === CONTRACT.noteIndex,
+            isIA: CONTRACT.iaColumns.includes(name),
+            isRequired: name in CONTRACT.required,
+            expectedIndex: CONTRACT.required[name],
+        };
+    });
+
+    // Validazione contratto
+    const contractChecks = [];
+    
+    // Header riga 0
+    contractChecks.push({
+        label: 'Riga header = riga 1',
+        ok: true,
+        detail: `${headers.length} colonne rilevate`
+    });
+
+    // COSTO a indice 23
+    const costoCol = columns[CONTRACT.costoIndex];
+    contractChecks.push({
+        label: 'COSTO a colonna X (indice 23)',
+        ok: costoCol && costoCol.name === 'COSTO',
+        detail: costoCol ? `Trovato: "${costoCol.name}"` : 'Non trovato'
+    });
+
+    // NOTE a indice 24
+    const noteCol = columns[CONTRACT.noteIndex];
+    contractChecks.push({
+        label: 'NOTE a colonna Y (indice 24)',
+        ok: noteCol && noteCol.name === 'NOTE',
+        detail: noteCol ? `Trovato: "${noteCol.name}"` : 'Non trovato'
+    });
+
+    // Job a indice 3
+    const jobCol = columns[CONTRACT.jobIndex];
+    contractChecks.push({
+        label: 'Job a colonna D (indice 3)',
+        ok: jobCol && jobCol.name === 'Job',
+        detail: jobCol ? `Trovato: "${jobCol.name}"` : 'Non trovato'
+    });
+
+    // Colonne IA obbligatorie
+    const missingIA = [];
+    const wrongIA = [];
+    CONTRACT.iaColumns.forEach(name => {
+        const found = columns.find(c => c.name === name);
+        if (!found) {
+            missingIA.push(name);
+        } else if (found.expectedIndex !== undefined && found.index !== CONTRACT.required[name]) {
+            wrongIA.push(`${name}: atteso ${CONTRACT.required[name]}, trovato ${found.index}`);
+        }
+    });
+
+    contractChecks.push({
+        label: `Colonne IA (${CONTRACT.iaColumns.length})`,
+        ok: missingIA.length === 0 && wrongIA.length === 0,
+        detail: missingIA.length > 0 ? `Mancanti: ${missingIA.join(', ')}` :
+                wrongIA.length > 0 ? `Posizione errata: ${wrongIA.join('; ')}` :
+                'Tutte presenti e in posizione corretta'
+    });
+
+    // Tutte le colonne obbligatorie
+    const missingReq = [];
+    Object.entries(CONTRACT.required).forEach(([name, idx]) => {
+        const found = columns.find(c => c.name === name);
+        if (!found) missingReq.push(name);
+    });
+
+    contractChecks.push({
+        label: `Colonne obbligatorie (${Object.keys(CONTRACT.required).length})`,
+        ok: missingReq.length === 0,
+        detail: missingReq.length > 0 ? `Mancanti: ${missingReq.join(', ')}` : 'Tutte presenti'
+    });
+
+    // Statistiche
+    const stats = {
+        fileName,
+        sheetName,
+        totalColumns: headers.length,
+        totalRows: dataRows.length,
+        totalCells: headers.length * dataRows.length,
+    };
+
+    // Analisi valori IA
+    const iaUniqueValues = {};
+    CONTRACT.iaColumns.forEach(name => {
+        const col = columns.find(c => c.name === name);
+        if (col) {
+            iaUniqueValues[name] = {
+                uniqueCount: col.uniqueCount,
+                values: col.uniqueValues || col.uniquePreview,
+                totalValues: col.totalValues
+            };
+        }
+    });
+
+    inspectionData = {
+        fileName,
+        sheetName,
+        headers: headers.map((h, i) => ({ index: i, letter: colLetter(i), name: h })),
+        columns,
+        contractChecks,
+        stats,
+        iaUniqueValues
+    };
+
+    render();
+}
+
+function render() {
+    if (!inspectionData) return;
+
+    // Contratto
+    const grid = document.getElementById('contractGrid');
+    grid.innerHTML = inspectionData.contractChecks.map(c => `
+        <div class="contract-item ${c.ok ? 'ok' : 'ko'}">
+            <span class="label">${c.ok ? '✅' : '❌'} ${c.label}</span>
+            <span class="value">${c.detail}</span>
+        </div>
+    `).join('');
+    document.getElementById('contractCard').classList.remove('hidden');
+
+    // Statistiche
+    const allOk = inspectionData.contractChecks.every(c => c.ok);
+    const s = inspectionData.stats;
+    document.getElementById('statsGrid').innerHTML = `
+        <div class="stat-card">
+            <div class="label">File</div>
+            <div class="value" style="font-size: 0.9rem; word-break: break-all;">${s.fileName}</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Foglio</div>
+            <div class="value" style="font-size: 1.1rem;">${s.sheetName}</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Colonne</div>
+            <div class="value blue">${s.totalColumns}</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Righe dati</div>
+            <div class="value purple">${s.totalRows}</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Validazione contratto</div>
+            <div class="value ${allOk ? 'green' : 'red'}">${allOk ? '✅ OK' : '❌ KO'}</div>
+        </div>
+    `;
+    document.getElementById('statsCard').classList.remove('hidden');
+
+    // Colonne
+    const body = document.getElementById('columnsBody');
+    body.innerHTML = inspectionData.columns.map(c => {
+        let nameClass = 'col-name';
+        if (c.isCosto) nameClass += ' highlight-costo';
+        else if (c.isNote) nameClass += ' highlight-note';
+        else if (c.isIA) nameClass += ' highlight-ia';
+
+        let uniqueHtml = '';
+        if (c.uniqueValues) {
+            uniqueHtml = c.uniqueValues.slice(0, 10).map(v => {
+                let cls = 'pill';
+                const vUp = String(v).toUpperCase();
+                if (vUp === 'SÌ' || vUp === 'SI' || vUp === 'ALTA') cls += ' green';
+                else if (vUp === 'NO' || vUp === 'BASSA' || vUp === 'ALTO') cls += ' red';
+                else if (vUp === 'MEDIA' || vUp === 'MEDIO' || vUp === 'DA VERIFICARE') cls += ' yellow';
+                else cls += ' gray';
+                return `<span class="${cls}">${v}</span>`;
+            }).join('');
+            if (c.uniqueValues.length > 10) {
+                uniqueHtml += `<span class="pill gray">+${c.uniqueValues.length - 10}</span>`;
+            }
+        } else if (c.uniquePreview) {
+            uniqueHtml = c.uniquePreview.slice(0, 3).map(v => `<span class="pill gray">${v}</span>`).join('') +
+                         `<span class="pill">+${c.uniqueCount - 3} unici</span>`;
+        } else {
+            uniqueHtml = '<span style="color:#94a3b8;font-size:0.7rem;">—</span>';
+        }
+
+        return `
+            <tr>
+                <td class="col-idx">${c.index}</td>
+                <td class="col-letter">${c.letter}</td>
+                <td class="${nameClass}">${c.name}</td>
+                <td class="col-type">${c.type}</td>
+                <td class="col-sample">${c.sample}</td>
+                <td class="col-unique">${uniqueHtml}</td>
+            </tr>
+        `;
+    }).join('');
+    document.getElementById('columnsCard').classList.remove('hidden');
+}
+
+function exportJSON() {
+    if (!inspectionData) return;
+    const json = JSON.stringify(inspectionData, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `specifica_file_IA_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+async function copySpec() {
+    if (!inspectionData) return;
+    const lines = [];
+    lines.push('═══════════════════════════════════════════');
+    lines.push(`SPECIFICA FILE IA: ${inspectionData.fileName}`);
+    lines.push('═══════════════════════════════════════════');
+    lines.push('');
+    lines.push('--- CONTRATTO ---');
+    inspectionData.contractChecks.forEach(c => {
+        lines.push(`${c.ok ? '✅' : '❌'} ${c.label}: ${c.detail}`);
+    });
+    lines.push('');
+    lines.push('--- COLONNE ---');
+    inspectionData.columns.forEach(c => {
+        lines.push(`[${String(c.index).padStart(2)}] ${c.letter.padEnd(3)} | ${c.type.padEnd(7)} | ${c.name}`);
+    });
+    lines.push('');
+    lines.push('--- VALORI UNICI COLONNE IA ---');
+    Object.entries(inspectionData.iaUniqueValues).forEach(([name, data]) => {
+        lines.push(`${name}: ${data.uniqueCount} valori unici`);
+        if (data.values) {
+            data.values.forEach(v => lines.push(`  • ${v}`));
+        }
+    });
+
+    try {
+        await navigator.clipboard.writeText(lines.join('\n'));
+        alert('✅ Specifica copiata negli appunti');
+    } catch(e) {
+        alert('❌ Errore copia: ' + e.message);
+    }
+}
+
+function reset() {
+    inspectionData = null;
+    fileInput.value = '';
+    document.getElementById('contractCard').classList.add('hidden');
+    document.getElementById('statsCard').classList.add('hidden');
+    document.getElementById('columnsCard').classList.add('hidden');
+}
+
+</script>
+</body>
+</html>

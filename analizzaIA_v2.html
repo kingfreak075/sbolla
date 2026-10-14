@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analisi IA vs Storico v2 — Sbolla Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #f1f5f9; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .loader-ring { display: inline-block; width: 40px; height: 40px; }
+        .loader-ring:after {
+            content: " "; display: block; width: 32px; height: 32px; margin: 4px;
+            border-radius: 50%; border: 3px solid #3b82f6;
+            border-color: #3b82f6 transparent #3b82f6 transparent;
+            animation: loader-ring 1.2s linear infinite;
+        }
+        @keyframes loader-ring { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .kpi-card {
+            background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+            border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px;
+        }
+        .kpi-value { font-size: 1.8rem; font-weight: 700; line-height: 1; }
+        .badge-sicuro { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+        .badge-valutare { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+        .badge-assorbi { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+    </style>
+</head>
+<body class="text-slate-800 p-6 min-h-screen">
+
+<div class="max-w-7xl mx-auto">
+
+    <div class="card p-6 mb-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-800">🔍 Analisi IA vs Storico v2</h1>
+                <p class="text-sm text-slate-500 mt-1">Classificazione SICURO / DA_VALUTARE / ASSORBI — modello commerciale</p>
+            </div>
+            <div class="text-right">
+                <div class="text-xs text-slate-400 uppercase font-bold">Versione</div>
+                <div class="text-sm font-mono font-bold text-slate-600">analizzaIA v2.0</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- UPLOAD -->
+    <div class="card p-6 mb-6">
+        <h2 class="text-lg font-bold text-slate-700 mb-4 flex items-center gap-2">
+            <span class="bg-blue-100 text-blue-700 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold">1</span>
+            Carica i file
+        </h2>
+
+        <div class="grid grid-cols-2 gap-4">
+            <div class="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center hover:border-blue-400 transition cursor-pointer"
+                 onclick="document.getElementById('fileIA').click()">
+                <input type="file" id="fileIA" accept=".xlsx,.xls" class="hidden">
+                <div class="text-4xl mb-2">📊</div>
+                <div class="font-bold text-slate-700">File IA (Excel)</div>
+                <div id="fileIA-status" class="text-xs mt-3 font-mono text-slate-500">Nessun file caricato</div>
+            </div>
+
+            <div class="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center hover:border-indigo-400 transition cursor-pointer"
+                 onclick="document.getElementById('fileStorico').click()">
+                <input type="file" id="fileStorico" accept=".json" class="hidden">
+                <div class="text-4xl mb-2">📚</div>
+                <div class="font-bold text-slate-700">Storico (manifest)</div>
+                <div id="fileStorico-status" class="text-xs mt-3 font-mono text-slate-500">Nessun file caricato</div>
+            </div>
+        </div>
+
+        <div id="loader-area" class="hidden mt-6 text-center">
+            <div class="loader-ring mx-auto"></div>
+            <div id="loader-msg" class="text-sm text-slate-500 mt-2">Elaborazione in corso...</div>
+        </div>
+    </div>
+
+    <!-- RISULTATI -->
+    <div id="risultati" class="hidden">
+
+        <!-- KPI GLOBALI -->
+        <div class="card p-6 mb-6">
+            <h2 class="text-lg font-bold text-slate-700 mb-4 flex items-center gap-2">
+                <span class="bg-blue-100 text-blue-700 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold">2</span>
+                KPI Globali
+            </h2>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="kpi-card">
+                    <div class="text-xs text-slate-500 uppercase font-bold mb-2">Job totali</div>
+                    <div class="kpi-value text-slate-800" id="kpi-jobs">0</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="text-xs text-blue-600 uppercase font-bold mb-2">Totale IA</div>
+                    <div class="kpi-value text-blue-700" id="kpi-totale-ia">€ 0</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="text-xs text-emerald-600 uppercase font-bold mb-2">Totale SICURO</div>
+                    <div class="kpi-value text-emerald-700" id="kpi-totale-sicuro">€ 0</div>
+                    <div class="text-xs text-slate-400 mt-1" id="kpi-jobs-sicuro">0 job</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="text-xs text-amber-600 uppercase font-bold mb-2">Totale DA VALUTARE</div>
+                    <div class="kpi-value text-amber-700" id="kpi-totale-valutare">€ 0</div>
+                    <div class="text-xs text-slate-400 mt-1" id="kpi-jobs-valutare">0 job</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                <div class="kpi-card">
+                    <div class="text-xs text-slate-500 uppercase font-bold mb-2">Job ASSORBITI</div>
+                    <div class="kpi-value text-slate-600" id="kpi-jobs-assorbi">0</div>
+                    <div class="text-xs text-slate-400 mt-1" id="kpi-totale-assorbi">€ 0 risparmiati</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="text-xs text-slate-500 uppercase font-bold mb-2">Storico caricato</div>
+                    <div class="kpi-value text-slate-800" id="kpi-storico">0</div>
+                    <div class="text-xs text-slate-400 mt-1" id="kpi-storico-impianti">(0 impianti)</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="text-xs text-slate-500 uppercase font-bold mb-2">Budget target</div>
+                    <div class="kpi-value text-emerald-700">€ 80.000</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="text-xs text-slate-500 uppercase font-bold mb-2">Sicuro vs Budget</div>
+                    <div class="kpi-value" id="kpi-ratio">—</div>
+                    <div class="text-xs text-slate-400 mt-1">Quanto copre il budget</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DISTRIBUZIONE PER SICUREZZA -->
+        <div class="card p-6 mb-6">
+            <h2 class="text-lg font-bold text-slate-700 mb-4">🎯 Distribuzione per Sicurezza Fatturazione</h2>
+            <div class="grid grid-cols-3 gap-4">
+                <div class="border-2 border-emerald-200 rounded-xl p-5 bg-emerald-50">
+                    <div class="text-2xl font-bold text-emerald-700" id="dist-sicuro-jobs">0</div>
+                    <div class="text-xs text-emerald-600 uppercase font-bold mt-1">SICURO</div>
+                    <div class="text-lg font-mono font-bold text-emerald-800 mt-2" id="dist-sicuro-tot">€ 0</div>
+                </div>
+                <div class="border-2 border-amber-200 rounded-xl p-5 bg-amber-50">
+                    <div class="text-2xl font-bold text-amber-700" id="dist-valutare-jobs">0</div>
+                    <div class="text-xs text-amber-600 uppercase font-bold mt-1">DA VALUTARE</div>
+                    <div class="text-lg font-mono font-bold text-amber-800 mt-2" id="dist-valutare-tot">€ 0</div>
+                </div>
+                <div class="border-2 border-slate-200 rounded-xl p-5 bg-slate-50">
+                    <div class="text-2xl font-bold text-slate-600" id="dist-assorbi-jobs">0</div>
+                    <div class="text-xs text-slate-500 uppercase font-bold mt-1">ASSORBI</div>
+                    <div class="text-lg font-mono font-bold text-slate-700 mt-2" id="dist-assorbi-tot">€ 0</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DETTAGLIO PER REGOLA -->
+        <div class="card p-6 mb-6">
+            <h2 class="text-lg font-bold text-slate-700 mb-4">📋 Dettaglio Regole Applicate</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-50 text-slate-500 font-semibold text-xs uppercase">
+                        <tr>
+                            <th class="px-4 py-2 text-left">Regola</th>
+                            <th class="px-4 py-2 text-right">Job</th>
+                            <th class="px-4 py-2 text-right">Totale IA</th>
+                            <th class="px-4 py-2 text-right">Prezzo simulato</th>
+                            <th class="px-4 py-2 text-right">Delta</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabella-regole" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- DISTRIBUZIONE PER TIPO -->
+        <div class="card p-6 mb-6">
+            <h2 class="text-lg font-bold text-slate-700 mb-4">🔧 Distribuzione per Tipo (classificazione)</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-50 text-slate-500 font-semibold text-xs uppercase">
+                        <tr>
+                            <th class="px-4 py-2 text-left">Tipo</th>
+                            <th class="px-4 py-2 text-right">Job</th>
+                            <th class="px-4 py-2 text-right">Totale IA</th>
+                            <th class="px-4 py-2 text-left">Sicurezza prevalente</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabella-tipi" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- DISTRIBUZIONE PER CONTRATTO -->
+        <div class="card p-6 mb-6">
+            <h2 class="text-lg font-bold text-slate-700 mb-4">📄 Distribuzione per Contratto</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-50 text-slate-500 font-semibold text-xs uppercase">
+                        <tr>
+                            <th class="px-4 py-2 text-left">Contratto</th>
+                            <th class="px-4 py-2 text-right">Job</th>
+                            <th class="px-4 py-2 text-right">Totale IA</th>
+                            <th class="px-4 py-2 text-right">SICURO</th>
+                            <th class="px-4 py-2 text-right">DA VALUTARE</th>
+                            <th class="px-4 py-2 text-right">ASSORBI</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabella-contratti" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- EXPORT -->
+        <div class="card p-6 flex justify-between items-center">
+            <div class="text-xs text-slate-500">
+                💡 Esporta per analisi dettagliata riga per riga
+            </div>
+            <div class="flex gap-2">
+                <button onclick="exportDettaglioExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-2 rounded-lg shadow transition">
+                    📥 Esporta Dettaglio (riga per riga)
+                </button>
+                <button onclick="exportRiepilogoExcel()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2 rounded-lg shadow transition">
+                    📊 Esporta Riepilogo
+                </button>
+                <button onclick="location.reload()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-6 py-2 rounded-lg transition">
+                    ↺ Ricomincia
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+// ============================================
+// STATO
+// ============================================
+
+let iaRows = [];
+let iaHeaders = [];
+let iaColumnIndex = {};
+let storico = [];
+let storicoPerImpianto = new Map();        // impianto → [rows]
+let storicoCodiciPerImpianto = new Map();  // impianto → Set(codici)
+let storicoCodiciPerContratto = new Map(); // contratto → Set(codici)
+let storicoChiamateRecenti = new Map();    // impianto → numero chiamate ultimi 30gg
+let risultati = [];
+
+// ============================================
+// COSTANTI
+// ============================================
+
+const COLS_IA = {
+    JOB: "Job",
+    IMPIANTO: "Impiantodiriferimento (Job) (Job)",
+    INDIRIZZO: "Indrizzo Edificio (LocalUnitId) (Impianto)",
+    CONTRATTO: "Contract template (LocalUnitId) (Impianto)",
+    WORK_PERFORMED: "LocalWorkPerformed",
+    COMP_CODE: "ComponentCode (LocalComponent) (Component)",
+    CATEGORIA: "LocalComponentCategory",
+    COMPONENTE: "LocalComponent",
+    DESCRIZIONE: "TaskDescription",
+    PREZZO_CONSIGLIATO: "PREZZO CONSIGLIATO",
+    VENDITORE: "Venditore (LocalUnitId) (Impianto)",
+    DATA: "ScheduledDate (Job) (Job)"
+};
+
+// ── Keyword per cause esterne (priorità assoluta) ──
+const KEYWORDS_CAUSA_ESTERNA = [
+    'vandalismo', 'vandalici', 'manomissione', 'manomesso',
+    'uso improprio', 'uso improprio', 'atti vandalici',
+    'recupero chiavi', 'recupero cellulare', 'recupero oggetti', 'recupero oggetto',
+    'porte lasciate aperte', 'porta lasciata aperta',
+    'causa esterna', 'cause esterne',
+    'imputabile al cliente', 'imputabile all\'utenza', 'imputabile all\'utente',
+    'lavori di terzi', 'terzi',
+    'infiltrazione', 'allagamento', 'incendio', 'urto', 'sovraccarico',
+    'danno procurato', 'danneggiato da', 'sforzata', 'sforzato',
+    'sforzata da', 'sforzato da'
+];
+
+// ── Keyword per garanzia ──
+const KEYWORDS_GARANZIA = ['garanzia', 'in garanzia'];
+
+// ── Keyword per commessa/preventivo collegato ──
+const KEYWORDS_COMMESSA = ['commessa', 'da commessa', 'come da preventivo', 'preventivo'];
+
+// ── Keyword per fuori orario ──
+const KEYWORDS_REPERIBILITA = ['reperibilità'];
+
+// ── Keyword classificazione tipo ──
+const KEYWORDS_SOSTITUZIONE = ['SOST', 'SOSTITUZIONE', 'INSTALLAZIONE', 'FORNITURA', 'FORN.', 'MONTAGGIO'];
+const KEYWORDS_RIPARAZIONE = ['RIPARAZIONE A CONSUNTIVO', 'RIPAR', 'RIPR', 'SMONT', 'REVIS', 'RIPRISTINO', 'RICERCA GUASTI'];
+const KEYWORDS_OPERATIVO = ['RESET', 'LIBERARE', 'CONTROLLO', 'VERIFICA', 'REGOL', 'LUBRIFICAZIONE', 'ELIMINATO', 'MATERIALE ESTRANEO', 'REGISTRATO', 'REGISTRAZIONE', 'PULIZIA', 'SPURGO', 'SERRAGGIO', 'REGOLAZIONE', 'RABBOCCO', 'SVUOTAMENTO'];
+
+// ============================================
+// CARICAMENTO FILE IA
+// ============================================
+
+document.getElementById('fileIA').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    document.getElementById('fileIA-status').innerHTML = '<span class="text-blue-600">⏳ Caricamento...</span>';
+
+    try {
+        const buffer = await file.arrayBuffer();
+        const wb = XLSX.read(buffer, { type: 'array', cellDates: false });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
+
+        if (aoa.length < 2) throw new Error("File troppo piccolo");
+        iaHeaders = aoa[0];
+        iaRows = aoa.slice(1).filter(r => r.some(c => c !== '' && c !== null && c !== undefined));
+
+        iaColumnIndex = {};
+        iaHeaders.forEach((h, i) => {
+            if (h) iaColumnIndex[String(h).trim()] = i;
+        });
+
+        document.getElementById('fileIA-status').innerHTML =
+            `<span class="text-emerald-600">✅ ${iaRows.length} righe, ${iaHeaders.length} colonne</span>`;
+
+        tryAnalisi();
+    } catch (err) {
+        document.getElementById('fileIA-status').innerHTML = `<span class="text-red-600">❌ ${err.message}</span>`;
+    }
+});
+
+// ============================================
+// CARICAMENTO STORICO
+// ============================================
+
+document.getElementById('fileStorico').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    document.getElementById('fileStorico-status').innerHTML = '<span class="text-blue-600">⏳ Lettura manifest...</span>';
+
+    try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+
+        if (data.numChunks && data.chunks) {
+            document.getElementById('fileStorico-status').innerHTML =
+                `<span class="text-blue-600">⏳ Download di ${data.numChunks} chunk...</span>`;
+
+            const chunks = new Array(data.numChunks);
+            let completati = 0;
+
+            await Promise.all(data.chunks.map(async (info) => {
+                const resp = await fetch(info.fileName);
+                if (!resp.ok) throw new Error(`Chunk ${info.index} non trovato`);
+                chunks[info.index] = await resp.json();
+                completati++;
+                document.getElementById('fileStorico-status').innerHTML =
+                    `<span class="text-blue-600">⏳ ${completati}/${data.numChunks} chunk caricati</span>`;
+            }));
+
+            storico = chunks.flat();
+        } else if (Array.isArray(data)) {
+            storico = data;
+        } else if (data.interventi) {
+            storico = data.interventi;
+        } else {
+            throw new Error("Formato non riconosciuto");
+        }
+
+        const impiantiUnici = new Set(storico.map(r => r[COLS_IA.IMPIANTO]).filter(Boolean)).size;
+        document.getElementById('fileStorico-status').innerHTML =
+            `<span class="text-emerald-600">✅ ${storico.length} interventi, ${impiantiUnici} impianti</span>`;
+
+        tryAnalisi();
+    } catch (err) {
+        document.getElementById('fileStorico-status').innerHTML = `<span class="text-red-600">❌ ${err.message}</span>`;
+    }
+});
+
+// ============================================
+// AVVIO
+// ============================================
+
+function tryAnalisi() {
+    if (iaRows.length === 0 || storico.length === 0) return;
+    document.getElementById('loader-area').classList.remove('hidden');
+    document.getElementById('loader-msg').textContent = 'Elaborazione analisi v2...';
+
+    setTimeout(() => {
+        try {
+            eseguiAnalisi();
+            document.getElementById('risultati').classList.remove('hidden');
+            document.getElementById('loader-area').classList.add('hidden');
+        } catch (err) {
+            console.error(err);
+            document.getElementById('loader-msg').textContent = '❌ Errore: ' + err.message;
+        }
+    }, 100);
+}
+
+// ============================================
+// ANALISI
+// ============================================
+
+function eseguiAnalisi() {
+    console.log('🚀 Inizio analisi v2...');
+
+    // ── Indice storico ──
+    const oggi = new Date();
+    const trentaGiorniFa = new Date(oggi.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    storico.forEach(row => {
+        const imp = row[COLS_IA.IMPIANTO];
+        const contratto = row['Contract template (LocalUnitId) (Impianto)'];
+        const codice = row['ComponentCode (LocalComponent) (Component)'];
+        const costo = parseFloat(row['COSTO']) || 0;
+
+        if (imp) {
+            if (!storicoPerImpianto.has(imp)) storicoPerImpianto.set(imp, []);
+            storicoPerImpianto.get(imp).push(row);
+
+            const dataRaw = row['JobCompletedDate (Job) (Job)'];
+            let data = null;
+            if (dataRaw) {
+                if (dataRaw instanceof Date) data = dataRaw;
+                else if (typeof dataRaw === 'number') data = new Date(Math.round((dataRaw - 25569) * 86400 * 1000));
+                else data = new Date(dataRaw);
+            }
+            if (data && data >= trentaGiorniFa) {
+                storicoChiamateRecenti.set(imp, (storicoChiamateRecenti.get(imp) || 0) + 1);
+            }
+
+            if (costo > 0 && codice) {
+                if (!storicoCodiciPerImpianto.has(imp)) storicoCodiciPerImpianto.set(imp, new Set());
+                storicoCodiciPerImpianto.get(imp).add(codice);
+            }
+        }
+
+        if (contratto && costo > 0 && codice) {
+            if (!storicoCodiciPerContratto.has(contratto)) storicoCodiciPerContratto.set(contratto, new Set());
+            storicoCodiciPerContratto.get(contratto).add(codice);
+        }
+    });
+
+    console.log(`📚 Storico: ${storico.length} interventi, ${storicoPerImpianto.size} impianti`);
+
+    // ── Analisi IA ──
+    const ci = iaColumnIndex;
+    risultati = [];
+    const kpi = {
+        jobs: 0, totaleIA: 0,
+        sicuro: { jobs: 0, totale: 0 },
+        valutare: { jobs: 0, totale: 0 },
+        assorbi: { jobs: 0, totale: 0 },
+        perRegola: {},
+        perTipo: {},
+        perContratto: {}
+    };
+
+    // Mappa sicurezza → chiave kpi
+    const keySicurezza = {
+        'SICURO': 'sicuro',
+        'DA_VALUTARE': 'valutare',
+        'ASSORBI': 'assorbi'
+    };
+
+    iaRows.forEach(row => {
+        const jobId = row[ci[COLS_IA.JOB]];
+        if (!jobId) return;
+
+        const prezzoIA = parseFloat(row[ci[COLS_IA.PREZZO_CONSIGLIATO]]) || 0;
+        const contratto = String(row[ci[COLS_IA.CONTRATTO]] || '').trim() || 'N/D';
+        const codice = String(row[ci[COLS_IA.COMP_CODE]] || '').trim();
+        const componente = String(row[ci[COLS_IA.COMPONENTE]] || '').trim();
+        const workPerf = String(row[ci[COLS_IA.WORK_PERF]] || row[ci[COLS_IA.WORK_PERFORMED]] || '').trim();
+        const descrizione = String(row[ci[COLS_IA.DESCRIZIONE]] || '').trim();
+        const impianto = String(row[ci[COLS_IA.IMPIANTO]] || '').trim();
+
+        kpi.jobs++;
+        kpi.totaleIA += prezzoIA;
+
+        const tipo = classificaTipo(codice, componente, workPerf, descrizione);
+
+        const esito = applicaRegole({
+            tipo, contratto, codice, componente, workPerf, descrizione, impianto, prezzoIA
+        });
+
+        // ── Chiave kpi sicura ──
+        const kpiKey = keySicurezza[esito.sicurezza];
+
+        risultati.push({
+            jobId, impianto, contratto, codice, componente, workPerf,
+            descrizione: descrizione.substring(0, 100),
+            tipo, prezzoIA, prezzoSimulato: esito.prezzo, sicurezza: esito.sicurezza,
+            regola: esito.regola
+        });
+
+        // ── KPI SICURO/DA_VALUTARE/ASSORBI ──
+        if (kpiKey && kpi[kpiKey]) {
+            kpi[kpiKey].jobs++;
+            kpi[kpiKey].totale += esito.prezzo;
+        }
+
+        // ── KPI per regola ──
+        if (!kpi.perRegola[esito.regola]) {
+            kpi.perRegola[esito.regola] = { jobs: 0, totaleIA: 0, totaleSim: 0 };
+        }
+        kpi.perRegola[esito.regola].jobs++;
+        kpi.perRegola[esito.regola].totaleIA += prezzoIA;
+        kpi.perRegola[esito.regola].totaleSim += esito.prezzo;
+
+        // ── KPI per tipo ──
+        if (!kpi.perTipo[tipo]) {
+            kpi.perTipo[tipo] = { jobs: 0, totaleIA: 0, sicurezza: {} };
+        }
+        kpi.perTipo[tipo].jobs++;
+        kpi.perTipo[tipo].totaleIA += prezzoIA;
+        kpi.perTipo[tipo].sicurezza[esito.sicurezza] =
+            (kpi.perTipo[tipo].sicurezza[esito.sicurezza] || 0) + 1;
+
+        // ── KPI per contratto ──
+        if (!kpi.perContratto[contratto]) {
+            kpi.perContratto[contratto] = { jobs: 0, totaleIA: 0, sicuro: 0, valutare: 0, assorbi: 0 };
+        }
+        kpi.perContratto[contratto].jobs++;
+        kpi.perContratto[contratto].totaleIA += prezzoIA;
+        if (kpiKey && kpiKey in kpi.perContratto[contratto]) {
+            kpi.perContratto[contratto][kpiKey] += esito.prezzo;
+        }
+    });
+
+    console.log('✅ Analisi completata:', kpi);
+    renderRisultati(kpi);
+}
+// ============================================
+// CLASSIFICAZIONE TIPO
+// ============================================
+
+function classificaTipo(codice, componente, workPerf, descrizione) {
+    const testo = (componente + ' ' + workPerf + ' ' + descrizione + ' ' + codice).toUpperCase();
+
+    if (codice === 'A24' || testo.includes('LASCIATO FUORI SERVIZIO') || testo.includes('LASCIATO FERMO')) {
+        return 'fuori_servizio';
+    }
+
+    if (KEYWORDS_SOSTITUZIONE.some(k => testo.includes(k))) return 'sostituzione';
+    if (KEYWORDS_RIPARAZIONE.some(k => testo.includes(k))) return 'riparazione';
+    if (KEYWORDS_OPERATIVO.some(k => testo.includes(k))) return 'operativo';
+
+    return 'altro';
+}
+
+// ============================================
+// APPLICAZIONE REGOLE
+// ============================================
+
+function applicaRegole({ tipo, contratto, codice, componente, workPerf, descrizione, impianto, prezzoIA }) {
+    const testo = (componente + ' ' + workPerf + ' ' + descrizione).toLowerCase();
+
+    // ── Priorità 1: Garanzia ──
+    if (KEYWORDS_GARANZIA.some(k => testo.includes(k))) {
+        return { sicurezza: 'ASSORBI', prezzo: 0, regola: 'Garanzia → 0' };
+    }
+
+    // ── Priorità 2: Commessa/preventivo collegato ──
+    if (KEYWORDS_COMMESSA.some(k => testo.includes(k))) {
+        return { sicurezza: 'ASSORBI', prezzo: 0, regola: 'Commessa/preventivo → 0' };
+    }
+
+    // ── Priorità 3: Fuori servizio ──
+    if (tipo === 'fuori_servizio') {
+        return { sicurezza: 'ASSORBI', prezzo: 0, regola: 'A24 fuori servizio → commessa' };
+    }
+
+    // ── Priorità 4: Causa esterna (fattura sempre, anche T) ──
+    if (KEYWORDS_CAUSA_ESTERNA.some(k => testo.includes(k))) {
+        return { sicurezza: 'SICURO', prezzo: prezzoIA, regola: 'Causa esterna → fattura sempre' };
+    }
+
+    // ── Priorità 5: Fuori orario (reperibilità) ──
+    if (KEYWORDS_REPERIBILITA.some(k => testo.includes(k))) {
+        return { sicurezza: 'SICURO', prezzo: prezzoIA, regola: 'Reperibilità → fattura sempre' };
+    }
+
+    // ── Contratto T-Totale → assorbi tutto ──
+    if (contratto.startsWith('T -') || contratto === 'T - Totale') {
+        return { sicurezza: 'ASSORBI', prezzo: 0, regola: 'T-Totale → coperto' };
+    }
+
+    // ── Contratto OM → assorbi usura ──
+    if (contratto.startsWith('OM')) {
+        return { sicurezza: 'ASSORBI', prezzo: 0, regola: 'OM → coperto (usura)' };
+    }
+
+    // ── Contratto OA ──
+    if (contratto.startsWith('OA')) {
+        if (tipo === 'sostituzione' || tipo === 'riparazione') {
+            return { sicurezza: 'SICURO', prezzo: prezzoIA, regola: 'OA ' + tipo + ' → extra canone' };
+        }
+        if (tipo === 'operativo') {
+            const stressato = (storicoChiamateRecenti.get(impianto) || 0) >= 3;
+            if (stressato) {
+                return { sicurezza: 'ASSORBI', prezzo: 0, regola: 'OA operativo + cliente stressato → assorbi' };
+            }
+            return { sicurezza: 'SICURO', prezzo: prezzoIA, regola: 'OA operativo cliente tranquillo → fattura' };
+        }
+        return { sicurezza: 'DA_VALUTARE', prezzo: prezzoIA, regola: 'OA altro → verifica' };
+    }
+
+    // ── Contratto SA ──
+    if (contratto.startsWith('SA')) {
+        if (tipo === 'sostituzione' || tipo === 'riparazione') {
+            return { sicurezza: 'DA_VALUTARE', prezzo: Math.round(prezzoIA * 0.6), regola: 'SA ' + tipo + ' → solo materiale (60%)' };
+        }
+        return { sicurezza: 'ASSORBI', prezzo: 0, regola: 'SA operativo → coperto' };
+    }
+
+    // ── Contratto P ──
+    if (contratto.startsWith('P -')) {
+        return { sicurezza: 'DA_VALUTARE', prezzo: Math.round(prezzoIA * 0.5), regola: 'P → verifica (50%)' };
+    }
+
+    // ── N/D (nuovi impianti) ──
+    if (contratto === 'N/D') {
+        return { sicurezza: 'SICURO', prezzo: prezzoIA, regola: 'N/D no garanzia → fattura' };
+    }
+
+    // ── Conservativa ──
+    if (contratto === 'Conservativa') {
+        return { sicurezza: 'DA_VALUTARE', prezzo: prezzoIA, regola: 'Conservativa → verifica' };
+    }
+
+    // ── Default ──
+    return { sicurezza: 'DA_VALUTARE', prezzo: prezzoIA, regola: 'Contratto non standard → verifica' };
+}
+
+// ============================================
+// RENDER
+// ============================================
+
+function renderRisultati(kpi) {
+    document.getElementById('kpi-jobs').textContent = kpi.jobs.toLocaleString('it-IT');
+    document.getElementById('kpi-totale-ia').textContent = formatEuro(kpi.totaleIA);
+    document.getElementById('kpi-totale-sicuro').textContent = formatEuro(kpi.sicuro.totale);
+    document.getElementById('kpi-jobs-sicuro').textContent = `${kpi.sicuro.jobs} job`;
+    document.getElementById('kpi-totale-valutare').textContent = formatEuro(kpi.valutare.totale);
+    document.getElementById('kpi-jobs-valutare').textContent = `${kpi.valutare.jobs} job`;
+
+    document.getElementById('kpi-jobs-assorbi').textContent = kpi.assorbi.jobs;
+    document.getElementById('kpi-totale-assorbi').textContent = `€ ${(kpi.assorbi.totale).toLocaleString('it-IT')} risparmiati`;
+
+    document.getElementById('kpi-storico').textContent = storico.length.toLocaleString('it-IT');
+    document.getElementById('kpi-storico-impianti').textContent = `(${storicoPerImpianto.size} impianti)`;
+
+    const ratio = kpi.sicuro.totale / 80000;
+    document.getElementById('kpi-ratio').textContent = `${ratio.toFixed(2)}x`;
+
+    // Distribuzione sicurezza
+    document.getElementById('dist-sicuro-jobs').textContent = kpi.sicuro.jobs;
+    document.getElementById('dist-sicuro-tot').textContent = formatEuro(kpi.sicuro.totale);
+    document.getElementById('dist-valutare-jobs').textContent = kpi.valutare.jobs;
+    document.getElementById('dist-valutare-tot').textContent = formatEuro(kpi.valutare.totale);
+    document.getElementById('dist-assorbi-jobs').textContent = kpi.assorbi.jobs;
+    document.getElementById('dist-assorbi-tot').textContent = formatEuro(kpi.assorbi.totale);
+
+    // Tabella regole
+    const tRegole = document.getElementById('tabella-regole');
+    tRegole.innerHTML = Object.entries(kpi.perRegola)
+        .sort((a, b) => b[1].totaleIA - a[1].totaleIA)
+        .map(([regola, d]) => `
+            <tr class="hover:bg-slate-50">
+                <td class="px-4 py-2 text-xs text-slate-700">${regola}</td>
+                <td class="px-4 py-2 text-right font-mono text-xs">${d.jobs}</td>
+                <td class="px-4 py-2 text-right font-mono text-xs text-blue-700">${formatEuro(d.totaleIA)}</td>
+                <td class="px-4 py-2 text-right font-mono text-xs text-emerald-700 font-bold">${formatEuro(d.totaleSim)}</td>
+                <td class="px-4 py-2 text-right font-mono text-xs text-red-600">-${formatEuro(d.totaleIA - d.totaleSim)}</td>
+            </tr>
+        `).join('');
+
+    // Tabella tipi
+    const tTipi = document.getElementById('tabella-tipi');
+    tTipi.innerHTML = Object.entries(kpi.perTipo)
+        .sort((a, b) => b[1].totaleIA - a[1].totaleIA)
+        .map(([tipo, d]) => {
+            const prevalente = Object.entries(d.sicurezza).sort((a, b) => b[1] - a[1])[0]?.[0] || '—';
+            return `
+                <tr class="hover:bg-slate-50">
+                    <td class="px-4 py-2 text-xs font-bold text-slate-700">${tipo}</td>
+                    <td class="px-4 py-2 text-right font-mono text-xs">${d.jobs}</td>
+                    <td class="px-4 py-2 text-right font-mono text-xs text-blue-700">${formatEuro(d.totaleIA)}</td>
+                    <td class="px-4 py-2"><span class="badge-${prevalente.toLowerCase().replace('_','')} text-xs px-2 py-1 rounded font-bold">${prevalente}</span></td>
+                </tr>
+            `;
+        }).join('');
+
+    // Tabella contratti
+    const tContratti = document.getElementById('tabella-contratti');
+    tContratti.innerHTML = Object.entries(kpi.perContratto)
+        .sort((a, b) => b[1].totaleIA - a[1].totaleIA)
+        .map(([contratto, d]) => `
+            <tr class="hover:bg-slate-50">
+                <td class="px-4 py-2 text-xs font-bold text-slate-700">${contratto}</td>
+                <td class="px-4 py-2 text-right font-mono text-xs">${d.jobs}</td>
+                <td class="px-4 py-2 text-right font-mono text-xs text-blue-700">${formatEuro(d.totaleIA)}</td>
+                <td class="px-4 py-2 text-right font-mono text-xs text-emerald-700">${formatEuro(d.sicuro)}</td>
+                <td class="px-4 py-2 text-right font-mono text-xs text-amber-700">${formatEuro(d.valutare)}</td>
+                <td class="px-4 py-2 text-right font-mono text-xs text-slate-500">${formatEuro(d.assorbi)}</td>
+            </tr>
+        `).join('');
+}
+
+// ============================================
+// EXPORT DETTAGLIO (riga per riga)
+// ============================================
+
+function exportDettaglioExcel() {
+    if (risultati.length === 0) return;
+
+    const header = ['Job', 'Impianto', 'Contratto', 'ComponentCode', 'Componente', 'WorkPerformed', 'Descrizione', 'Tipo', 'Sicurezza', 'PrezzoIA', 'PrezzoSimulato', 'Delta', 'Regola'];
+    const rows = [header];
+
+    risultati.forEach(r => {
+        rows.push([
+            r.jobId, r.impianto, r.contratto, r.codice, r.componente, r.workPerf,
+            r.descrizione, r.tipo, r.sicurezza, r.prezzoIA, r.prezzoSimulato,
+            r.prezzoIA - r.prezzoSimulato, r.regola
+        ]);
+    });
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Dettaglio');
+    XLSX.writeFile(wb, `dettaglio_analisi_${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
+// ============================================
+// EXPORT RIEPILOGO
+// ============================================
+
+function exportRiepilogoExcel() {
+    if (risultati.length === 0) return;
+
+    // Riepilogo aggregato: solo "Altro" per capire cosa sono
+    const altri = risultati.filter(r => r.tipo === 'altro');
+
+    const header = ['Job', 'Impianto', 'Contratto', 'ComponentCode', 'Componente', 'WorkPerformed', 'Descrizione', 'Sicurezza', 'PrezzoIA', 'Regola'];
+    const rows = [header];
+
+    altri.forEach(r => {
+        rows.push([
+            r.jobId, r.impianto, r.contratto, r.codice, r.componente, r.workPerf,
+            r.descrizione, r.sicurezza, r.prezzoIA, r.regola
+        ]);
+    });
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'SoloAltro');
+    XLSX.writeFile(wb, `solo_altro_${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
+// ============================================
+// UTILITIES
+// ============================================
+
+function formatEuro(n) {
+    if (n === null || n === undefined || isNaN(n)) return '€ 0';
+    return '€ ' + Number(n).toLocaleString('it-IT', { maximumFractionDigits: 0 });
+}
+
+</script>
+</body>
+</html>

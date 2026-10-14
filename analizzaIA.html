@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analisi IA vs Storico — Sbolla Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #f1f5f9; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .loader-ring {
+            display: inline-block; width: 40px; height: 40px;
+        }
+        .loader-ring:after {
+            content: " "; display: block; width: 32px; height: 32px; margin: 4px;
+            border-radius: 50%; border: 3px solid #3b82f6;
+            border-color: #3b82f6 transparent #3b82f6 transparent;
+            animation: loader-ring 1.2s linear infinite;
+        }
+        @keyframes loader-ring {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .kpi-card {
+            background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .kpi-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.8rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+        .table-row-hover:hover { background: #f8fafc; }
+        details summary { cursor: pointer; user-select: none; }
+        details summary::-webkit-details-marker { display: none; }
+        details summary::before {
+            content: '▶ ';
+            display: inline-block;
+            transition: transform 0.2s;
+            margin-right: 6px;
+        }
+        details[open] summary::before { transform: rotate(90deg); }
+    </style>
+</head>
+<body class="text-slate-800 p-6 min-h-screen">
+
+<div class="max-w-7xl mx-auto">
+
+    <!-- HEADER -->
+    <div class="card p-6 mb-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-800">🔍 Analisi IA vs Storico</h1>
+                <p class="text-sm text-slate-500 mt-1">Strumento diagnostico per validare la logica commerciale prima di riscrivere il prompt</p>
+            </div>
+            <div class="text-right">
+                <div class="text-xs text-slate-400 uppercase font-bold">Versione</div>
+                <div class="text-sm font-mono font-bold text-slate-600">analizzaIA v1.0</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- STEP 1: CARICAMENTO FILE -->
+    <div class="card p-6 mb-6" id="step-upload">
+        <h2 class="text-lg font-bold text-slate-700 mb-4 flex items-center gap-2">
+            <span class="bg-blue-100 text-blue-700 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold">1</span>
+            Carica i file
+        </h2>
+
+        <div class="grid grid-cols-2 gap-4">
+            <!-- File IA -->
+            <div class="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center hover:border-blue-400 transition cursor-pointer" 
+                 onclick="document.getElementById('fileIA').click()">
+                <input type="file" id="fileIA" accept=".xlsx,.xls" class="hidden">
+                <div class="text-4xl mb-2">📊</div>
+                <div class="font-bold text-slate-700">File IA (Excel)</div>
+                <div class="text-xs text-slate-400 mt-1">Il file generato dall'IA con colonne PREZZO CONSIGLIATO, ecc.</div>
+                <div id="fileIA-status" class="text-xs mt-3 font-mono text-slate-500">Nessun file caricato</div>
+            </div>
+
+            <!-- Storico -->
+            <div class="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center hover:border-indigo-400 transition cursor-pointer" 
+                 onclick="caricaStorico()">
+                <input type="file" id="fileStorico" accept=".json" class="hidden">
+                <div class="text-4xl mb-2">📚</div>
+                <div class="font-bold text-slate-700">Storico (manifest o JSON)</div>
+                <div class="text-xs text-slate-400 mt-1">Seleziona sbolla_manifest.json (scarica i chunk automaticamente)</div>
+                <div id="fileStorico-status" class="text-xs mt-3 font-mono text-slate-500">Nessun file caricato</div>
+            </div>
+        </div>
+
+        <!-- Loader -->
+        <div id="loader-area" class="hidden mt-6 text-center">
+            <div class="loader-ring mx-auto"></div>
+            <div id="loader-msg" class="text-sm text-slate-500 mt-2">Elaborazione in corso...</div>
+        </div>
+    </div>
+
+    <!-- STEP 2: RISULTATI -->
+    <div id="risultati" class="hidden">
+
+        <!-- KPI GLOBALI -->
+        <div class="card p-6 mb-6">
+            <h2 class="text-lg font-bold text-slate-700 mb-4 flex items-center gap-2">
+                <span class="bg-blue-100 text-blue-700 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold">2</span>
+                KPI Globali
+            </h2>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="kpi-card">
+                    <div class="text-xs text-slate-500 uppercase font-bold mb-2">Job caricati (IA)</div>
+                    <div class="kpi-value text-slate-800" id="kpi-jobs-ia">0</div>
+                    <div class="text-xs text-slate-400 mt-1" id="kpi-righe-ia">(0 righe)</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="text-xs text-blue-600 uppercase font-bold mb-2">Totale prezzato IA</div>
+                    <div class="kpi-value text-blue-700" id="kpi-totale-ia">€ 0</div>
+                    <div class="text-xs text-slate-400 mt-1">Somma PREZZO CONSIGLIATO</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="text-xs text-emerald-600 uppercase font-bold mb-2">Budget target</div>
+                    <div class="kpi-value text-emerald-700">€ 80.000</div>
+                    <div class="text-xs text-slate-400 mt-1" id="kpi-budget-ratio">Ratio: —</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="text-xs text-red-600 uppercase font-bold mb-2">Eccesso IA vs Budget</div>
+                    <div class="kpi-value text-red-700" id="kpi-eccesso">€ 0</div>
+                    <div class="text-xs text-slate-400 mt-1">Da ridurre</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                <div class="kpi-card">
+                    <div class="text-xs text-slate-500 uppercase font-bold mb-2">Storico</div>
+                    <div class="kpi-value text-slate-800" id="kpi-storico">0</div>
+                    <div class="text-xs text-slate-400 mt-1" id="kpi-storico-impianti">(0 impianti)</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="text-xs text-slate-500 uppercase font-bold mb-2">Job con storico</div>
+                    <div class="kpi-value text-slate-800" id="kpi-jobs-con-storico">0</div>
+                    <div class="text-xs text-slate-400 mt-1" id="kpi-pct-con-storico">0%</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="text-xs text-slate-500 uppercase font-bold mb-2">Job senza storico</div>
+                    <div class="kpi-value text-slate-800" id="kpi-jobs-senza-storico">0</div>
+                    <div class="text-xs text-slate-400 mt-1" id="kpi-pct-senza-storico">0%</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="text-xs text-slate-500 uppercase font-bold mb-2">Contratti presenti</div>
+                    <div class="kpi-value text-slate-800" id="kpi-contratti-count">0</div>
+                    <div class="text-xs text-slate-400 mt-1">Tipologie contratto</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DISTRIBUZIONE PER CONTRATTO -->
+        <div class="card p-6 mb-6">
+            <h2 class="text-lg font-bold text-slate-700 mb-4">📋 Distribuzione per Contratto</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-50 text-slate-500 font-semibold text-xs uppercase">
+                        <tr>
+                            <th class="px-4 py-2 text-left">Contratto</th>
+                            <th class="px-4 py-2 text-right">Job</th>
+                            <th class="px-4 py-2 text-right">Totale IA</th>
+                            <th class="px-4 py-2 text-right">%</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabella-contratti" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- CLASSIFICAZIONE PER TIPO -->
+        <div class="card p-6 mb-6">
+            <h2 class="text-lg font-bold text-slate-700 mb-4">🔧 Classificazione per Tipo Intervento</h2>
+            <p class="text-xs text-slate-500 mb-4">
+                Basata su <code class="bg-slate-100 px-1 rounded">ComponentCode</code> + <code class="bg-slate-100 px-1 rounded">LocalWorkPerformed</code>.
+                Le regole sono euristiche: verificale e dimmi se sono corrette.
+            </p>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-50 text-slate-500 font-semibold text-xs uppercase">
+                        <tr>
+                            <th class="px-4 py-2 text-left">Tipo</th>
+                            <th class="px-4 py-2 text-right">Job</th>
+                            <th class="px-4 py-2 text-right">Totale IA</th>
+                            <th class="px-4 py-2 text-right">%</th>
+                            <th class="px-4 py-2 text-left">Propensione commerciale</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabella-tipi" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ANALISI PRECEDENTE STORICO -->
+        <div class="card p-6 mb-6">
+            <h2 class="text-lg font-bold text-slate-700 mb-4">🔍 Analisi Precedente Storico</h2>
+            <p class="text-xs text-slate-500 mb-4">
+                Per ogni job, verifica se <strong>lo stesso codice</strong> è già stato fatturato (COSTO &gt; 0) su:
+                <br>• <strong>Stesso impianto</strong>
+                <br>• <strong>Altri impianti con lo stesso contratto</strong>
+            </p>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-50 text-slate-500 font-semibold text-xs uppercase">
+                        <tr>
+                            <th class="px-4 py-2 text-left">Categoria</th>
+                            <th class="px-4 py-2 text-right">Job</th>
+                            <th class="px-4 py-2 text-right">Totale IA</th>
+                            <th class="px-4 py-2 text-left">Interpretazione</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabella-precedente" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- SIMULAZIONE BUDGET -->
+        <div class="card p-6 mb-6 bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200">
+            <h2 class="text-lg font-bold text-blue-800 mb-4">🎯 Simulazione Budget con Nuova Logica</h2>
+            <p class="text-xs text-blue-600 mb-4">
+                Applicando le regole commerciali (sostituzioni fatturate, operativi assorbiti, A24 esclusi, ecc.),
+                quanto scenderebbe il totale?
+            </p>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="bg-white rounded-lg p-4 border border-blue-200">
+                    <div class="text-xs text-slate-500 uppercase font-bold mb-1">Totale attuale IA</div>
+                    <div class="text-xl font-bold font-mono text-slate-700" id="sim-totale-ia">€ 0</div>
+                </div>
+                <div class="bg-white rounded-lg p-4 border border-emerald-200">
+                    <div class="text-xs text-emerald-600 uppercase font-bold mb-1">Totale simulato</div>
+                    <div class="text-xl font-bold font-mono text-emerald-700" id="sim-totale-nuovo">€ 0</div>
+                </div>
+                <div class="bg-white rounded-lg p-4 border border-amber-200">
+                    <div class="text-xs text-amber-600 uppercase font-bold mb-1">Riduzione</div>
+                    <div class="text-xl font-bold font-mono text-amber-700" id="sim-riduzione">€ 0</div>
+                </div>
+                <div class="bg-white rounded-lg p-4 border border-red-200">
+                    <div class="text-xs text-red-600 uppercase font-bold mb-1">Distanza da €80k</div>
+                    <div class="text-xl font-bold font-mono text-red-700" id="sim-distanza">€ 0</div>
+                </div>
+            </div>
+
+            <div class="mt-4 bg-white rounded-lg p-4 border border-blue-200">
+                <div class="text-xs text-slate-500 uppercase font-bold mb-2">Dettaglio simulazione</div>
+                <div class="space-y-2 text-sm" id="sim-dettaglio">
+                    <!-- popolato da JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- DETTAGLIO PER CONTRATTO + TIPO -->
+        <div class="card p-6 mb-6">
+            <h2 class="text-lg font-bold text-slate-700 mb-4">📊 Matrice Contratto × Tipo</h2>
+            <p class="text-xs text-slate-500 mb-4">
+                Per ogni combinazione, quanti job e quanto totale IA. Utile per capire dove si concentra il budget.
+            </p>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm" id="tabella-matrice">
+                    <thead class="bg-slate-50 text-slate-500 font-semibold text-xs uppercase">
+                        <tr id="matrice-header"></tr>
+                    </thead>
+                    <tbody id="matrice-body" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- BOTTONI EXPORT -->
+        <div class="card p-6 flex justify-between items-center">
+            <div class="text-xs text-slate-500">
+                💡 Esporta i risultati per analizzarli in Excel
+            </div>
+            <div class="flex gap-2">
+                <button onclick="exportAnalisiExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-2 rounded-lg shadow transition">
+                    📥 Esporta Excel
+                </button>
+                <button onclick="location.reload()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-6 py-2 rounded-lg transition">
+                    ↺ Ricomincia
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+// ============================================
+// STATO
+// ============================================
+
+let iaRows = [];          // righe del file IA
+let iaHeaders = [];       // headers IA
+let iaColumnIndex = {};   // mappa nome → indice
+let storico = [];         // interventi dallo storico
+let analisiRisultati = {};// risultati analisi
+
+// ============================================
+// COSTANTI
+// ============================================
+
+const COLS_IA = {
+    JOB: "Job",
+    IMPIANTO: "Impiantodiriferimento (Job) (Job)",
+    INDIRIZZO: "Indrizzo Edificio (LocalUnitId) (Impianto)",
+    CONTRATTO: "Contract template (LocalUnitId) (Impianto)",
+    WORK_PERFORMED: "LocalWorkPerformed",
+    COMP_CODE: "ComponentCode (LocalComponent) (Component)",
+    CATEGORIA: "LocalComponentCategory",
+    COMPONENTE: "LocalComponent",
+    DESCRIZIONE: "TaskDescription",
+    PREZZO_CONSIGLIATO: "PREZZO CONSIGLIATO",
+    FATTURABILITA: "FATTURABILITÀ",
+    CONFIDENZA: "CONFIDENZA",
+    INDICAZIONE: "INDICAZIONE COMMERCIALE",
+    CREDITO: "CREDITO COMMERCIALE",
+    CRITICITA: "CRITICITÀ IMPIANTO",
+    VENDITORE: "Venditore (LocalUnitId) (Impianto)"
+};
+
+// ── Euristica: sostituzione sì/no ──
+// Se la descrizione lavoro o il componente contengono "SOST" → sostituzione
+// Se contengono "RIPAR", "RIPR", "REGOL", "RESET", "CONTROLLO", "LIBERARE", "RIPRISTINO" → operativo
+// Se contengono "SMONT" o "REVIS" → riparazione importante
+
+const KEYWORDS_SOSTITUZIONE = ['SOST', 'INSTALLAZIONE', 'FORNITURA', 'FORN.'];
+const KEYWORDS_OPERATIVO = ['RESET', 'RIPR FUNZIONAMENTO', 'LIBERARE', 'CONTROLLO', 'VERIFICA', 'REGOL', 'LUBRIFICAZIONE', 'ELIMINATO', 'MATERIALE ESTRANEO', 'REGISTRATO', 'REGISTRAZIONE', 'RIPRISTINO FUNZIONAMENTO', 'RIPRISTINATO', 'RIPR.', 'RIPAR.', 'RICERCA GUASTI'];
+const KEYWORDS_RIPARAZIONE = ['RIPARAZIONE A CONSUNTIVO', 'RIPAR', 'RIPR.', 'SMONT', 'REVIS', 'RIPRISTINO'];
+
+// ============================================
+// CARICAMENTO FILE IA
+// ============================================
+
+document.getElementById('fileIA').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    document.getElementById('fileIA-status').innerHTML = '<span class="text-blue-600">⏳ Caricamento...</span>';
+
+    try {
+        const buffer = await file.arrayBuffer();
+        const wb = XLSX.read(buffer, { type: 'array', cellDates: false });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
+
+        if (aoa.length < 2) throw new Error("File troppo piccolo");
+        iaHeaders = aoa[0];
+        iaRows = aoa.slice(1).filter(r => r.some(c => c !== '' && c !== null && c !== undefined));
+
+        iaColumnIndex = {};
+        iaHeaders.forEach((h, i) => {
+            if (h) iaColumnIndex[String(h).trim()] = i;
+        });
+
+        // Verifica colonne minime
+        const richieste = [COLS_IA.JOB, COLS_IA.IMPIANTO, COLS_IA.CONTRATTO, COLS_IA.COMP_CODE, COLS_IA.PREZZO_CONSIGLIATO];
+        const mancanti = richieste.filter(c => !(c in iaColumnIndex));
+        if (mancanti.length > 0) {
+            throw new Error(`Colonne mancanti: ${mancanti.join(', ')}`);
+        }
+
+        document.getElementById('fileIA-status').innerHTML = 
+            `<span class="text-emerald-600">✅ ${iaRows.length} righe, ${iaHeaders.length} colonne</span>`;
+        
+        tryAnalisi();
+    } catch (err) {
+        document.getElementById('fileIA-status').innerHTML = `<span class="text-red-600">❌ ${err.message}</span>`;
+    }
+});
+
+// ============================================
+// CARICAMENTO STORICO
+// ============================================
+
+function caricaStorico() {
+    document.getElementById('fileStorico').click();
+}
+
+document.getElementById('fileStorico').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    document.getElementById('fileStorico-status').innerHTML = '<span class="text-blue-600">⏳ Lettura manifest...</span>';
+
+    try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+
+        if (data.numChunks && data.chunks) {
+            // È un manifest
+            document.getElementById('fileStorico-status').innerHTML = 
+                `<span class="text-blue-600">⏳ Download di ${data.numChunks} chunk...</span>`;
+
+            const chunks = new Array(data.numChunks);
+            let completati = 0;
+
+            await Promise.all(data.chunks.map(async (info) => {
+                const resp = await fetch(info.fileName);
+                if (!resp.ok) throw new Error(`Chunk ${info.index} non trovato`);
+                chunks[info.index] = await resp.json();
+                completati++;
+                document.getElementById('fileStorico-status').innerHTML = 
+                    `<span class="text-blue-600">⏳ ${completati}/${data.numChunks} chunk caricati</span>`;
+            }));
+
+            storico = chunks.flat();
+        } else if (Array.isArray(data)) {
+            // Array diretto di interventi
+            storico = data;
+        } else if (data.interventi) {
+            // Formato sbolla.json singolo
+            storico = data.interventi;
+        } else {
+            throw new Error("Formato non riconosciuto");
+        }
+
+        const impiantiUnici = new Set(storico.map(r => r[COLS_IA.IMPIANTO]).filter(Boolean)).size;
+        document.getElementById('fileStorico-status').innerHTML = 
+            `<span class="text-emerald-600">✅ ${storico.length} interventi, ${impiantiUnici} impianti</span>`;
+
+        tryAnalisi();
+    } catch (err) {
+        document.getElementById('fileStorico-status').innerHTML = `<span class="text-red-600">❌ ${err.message}</span>`;
+    }
+});
+
+// ============================================
+// AVVIO ANALISI
+// ============================================
+
+function tryAnalisi() {
+    if (iaRows.length === 0 || storico.length === 0) return;
+
+    document.getElementById('loader-area').classList.remove('hidden');
+    document.getElementById('loader-msg').textContent = 'Elaborazione analisi...';
+
+    // Lascia respirare il browser
+    setTimeout(() => {
+        try {
+            eseguiAnalisi();
+            document.getElementById('risultati').classList.remove('hidden');
+            document.getElementById('loader-area').classList.add('hidden');
+        } catch (err) {
+            console.error(err);
+            document.getElementById('loader-msg').textContent = '❌ Errore: ' + err.message;
+        }
+    }, 100);
+}
+
+// ============================================
+// ANALISI
+// ============================================
+
+function eseguiAnalisi() {
+    console.log('🚀 Inizio analisi...');
+
+    const ci = iaColumnIndex;
+
+    // ── 1. Costruisci indice storico per impianto ──
+    console.log('🏗️ Costruzione indice storico...');
+    const storicoPerImpianto = new Map(); // impianto → [interventi]
+    const storicoCodiciFatturatiPerImpianto = new Map(); // impianto → Set(codici fatturati)
+    const storicoCodiciFatturatiPerContratto = new Map(); // contratto → Set(codici fatturati)
+    
+    storico.forEach(row => {
+        const imp = row[COLS_IA.IMPIANTO];
+        const contratto = row['Contract template (LocalUnitId) (Impianto)'];
+        const codice = row['ComponentCode (LocalComponent) (Component)'];
+        const costo = parseFloat(row['COSTO']) || 0;
+
+        if (imp) {
+            if (!storicoPerImpianto.has(imp)) storicoPerImpianto.set(imp, []);
+            storicoPerImpianto.get(imp).push(row);
+
+            if (costo > 0 && codice) {
+                if (!storicoCodiciFatturatiPerImpianto.has(imp)) {
+                    storicoCodiciFatturatiPerImpianto.set(imp, new Set());
+                }
+                storicoCodiciFatturatiPerImpianto.get(imp).add(codice);
+            }
+        }
+
+        if (contratto && costo > 0 && codice) {
+            if (!storicoCodiciFatturatiPerContratto.has(contratto)) {
+                storicoCodiciFatturatiPerContratto.set(contratto, new Set());
+            }
+            storicoCodiciFatturatiPerContratto.get(contratto).add(codice);
+        }
+    });
+
+    console.log(`📚 Storico: ${storico.length} interventi, ${storicoPerImpianto.size} impianti unici`);
+    console.log(`📚 Codici fatturati per contratto: ${storicoCodiciFatturatiPerContratto.size} contratti`);
+
+    // ── 2. Analizza le righe IA ──
+    console.log('🔍 Analisi righe IA...');
+
+    const kpi = {
+        jobsTotali: 0,
+        righeTotali: iaRows.length,
+        totaleIA: 0,
+        perContratto: {},
+        perTipo: {},
+        perPrecedente: {},
+        matriceContrattoTipo: {}, // contratto → tipo → {job, totale}
+        simulazione: {
+            totaleOriginale: 0,
+            totaleSimulato: 0,
+            perRegola: {}
+        }
+    };
+
+    iaRows.forEach(row => {
+        const jobId = row[ci[COLS_IA.JOB]];
+        if (!jobId) return;
+
+        const prezzo = parseFloat(row[ci[COLS_IA.PREZZO_CONSIGLIATO]]) || 0;
+        const contratto = String(row[ci[COLS_IA.CONTRATTO]] || '').trim() || 'N/D';
+        const codice = String(row[ci[COLS_IA.COMP_CODE]] || '').trim();
+        const componente = String(row[ci[COLS_IA.COMPONENTE]] || '').trim();
+        const workPerf = String(row[ci[COLS_IA.WORK_PERFORMED]] || '').trim();
+        const descrizione = String(row[ci[COLS_IA.DESCRIZIONE]] || '').trim();
+        const impianto = String(row[ci[COLS_IA.IMPIANTO]] || '').trim();
+        const indicazione = String(row[ci[COLS_IA.INDICAZIONE]] || '').trim();
+
+        kpi.jobsTotali++;
+        kpi.totaleIA += prezzo;
+
+        // ── Per contratto ──
+        if (!kpi.perContratto[contratto]) kpi.perContratto[contratto] = { job: 0, totale: 0 };
+        kpi.perContratto[contratto].job++;
+        kpi.perContratto[contratto].totale += prezzo;
+
+        // ── Classificazione tipo ──
+        const tipo = classificaTipo(codice, componente, workPerf, descrizione);
+        if (!kpi.perTipo[tipo]) kpi.perTipo[tipo] = { job: 0, totale: 0 };
+        kpi.perTipo[tipo].job++;
+        kpi.perTipo[tipo].totale += prezzo;
+
+        // ── Matrice contratto × tipo ──
+        if (!kpi.matriceContrattoTipo[contratto]) kpi.matriceContrattoTipo[contratto] = {};
+        if (!kpi.matriceContrattoTipo[contratto][tipo]) {
+            kpi.matriceContrattoTipo[contratto][tipo] = { job: 0, totale: 0 };
+        }
+        kpi.matriceContrattoTipo[contratto][tipo].job++;
+        kpi.matriceContrattoTipo[contratto][tipo].totale += prezzo;
+
+        // ── Precedente storico ──
+        const haStoricoImpianto = storicoPerImpianto.has(impianto);
+        const codiceFatturatoSuImpianto = storicoCodiciFatturatiPerImpianto.get(impianto)?.has(codice);
+        const codiceFatturatoSuContratto = storicoCodiciFatturatiPerContratto.get(contratto)?.has(codice);
+
+        let categoriaPrecedente;
+        if (!haStoricoImpianto) {
+            categoriaPrecedente = 'no_storico_impianto';
+        } else if (codiceFatturatoSuImpianto) {
+            categoriaPrecedente = 'fatturato_stesso_impianto';
+        } else if (codiceFatturatoSuContratto) {
+            categoriaPrecedente = 'fatturato_stesso_contratto';
+        } else {
+            categoriaPrecedente = 'mai_fatturato';
+        }
+
+        if (!kpi.perPrecedente[categoriaPrecedente]) {
+            kpi.perPrecedente[categoriaPrecedente] = { job: 0, totale: 0 };
+        }
+        kpi.perPrecedente[categoriaPrecedente].job++;
+        kpi.perPrecedente[categoriaPrecedente].totale += prezzo;
+
+        // ── Simulazione ──
+        kpi.simulazione.totaleOriginale += prezzo;
+        const sim = simulaPrezzo({ tipo, contratto, prezzo, categoriaPrecedente, indicazione, codice });
+        kpi.simulazione.totaleSimulato += sim.prezzo;
+        if (!kpi.simulazione.perRegola[sim.regola]) {
+            kpi.simulazione.perRegola[sim.regola] = { job: 0, totale: 0 };
+        }
+        kpi.simulazione.perRegola[sim.regola].job++;
+        kpi.simulazione.perRegola[sim.regola].totale += sim.prezzo;
+    });
+
+    analisiRisultati = kpi;
+    renderRisultati(kpi, storico);
+    console.log('✅ Analisi completata');
+}
+
+// ============================================
+// CLASSIFICAZIONE TIPO INTERVENTO
+// ============================================
+
+function classificaTipo(codice, componente, workPerf, descrizione) {
+    const testo = (componente + ' ' + workPerf + ' ' + descrizione + ' ' + codice).toUpperCase();
+
+    // A24 → fuori servizio
+    if (codice === 'A24' || testo.includes('LASCIATO FUORI SERVIZIO') || testo.includes('LASCIATO FERMO')) {
+        return 'fuori_servizio';
+    }
+
+    // Sostituzione
+    if (KEYWORDS_SOSTITUZIONE.some(k => testo.includes(k))) {
+        return 'sostituzione';
+    }
+
+    // Riparazione
+    if (KEYWORDS_RIPARAZIONE.some(k => testo.includes(k))) {
+        return 'riparazione';
+    }
+
+    // Operativo
+    if (KEYWORDS_OPERATIVO.some(k => testo.includes(k))) {
+        return 'operativo';
+    }
+
+    return 'altro';
+}
+
+// ============================================
+// SIMULAZIONE PREZZO COMMERCIALE
+// ============================================
+
+function simulaPrezzo({ tipo, contratto, prezzo, categoriaPrecedente, indicazione, codice }) {
+    // Regola 1: fuori servizio → 0 (a meno che non sia seguito da riparazione)
+    if (tipo === 'fuori_servizio') {
+        return { prezzo: 0, regola: 'A24 → assorbito (commessa)' };
+    }
+
+    // Regola 2: sostituzione + precedente fatturato → mantieni
+    if (tipo === 'sostituzione' && categoriaPrecedente === 'fatturato_stesso_impianto') {
+        return { prezzo, regola: 'Sostituzione + già fatturata sullo stesso impianto → OK' };
+    }
+
+    // Regola 3: sostituzione + contratto OA → mantieni (extra canone)
+    if (tipo === 'sostituzione' && contratto.startsWith('OA')) {
+        return { prezzo, regola: 'Sostituzione + OA → fatturabile' };
+    }
+
+    // Regola 4: sostituzione + contratto OM → assorbi (usura normale)
+    if (tipo === 'sostituzione' && contratto.startsWith('OM')) {
+        return { prezzo: 0, regola: 'Sostituzione + OM → coperta da canone' };
+    }
+
+    // Regola 5: sostituzione + mai fatturata su quel contratto → verifica (mantieni con 50%)
+    if (tipo === 'sostituzione' && categoriaPrecedente === 'mai_fatturato') {
+        return { prezzo, regola: 'Sostituzione + mai vista → mantieni (da verificare)' };
+    }
+
+    // Regola 6: operativo + mai fatturato → assorbi
+    if (tipo === 'operativo' && categoriaPrecedente === 'mai_fatturato') {
+        return { prezzo: 0, regola: 'Operativo + mai fatturato → assorbi' };
+    }
+
+    // Regola 7: operativo + già fatturato → mantieni
+    if (tipo === 'operativo' && categoriaPrecedente === 'fatturato_stesso_impianto') {
+        return { prezzo, regola: 'Operativo + già fatturato sullo stesso impianto → OK' };
+    }
+
+    // Regola 8: riparazione → mantieni
+    if (tipo === 'riparazione') {
+        return { prezzo, regola: 'Riparazione → fatturabile' };
+    }
+
+    // Default: mantieni
+    return { prezzo, regola: 'Altro → mantieni' };
+}
+
+// ============================================
+// RENDER RISULTATI
+// ============================================
+
+function renderRisultati(kpi, storico) {
+    // ── KPI Globali ──
+    document.getElementById('kpi-jobs-ia').textContent = kpi.jobsTotali.toLocaleString('it-IT');
+    document.getElementById('kpi-righe-ia').textContent = `(${kpi.righeTotali.toLocaleString('it-IT')} righe)`;
+    document.getElementById('kpi-totale-ia').textContent = formatEuro(kpi.totaleIA);
+    document.getElementById('kpi-eccesso').textContent = formatEuro(kpi.totaleIA - 80000);
+    document.getElementById('kpi-budget-ratio').textContent = `Ratio: ${(kpi.totaleIA / 80000).toFixed(2)}x`;
+
+    document.getElementById('kpi-storico').textContent = storico.length.toLocaleString('it-IT');
+    const impiantiStorico = new Set(storico.map(r => r[COLS_IA.IMPIANTO]).filter(Boolean)).size;
+    document.getElementById('kpi-storico-impianti').textContent = `(${impiantiStorico} impianti)`;
+
+    // Job con/senza storico
+    const conStorico = Object.entries(kpi.perPrecedente)
+        .filter(([k]) => k !== 'no_storico_impianto')
+        .reduce((s, [, v]) => s + v.job, 0);
+    const senzaStorico = kpi.perPrecedente.no_storico_impianto?.job || 0;
+
+    document.getElementById('kpi-jobs-con-storico').textContent = conStorico.toLocaleString('it-IT');
+    document.getElementById('kpi-pct-con-storico').textContent = `${((conStorico / kpi.jobsTotali) * 100).toFixed(1)}%`;
+    document.getElementById('kpi-jobs-senza-storico').textContent = senzaStorico.toLocaleString('it-IT');
+    document.getElementById('kpi-pct-senza-storico').textContent = `${((senzaStorico / kpi.jobsTotali) * 100).toFixed(1)}%`;
+    document.getElementById('kpi-contratti-count').textContent = Object.keys(kpi.perContratto).length;
+
+    // ── Tabella Contratti ──
+    const tContratti = document.getElementById('tabella-contratti');
+    const contrattiSorted = Object.entries(kpi.perContratto).sort((a, b) => b[1].totale - a[1].totale);
+    tContratti.innerHTML = contrattiSorted.map(([c, d]) => `
+        <tr class="table-row-hover">
+            <td class="px-4 py-2 font-bold text-slate-700">${c}</td>
+            <td class="px-4 py-2 text-right font-mono">${d.job.toLocaleString('it-IT')}</td>
+            <td class="px-4 py-2 text-right font-mono text-blue-700 font-bold">${formatEuro(d.totale)}</td>
+            <td class="px-4 py-2 text-right font-mono text-slate-500">${((d.totale / kpi.totaleIA) * 100).toFixed(1)}%</td>
+        </tr>
+    `).join('');
+
+    // ── Tabella Tipi ──
+    const tTipi = document.getElementById('tabella-tipi');
+    const tipiLabel = {
+        'sostituzione': { label: '🔧 Sostituzione', prop: 'Alta (fattura)', color: 'text-emerald-700 bg-emerald-50' },
+        'riparazione': { label: '🛠️ Riparazione', prop: 'Alta (fattura)', color: 'text-emerald-700 bg-emerald-50' },
+        'operativo': { label: '⚙️ Operativo', prop: 'Bassa (assorbi)', color: 'text-amber-700 bg-amber-50' },
+        'fuori_servizio': { label: '⛔ Fuori servizio', prop: 'Zero (commessa)', color: 'text-red-700 bg-red-50' },
+        'altro': { label: '❓ Altro', prop: 'Da valutare', color: 'text-slate-600 bg-slate-50' }
+    };
+
+    const tipiSorted = Object.entries(kpi.perTipo).sort((a, b) => b[1].totale - a[1].totale);
+    tTipi.innerHTML = tipiSorted.map(([t, d]) => {
+        const info = tipiLabel[t] || tipiLabel.altro;
+        return `
+            <tr class="table-row-hover">
+                <td class="px-4 py-2 font-bold text-slate-700">${info.label}</td>
+                <td class="px-4 py-2 text-right font-mono">${d.job.toLocaleString('it-IT')}</td>
+                <td class="px-4 py-2 text-right font-mono text-blue-700 font-bold">${formatEuro(d.totale)}</td>
+                <td class="px-4 py-2 text-right font-mono text-slate-500">${((d.totale / kpi.totaleIA) * 100).toFixed(1)}%</td>
+                <td class="px-4 py-2 text-xs"><span class="px-2 py-1 rounded font-bold ${info.color}">${info.prop}</span></td>
+            </tr>
+        `;
+    }).join('');
+
+    // ── Tabella Precedente ──
+    const tPrec = document.getElementById('tabella-precedente');
+    const precLabel = {
+        'fatturato_stesso_impianto': { label: '✅ Già fatturato (stesso impianto)', interp: 'Fattura anche ora — il cliente è abituato' },
+        'fatturato_stesso_contratto': { label: '🟡 Fatturato su stesso contratto (altri impianti)', interp: 'Propensione a fatturare' },
+        'mai_fatturato': { label: '🔴 Mai fatturato', interp: 'Propensione ad assorbire' },
+        'no_storico_impianto': { label: '⚪ Nessuno storico per questo impianto', interp: 'Default prudente' }
+    };
+
+    const precSorted = Object.entries(kpi.perPrecedente).sort((a, b) => b[1].totale - a[1].totale);
+    tPrec.innerHTML = precSorted.map(([k, d]) => {
+        const info = precLabel[k] || precLabel.no_storico_impianto;
+        return `
+            <tr class="table-row-hover">
+                <td class="px-4 py-2 font-bold text-slate-700">${info.label}</td>
+                <td class="px-4 py-2 text-right font-mono">${d.job.toLocaleString('it-IT')}</td>
+                <td class="px-4 py-2 text-right font-mono text-blue-700 font-bold">${formatEuro(d.totale)}</td>
+                <td class="px-4 py-2 text-xs text-slate-500">${info.interp}</td>
+            </tr>
+        `;
+    }).join('');
+
+    // ── Simulazione ──
+    const sim = kpi.simulazione;
+    document.getElementById('sim-totale-ia').textContent = formatEuro(sim.totaleOriginale);
+    document.getElementById('sim-totale-nuovo').textContent = formatEuro(sim.totaleSimulato);
+    document.getElementById('sim-riduzione').textContent = formatEuro(sim.totaleOriginale - sim.totaleSimulato);
+    document.getElementById('sim-distanza').textContent = formatEuro(Math.abs(sim.totaleSimulato - 80000));
+
+    const dettaglio = document.getElementById('sim-dettaglio');
+    const regoleSorted = Object.entries(sim.perRegola).sort((a, b) => b[1].totale - a[1].totale);
+    dettaglio.innerHTML = regoleSorted.map(([regola, d]) => `
+        <div class="flex justify-between items-center py-1 border-b border-slate-100 last:border-0">
+            <div class="text-slate-600 text-xs">${regola}</div>
+            <div class="flex gap-4 items-center">
+                <span class="font-mono text-xs text-slate-500">${d.job} job</span>
+                <span class="font-mono text-xs font-bold text-slate-700">${formatEuro(d.totale)}</span>
+            </div>
+        </div>
+    `).join('');
+
+    // ── Matrice Contratto × Tipo ──
+    const contratti = Object.keys(kpi.matriceContrattoTipo).sort();
+    const tipi = ['sostituzione', 'riparazione', 'operativo', 'fuori_servizio', 'altro'];
+
+    const headerRow = document.getElementById('matrice-header');
+    headerRow.innerHTML = '<th class="px-4 py-2 text-left">Contratto</th>' +
+        tipi.map(t => `<th class="px-4 py-2 text-right">${tipiLabel[t].label}</th>`).join('') +
+        '<th class="px-4 py-2 text-right bg-blue-50">Totale</th>';
+
+    const body = document.getElementById('matrice-body');
+    body.innerHTML = contratti.map(c => {
+        const row = kpi.matriceContrattoTipo[c];
+        const totRiga = Object.values(row).reduce((s, x) => s + x.totale, 0);
+        return `
+            <tr class="table-row-hover">
+                <td class="px-4 py-2 font-bold text-slate-700">${c}</td>
+                ${tipi.map(t => {
+                    const d = row[t] || { job: 0, totale: 0 };
+                    return `<td class="px-4 py-2 text-right font-mono text-xs ${d.totale > 0 ? 'text-slate-700' : 'text-slate-300'}">
+                        ${d.totale > 0 ? formatEuro(d.totale) : '—'}
+                    </td>`;
+                }).join('')}
+                <td class="px-4 py-2 text-right font-mono font-bold text-blue-700 bg-blue-50">${formatEuro(totRiga)}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// ============================================
+// UTILITIES
+// ============================================
+
+function formatEuro(n) {
+    if (n === null || n === undefined || isNaN(n)) return '€ 0';
+    return '€ ' + Number(n).toLocaleString('it-IT', { maximumFractionDigits: 0 });
+}
+
+// ============================================
+// EXPORT EXCEL
+// ============================================
+
+function exportAnalisiExcel() {
+    if (!analisiRisultati.jobsTotali) return;
+
+    const kpi = analisiRisultati;
+    const rows = [];
+
+    rows.push(['ANALISI IA vs STORICO — Sbolla Manager']);
+    rows.push(['Generato il', new Date().toLocaleString('it-IT')]);
+    rows.push([]);
+
+    // KPI
+    rows.push(['KPI GLOBALI']);
+    rows.push(['Job totali', kpi.jobsTotali]);
+    rows.push(['Righe totali', kpi.righeTotali]);
+    rows.push(['Totale IA', kpi.totaleIA]);
+    rows.push(['Budget target', 80000]);
+    rows.push(['Ratio IA/Budget', (kpi.totaleIA / 80000).toFixed(2)]);
+    rows.push(['Interventi storico', storico.length]);
+    rows.push([]);
+
+    // Per contratto
+    rows.push(['DISTRIBUZIONE PER CONTRATTO']);
+    rows.push(['Contratto', 'Job', 'Totale IA', '%']);
+    Object.entries(kpi.perContratto).sort((a, b) => b[1].totale - a[1].totale).forEach(([c, d]) => {
+        rows.push([c, d.job, d.totale, ((d.totale / kpi.totaleIA) * 100).toFixed(1) + '%']);
+    });
+    rows.push([]);
+
+    // Per tipo
+    rows.push(['CLASSIFICAZIONE PER TIPO']);
+    rows.push(['Tipo', 'Job', 'Totale IA', '%']);
+    Object.entries(kpi.perTipo).sort((a, b) => b[1].totale - a[1].totale).forEach(([t, d]) => {
+        rows.push([t, d.job, d.totale, ((d.totale / kpi.totaleIA) * 100).toFixed(1) + '%']);
+    });
+    rows.push([]);
+
+    // Per precedente
+    rows.push(['ANALISI PRECEDENTE STORICO']);
+    rows.push(['Categoria', 'Job', 'Totale IA']);
+    Object.entries(kpi.perPrecedente).forEach(([k, d]) => {
+        rows.push([k, d.job, d.totale]);
+    });
+    rows.push([]);
+
+    // Simulazione
+    rows.push(['SIMULAZIONE BUDGET']);
+    rows.push(['Totale originale IA', kpi.simulazione.totaleOriginale]);
+    rows.push(['Totale simulato', kpi.simulazione.totaleSimulato]);
+    rows.push(['Riduzione', kpi.simulazione.totaleOriginale - kpi.simulazione.totaleSimulato]);
+    rows.push(['Distanza da €80k', Math.abs(kpi.simulazione.totaleSimulato - 80000)]);
+    rows.push([]);
+    rows.push(['Dettaglio simulazione']);
+    rows.push(['Regola', 'Job', 'Totale']);
+    Object.entries(kpi.simulazione.perRegola).forEach(([r, d]) => {
+        rows.push([r, d.job, d.totale]);
+    });
+    rows.push([]);
+
+    // Matrice
+    rows.push(['MATRICE CONTRATTO × TIPO']);
+    const tipi = ['sostituzione', 'riparazione', 'operativo', 'fuori_servizio', 'altro'];
+    rows.push(['Contratto', ...tipi, 'Totale']);
+    Object.entries(kpi.matriceContrattoTipo).forEach(([c, row]) => {
+        const tot = Object.values(row).reduce((s, x) => s + x.totale, 0);
+        rows.push([c, ...tipi.map(t => row[t]?.totale || 0), tot]);
+    });
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Analisi');
+    XLSX.writeFile(wb, `analisi_IA_storico_${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
+</script>
+</body>
+</html>
