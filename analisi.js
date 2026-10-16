@@ -1,5 +1,5 @@
 // ============================================
-// Sbolla Manager v4 - Sezione Analisi
+// Sbolla Manager v5 - Sezione Analisi (Job-aware)
 // ============================================
 
 console.log("📊 analisi.js caricato");
@@ -183,15 +183,33 @@ function costruisciLayoutAnalisi() {
 }
 
 // ============================================
-// HELPERS
+// HELPERS (v5 Job-aware)
 // ============================================
 
 function getAllJobs() {
     return Object.values(window.appData?.jobGroups || {});
 }
 
-function getVenditore(jobId) {
-    return window.appData?.venditore?.[jobId] || { costo: 0, note: '', stato: 'da-rivedere' };
+/**
+ * Ritorna il modello venditore di un Job (v5) o null.
+ * Contiene: rowPrices, note, stato, mainRowIndex, totaleJob, valid.
+ */
+function getModJob(jobId) {
+    return window.appData?.venditore?.[jobId] || null;
+}
+
+/**
+ * Somma dei prezzi venditore di tutte le righe del Job.
+ * Delega a sommaRigheJob di app.js se disponibile, altrimenti calcola inline.
+ */
+function getTotaleVenditore(jobId) {
+    if (typeof window.sommaRigheJob === 'function') {
+        return window.sommaRigheJob(jobId);
+    }
+    // Fallback inline (robusto se app.js non ha ancora caricato)
+    const mod = getModJob(jobId);
+    if (!mod || !mod.rowPrices) return 0;
+    return Object.values(mod.rowPrices).reduce((a, b) => a + (Number(b) || 0), 0);
 }
 
 function getStatoLabel(stato) {
@@ -214,8 +232,8 @@ function aggiornaKPI() {
     let totVend = 0;
 
     jobs.forEach(g => {
-        totIA += g.ia.prezzoConsigliato || 0;
-        totVend += getVenditore(g.jobId).costo || 0;
+      totIA += g.iaRows.reduce((a, b) => a + (b || 0), 0);
+        totVend += getTotaleVenditore(g.jobId);
     });
 
     const delta = totVend - totIA;
@@ -248,10 +266,11 @@ function aggiornaStatoRevisione() {
     };
 
     jobs.forEach(g => {
-        const stato = getVenditore(g.jobId).stato || 'da-rivedere';
+        const mod = getModJob(g.jobId);
+        const stato = mod?.stato || 'da-rivedere';
         if (!stats[stato]) stats[stato] = { count: 0, tot: 0 };
         stats[stato].count++;
-        stats[stato].tot += getVenditore(g.jobId).costo || 0;
+        stats[stato].tot += getTotaleVenditore(g.jobId);
     });
 
     ['da-rivedere', 'confermato', 'modificato', 'azzerato'].forEach(key => {
@@ -368,8 +387,9 @@ function aggiornaIndicazioneCommerciale() {
         const ind = g.ia.indicazione || 'NESSUNA';
         if (!stats[ind]) stats[ind] = { count: 0, totIA: 0, totVend: 0 };
         stats[ind].count++;
-        stats[ind].totIA += g.ia.prezzoConsigliato || 0;
-        stats[ind].totVend += getVenditore(g.jobId).costo || 0;
+        // DOPO
+stats[ind].totIA += g.iaRows.reduce((a, b) => a + (b || 0), 0);
+        stats[ind].totVend += getTotaleVenditore(g.jobId);
     });
 
     const entries = Object.entries(stats).sort((a, b) => b[1].count - a[1].count);
@@ -408,8 +428,8 @@ function aggiornaVenditori() {
         const vend = g.masterRow[window.COLS.VENDITORE] || 'N/D';
         if (!stats[vend]) stats[vend] = { count: 0, totIA: 0, totVend: 0 };
         stats[vend].count++;
-        stats[vend].totIA += g.ia.prezzoConsigliato || 0;
-        stats[vend].totVend += getVenditore(g.jobId).costo || 0;
+       stats[vend].totIA += g.iaRows.reduce((a, b) => a + (b || 0), 0);
+        stats[vend].totVend += getTotaleVenditore(g.jobId);
     });
 
     const entries = Object.entries(stats).sort((a, b) => b[1].totVend - a[1].totVend);
@@ -451,7 +471,7 @@ function aggiornaTopImpianti() {
         const addr = g.masterRow[window.COLS.INDIRIZZO] || '';
         if (!stats[imp]) stats[imp] = { count: 0, totVend: 0, addr, criticita: {} };
         stats[imp].count++;
-        stats[imp].totVend += getVenditore(g.jobId).costo || 0;
+        stats[imp].totVend += getTotaleVenditore(g.jobId);
         const crit = g.ia.criticita || 'N/D';
         stats[imp].criticita[crit] = (stats[imp].criticita[crit] || 0) + 1;
     });
@@ -468,7 +488,6 @@ function aggiornaTopImpianti() {
     }
 
     tbody.innerHTML = entries.map(([imp, data]) => {
-        // Criticità prevalente
         const critPrev = Object.entries(data.criticita).sort((a, b) => b[1] - a[1])[0];
         const critLabel = critPrev ? critPrev[0] : '—';
         const critColor = critLabel === 'ALTO' ? 'text-red-600 bg-red-50' :
@@ -515,7 +534,7 @@ window.esportaAnalisiPDF = function() {
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(255, 255, 255);
-    doc.text('Sbolla Manager v4 — Report Analisi', 14, 12);
+    doc.text('Sbolla Manager v5 — Report Analisi', 14, 12);
 
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
@@ -528,7 +547,7 @@ window.esportaAnalisiPDF = function() {
     let totIA = 0, totVend = 0;
     jobs.forEach(g => {
         totIA += g.ia.prezzoConsigliato || 0;
-        totVend += getVenditore(g.jobId).costo || 0;
+        totVend += getTotaleVenditore(g.jobId);
     });
     const delta = totVend - totIA;
 
@@ -559,7 +578,8 @@ window.esportaAnalisiPDF = function() {
     // Stato revisione
     const statsStato = { 'da-rivedere': 0, 'confermato': 0, 'modificato': 0, 'azzerato': 0 };
     jobs.forEach(g => {
-        const s = getVenditore(g.jobId).stato || 'da-rivedere';
+        const mod = getModJob(g.jobId);
+        const s = mod?.stato || 'da-rivedere';
         statsStato[s] = (statsStato[s] || 0) + 1;
     });
 
@@ -624,7 +644,7 @@ window.esportaAnalisiPDF = function() {
         if (!statsVend[v]) statsVend[v] = { count: 0, totIA: 0, totVend: 0 };
         statsVend[v].count++;
         statsVend[v].totIA += g.ia.prezzoConsigliato || 0;
-        statsVend[v].totVend += getVenditore(g.jobId).costo || 0;
+        statsVend[v].totVend += getTotaleVenditore(g.jobId);
     });
 
     if (y > 160) { doc.addPage(); y = 20; }
@@ -657,7 +677,7 @@ window.esportaAnalisiPDF = function() {
         const i = g.ia.indicazione || 'NESSUNA';
         if (!statsInd[i]) statsInd[i] = { count: 0, tot: 0 };
         statsInd[i].count++;
-        statsInd[i].tot += getVenditore(g.jobId).costo || 0;
+        statsInd[i].tot += getTotaleVenditore(g.jobId);
     });
 
     if (y > 160) { doc.addPage(); y = 20; }
@@ -686,12 +706,12 @@ window.esportaAnalisiPDF = function() {
         doc.setFontSize(7);
         doc.setTextColor(148, 163, 184);
         doc.text(`Pagina ${i} di ${pageCount}`, 283, 205, { align: 'right' });
-        doc.text('Sbolla Manager v4', 14, 205);
+        doc.text('Sbolla Manager v5', 14, 205);
     }
 
     const nomeFile = `Analisi_Sbolla_${new Date().toISOString().slice(0, 10)}.pdf`;
-const pdfBlob = doc.output('blob');
-downloadBlob(pdfBlob, nomeFile);
+    const pdfBlob = doc.output('blob');
+    downloadBlob(pdfBlob, nomeFile);
     console.log("✅ PDF analisi generato:", nomeFile);
 };
 

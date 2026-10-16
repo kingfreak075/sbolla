@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sbolla Manager v5</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.0/jspdf.plugin.autotable.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #e2e8f0; }
+        ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+        .badge {
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: inline-block;
+        }
+        .badge-green { background-color: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+        .badge-yellow { background-color: #fefce8; color: #854d0e; border: 1px solid #fde047; }
+        .badge-red { background-color: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+        .badge-orange { background-color: #fff7ed; color: #9a3412; border: 1px solid #fdba74; }
+        .badge-gray { background-color: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+
+        .wp-reperibilita { color: #dc2626; font-weight: 800; }
+        .wp-normale { color: #16a34a; font-weight: 800; }
+        .wp-consuntivo { color: #2563eb; font-weight: 800; }
+
+        .price-input {
+            background: #fff;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            color: #0f172a;
+            font-weight: 700;
+            text-align: right;
+            width: 100%;
+            padding: 4px 8px;
+            transition: all 0.2s;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        .price-input:focus {
+            border-color: #3b82f6;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+            color: #2563eb;
+        }
+        .price-input.modified {
+            background: #fef3c7;
+            border-color: #f59e0b;
+        }
+
+        .note-input {
+            background: #fff;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            color: #334155;
+            width: 100%;
+            padding: 4px 8px;
+            font-size: 12px;
+            font-family: inherit;
+            transition: all 0.2s;
+            resize: none;
+        }
+        .note-input:focus {
+            border-color: #3b82f6;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+        .nav-tab {
+            padding: 0 1.5rem;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            color: #94a3b8;
+            font-weight: 500;
+            font-size: 0.875rem;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+        }
+        .nav-tab:hover { color: white; }
+        .nav-tab.active {
+            color: white;
+            border-bottom-color: #3b82f6;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .loader-ring {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+        }
+        .loader-ring:after {
+            content: " ";
+            display: block;
+            width: 32px;
+            height: 32px;
+            margin: 4px;
+            border-radius: 50%;
+            border: 3px solid #3b82f6;
+            border-color: #3b82f6 transparent #3b82f6 transparent;
+            animation: loader-ring 1.2s linear infinite;
+        }
+        @keyframes loader-ring {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .animate-slide-up { animation: slideUp 0.3s ease-out; }
+        @keyframes slideUp {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .notif-container {
+            position: fixed;
+            bottom: 16px;
+            right: 16px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-width: 400px;
+        }
+
+        .ia-cell {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 2px;
+        }
+        .ia-price {
+            font-family: monospace;
+            font-weight: 800;
+            font-size: 14px;
+            color: #1e40af;
+        }
+        .ia-badge {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 3px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .row-warning { background: #fffbeb; }
+        .row-critical { background: #fef2f2; }
+        .row-info { background: #eff6ff; }
+
+        .loader-mini {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid #818cf8;
+            border-color: #818cf8 transparent #818cf8 transparent;
+            border-radius: 50%;
+            animation: loader-ring 1s linear infinite;
+        }
+
+        /* Slider custom per Modifica 3 */
+        input[type="range"].accent-blue-600::-webkit-slider-thumb {
+            cursor: pointer;
+        }
+        input[type="range"]:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+
+        input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+
+
+    </style>
+</head>
+<body class="text-slate-800">
+
+<!-- ============================================ -->
+<!-- HEADER                                        -->
+<!-- ============================================ -->
+<header class="bg-slate-900 text-white shadow-md z-40 h-16 flex-none flex justify-between items-center px-6">
+    <div class="flex items-center gap-3 w-72">
+        <div class="bg-blue-600 w-8 h-8 rounded flex items-center justify-center font-bold text-white shadow shadow-blue-500/50">KF</div>
+        <div>
+            <h1 class="font-bold text-lg leading-tight">Buono Prezzo del King</h1>
+            <div class="text-[10px] text-slate-400">Sbolla Manager v5</div>
+        </div>
+    </div>
+
+    <div class="flex h-full">
+        <button type="button" onclick="switchTab('pricing')" id="tab-btn-pricing" class="nav-tab active">💰 Pricing</button>
+        <button type="button" onclick="switchTab('analytics')" id="tab-btn-analytics" class="nav-tab">📊 Analisi</button>
+        <a href="put_in.html" class="nav-tab">🎱 Put-in-COG</a>
+    </div>
+
+    <div class="flex items-center gap-3">
+        <input type="file" id="sessionInput" accept=".json" class="hidden" onchange="loadSessionFile(this)">
+        <input type="file" id="storicoInput" accept=".json" class="hidden" onchange="caricaStoricoFile(this)">
+
+        <div class="flex gap-1">
+            <button type="button" onclick="downloadSession()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded border border-slate-700 transition" title="Scarica backup JSON">💾 Salva</button>
+            <button type="button" onclick="document.getElementById('sessionInput').click()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded border border-slate-700 transition" title="Carica backup JSON">📂 Carica</button>
+
+            <div class="relative group">
+                <button class="text-xs bg-indigo-800 hover:bg-indigo-700 text-slate-300 px-3 py-1.5 rounded border border-indigo-700 transition flex items-center gap-1.5" title="Gestione storico">
+                    <span id="storico-label">📚</span>
+                    <span id="storico-indicator" class="hidden loader-mini"></span>
+                </button>
+                <div class="hidden group-hover:block absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-1 z-50">
+                    <button type="button" onclick="ricaricaStoricoDefault()" class="w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-700 text-sm flex items-center gap-2">
+                        🔄 Ricarica
+                    </button>
+                    <button type="button" onclick="document.getElementById('storicoInput').click()" class="w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-700 text-sm flex items-center gap-2 border-t border-slate-100">
+                        📁 Cambia file
+                    </button>
+                </div>
+            </div>
+
+            <button type="button" onclick="apriCaricaExcel()" id="btn-carica-excel" class="text-xs bg-emerald-800 hover:bg-emerald-700 text-slate-300 px-3 py-1.5 rounded border border-emerald-700 transition" title="Aggiungi file Excel">
+                ➕ Excel
+            </button>
+        </div>
+
+        <div class="h-8 w-px bg-slate-700 mx-1"></div>
+
+        <div class="bg-slate-800 px-3 py-1 rounded border border-slate-700 text-right">
+            <span class="block text-[10px] text-slate-400 uppercase font-bold">Totali</span>
+            <div class="text-sm leading-none flex items-center gap-2 font-mono">
+                <span class="text-blue-400">IA <span id="header-total-ia">€ 0</span></span>
+                <span class="text-slate-500">→</span>
+                <span class="text-emerald-400">Vend <span id="header-total-vend">€ 0</span></span>
+                <span id="header-total-delta" class="text-xs text-slate-500"></span>
+            </div>
+        </div>
+
+        <div class="relative" id="settings-menu-container">
+            <button type="button" onclick="toggleSettingsMenu()" class="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition" title="Menu Configurazione">⚙️</button>
+            <div id="settings-menu" class="hidden absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 z-50 py-1 overflow-hidden">
+                <div class="px-4 py-2 bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Configurazione
+                </div>
+                <a href="Legenda_Interpretazione_File_Prezzamento.pdf" download class="w-full text-left px-4 py-3 hover:bg-blue-50 text-slate-700 text-sm flex items-center gap-3 transition">
+                    <span class="text-xl bg-blue-100 w-8 h-8 rounded-full flex items-center justify-center text-blue-600">📖</span>
+                    <div>
+                        <div class="font-bold">Legenda</div>
+                        <div class="text-[10px] text-slate-400">Guida interpretazione file</div>
+                    </div>
+                </a>
+                <button type="button" onclick="open('admin.html', '_blank'); toggleSettingsMenu()" class="w-full text-left px-4 py-3 hover:bg-purple-50 text-slate-700 text-sm flex items-center gap-3 transition border-t border-slate-100">
+                    <span class="text-xl bg-purple-100 w-8 h-8 rounded-full flex items-center justify-center text-purple-600">📚</span>
+                    <div>
+                        <div class="font-bold">Gestione Storico</div>
+                        <div class="text-[10px] text-slate-400">Crea/aggiorna sbolla.json</div>
+                    </div>
+                </button>
+            </div>
+        </div>
+
+        <div class="relative" id="debug-storico-container">
+            <button type="button" onclick="toggleDebugPanel()" class="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition" title="Info storico">📊</button>
+            <div id="debug-storico-panel" class="hidden absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 overflow-hidden">
+                <div class="bg-gradient-to-r from-indigo-600 to-blue-600 px-4 py-3 text-white">
+                    <h3 class="font-bold flex items-center gap-2"><span>📚</span> Database Storico</h3>
+                </div>
+                <div class="p-4 space-y-3">
+                    <div id="debug-status" class="text-sm">Verifica in corso...</div>
+                    <div id="debug-stats" class="grid grid-cols-2 gap-2 text-xs hidden">
+                        <div class="bg-slate-50 p-2 rounded">
+                            <div class="text-slate-400">Interventi</div>
+                            <div class="text-lg font-bold" id="debug-totale">0</div>
+                        </div>
+                        <div class="bg-slate-50 p-2 rounded">
+                            <div class="text-slate-400">Impianti</div>
+                            <div class="text-lg font-bold text-indigo-600" id="debug-impianti">0</div>
+                        </div>
+                    </div>
+                    <div id="debug-file" class="text-xs bg-slate-100 p-2 rounded hidden">
+                        <div class="font-medium text-slate-600">Ultimo aggiornamento</div>
+                        <div class="text-slate-500" id="debug-data">-</div>
+                        <div class="text-slate-500 text-[10px] mt-1 truncate" id="debug-nomefile">-</div>
+                    </div>
+                    <div class="flex gap-2 pt-2 border-t border-slate-100">
+                        <button type="button" onclick="ricaricaStorico()" class="flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold py-2 rounded transition">🔄 Ricarica</button>
+                        <button type="button" onclick="nascondiDebugPanel()" class="flex-1 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold py-2 rounded transition">✕ Chiudi</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODIFICA 5: pulsante globale Azzera tutti i visibili -->
+        <div class="flex gap-1">
+            <button type="button" onclick="azzeraTuttiVisibili()" class="bg-red-600 hover:bg-red-500 text-white px-3 py-2 rounded shadow text-sm font-bold flex items-center gap-2 transition" title="Azzera tutti i Job visibili (rispetta i filtri)">🗑️ Azzera</button>
+            <button type="button" onclick="confermaTutti()" class="bg-amber-600 hover:bg-amber-500 text-white px-3 py-2 rounded shadow text-sm font-bold flex items-center gap-2 transition" title="Conferma tutti i prezzi IA non modificati">✅ Tutti</button>
+            <button type="button" onclick="exportFiltered()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded shadow text-sm font-bold flex items-center gap-2 transition" title="Scarica solo la vista attuale">📤 Filtro</button>
+            <button type="button" onclick="exportExcel()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded shadow text-sm font-bold flex items-center gap-2 transition" title="Scarica file completo">📥 Master</button>
+        </div>
+    </div>
+</header>
+
+<!-- ============================================ -->
+<!-- MAIN                                          -->
+<!-- ============================================ -->
+<div class="flex flex-1 overflow-hidden relative w-full">
+
+    <!-- SIDEBAR -->
+    <aside class="w-72 bg-white border-r border-slate-200 flex flex-col z-30 shadow-sm hidden" id="sidebar">
+        <div class="p-4 border-b border-slate-100 bg-slate-50">
+            <input type="text" id="searchBox" placeholder="🔍 Cerca Job, Via, Impianto..." class="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+        </div>
+        <div class="flex-1 overflow-y-auto p-4 space-y-4">
+
+            <div>
+                <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Venditore</label>
+                <select id="filter-venditore" onchange="applyFilters()" class="w-full text-sm border-slate-200 rounded p-2 bg-white focus:ring-2 focus:ring-blue-100 outline-none">
+                    <option value="ALL">Tutti</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Contratto</label>
+                <select id="filter-contract" onchange="applyFilters()" class="w-full text-sm border-slate-200 rounded p-2 bg-white focus:ring-2 focus:ring-blue-100 outline-none">
+                    <option value="ALL">Tutti</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Periodo</label>
+                <div class="flex gap-2">
+                    <input type="date" id="filter-date-start" onchange="applyFilters()" class="w-full text-xs border-slate-200 rounded bg-white p-1.5 outline-none">
+                    <input type="date" id="filter-date-end" onchange="applyFilters()" class="w-full text-xs border-slate-200 rounded bg-white p-1.5 outline-none">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Tipo Intervento</label>
+                <select id="filter-workperf" onchange="applyFilters()" class="w-full text-sm border-slate-200 rounded p-2 bg-white focus:ring-2 focus:ring-blue-100 outline-none">
+                    <option value="ALL">Tutti</option>
+                </select>
+            </div>
+
+            <hr class="border-slate-100">
+
+            <div class="bg-blue-50 -mx-2 px-2 py-2 rounded">
+                <div class="text-[10px] font-bold text-blue-600 uppercase mb-2">🤖 Filtri IA</div>
+
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Confidenza</label>
+                        <select id="filter-confidenza" onchange="applyFilters()" class="w-full text-sm border-slate-200 rounded p-2 bg-white outline-none">
+                            <option value="ALL">Tutte</option>
+                            <option value="ALTA">ALTA</option>
+                            <option value="MEDIA">MEDIA</option>
+                            <option value="BASSA">BASSA</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Fatturabilità</label>
+                        <select id="filter-fatturab" onchange="applyFilters()" class="w-full text-sm border-slate-200 rounded p-2 bg-white outline-none">
+                            <option value="ALL">Tutte</option>
+                            <option value="SÌ">SÌ</option>
+                            <option value="NO">NO</option>
+                            <option value="DA VERIFICARE">DA VERIFICARE</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Criticità Impianto</label>
+                        <select id="filter-criticita" onchange="applyFilters()" class="w-full text-sm border-slate-200 rounded p-2 bg-white outline-none">
+                            <option value="ALL">Tutte</option>
+                            <option value="ALTO">ALTO</option>
+                            <option value="MEDIO">MEDIO</option>
+                            <option value="BASSO">BASSO</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Credito Commerciale</label>
+                        <select id="filter-credito" onchange="applyFilters()" class="w-full text-sm border-slate-200 rounded p-2 bg-white outline-none">
+                            <option value="ALL">Tutti</option>
+                            <option value="ALTO">ALTO</option>
+                            <option value="MEDIO">MEDIO</option>
+                            <option value="BASSO">BASSO</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Indicazione</label>
+                        <select id="filter-indicazione" onchange="applyFilters()" class="w-full text-sm border-slate-200 rounded p-2 bg-white outline-none">
+                            <option value="ALL">Tutte</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="border-slate-100">
+
+            <div>
+                <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Stato Revisione</label>
+                <select id="filter-stato" onchange="applyFilters()" class="w-full text-sm border-slate-200 rounded p-2 bg-white outline-none">
+                    <option value="ALL">Tutti</option>
+                    <option value="da-rivedere">⏳ Da rivedere</option>
+                    <option value="confermato">✅ Confermato (IA)</option>
+                    <option value="modificato">✏️ Modificato</option>
+                    <option value="azzerato">0️⃣ Azzerato</option>
+                </select>
+            </div>
+
+            <!-- MODIFICA 6: toggle "Mostra Storico" RIMOSSO -->
+
+            <div class="pt-2 border-t border-slate-100">
+                <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Storico Ricerche</label>
+                <div class="space-y-1">
+                    <button type="button" onclick="salvaRicercaCorrente()" class="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded px-2 py-1.5 text-xs font-bold transition">💾 Salva ricerca corrente</button>
+                    <div id="ricerche-salvate" class="max-h-40 overflow-y-auto space-y-1 mt-2"></div>
+                    <button type="button" onclick="clearRicerche()" class="w-full text-slate-400 hover:text-red-500 text-[10px] transition text-center mt-1">Cancella cronologia</button>
+                </div>
+            </div>
+
+        </div>
+        <div class="p-4 border-t border-slate-200 bg-slate-50 text-center">
+            <button type="button" onclick="resetFilters()" class="text-xs text-slate-500 hover:text-blue-600 font-medium w-full py-2 hover:bg-white rounded border border-transparent hover:border-slate-200 transition">Resetta Filtri</button>
+        </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <div class="flex-1 flex flex-col relative bg-white overflow-hidden">
+
+        <div id="upload-overlay" class="absolute inset-0 z-40 bg-slate-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl shadow-xl p-12 text-center max-w-lg w-full border border-slate-100">
+                <div class="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+                    <span class="text-4xl">📂</span>
+                </div>
+                <h2 class="text-3xl font-bold text-slate-800 mb-2">Carica File Interventi IA</h2>
+                <p class="text-slate-500 mb-8">Seleziona il file Excel generato dall'analisi IA</p>
+
+                <input type="file" id="fileInput" accept=".xlsx, .xls" class="hidden">
+                <button type="button" onclick="document.getElementById('fileInput').click()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-xl transition shadow-lg transform hover:-translate-y-1">
+                    📂 Seleziona File Excel
+                </button>
+
+                <div id="loader" class="hidden mt-8">
+                    <div class="loader-ring"></div>
+                    <p class="text-sm text-slate-400 mt-2">Elaborazione in corso...</p>
+                </div>
+            </div>
+        </div>
+
+        <main id="main-content" class="flex-1 flex flex-col hidden h-full overflow-hidden">
+            <div class="bg-white border-b border-slate-200 px-6 py-3 flex justify-between items-center shadow-sm flex-none z-20">
+                <div class="flex items-center gap-3">
+                    <h2 class="font-bold text-slate-700 text-lg">Elenco Interventi</h2>
+                    <span class="bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md text-xs font-mono border border-slate-200" id="row-count">0</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-slate-400 uppercase">Ordina per:</span>
+                    <select id="sort-order" onchange="applySorting()" class="text-xs border border-slate-300 rounded px-2 py-1.5 bg-white focus:border-blue-500 outline-none font-medium text-slate-600">
+                        <option value="date-desc">📅 Data (Recenti)</option>
+                        <option value="date-asc">📅 Data (Vecchi)</option>
+                        <option value="impianto-asc">🏢 Impianto (A-Z)</option>
+                        <option value="addr-asc">📍 Indirizzo (A-Z)</option>
+                        <!-- MODIFICA 4: ordinamento per prezzo -->
+                        <option value="costo-desc">💶 COSTO (alto → basso)</option>
+                        <option value="costo-asc">💶 COSTO (basso → alto)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex-1 overflow-auto bg-white relative">
+                <table class="w-full text-sm text-left border-collapse">
+                    <thead class="bg-slate-50 text-slate-500 font-semibold sticky top-0 z-10 shadow-sm text-xs uppercase tracking-wide">
+                        <tr>
+                            <th class="px-3 py-3 border-b border-slate-200 w-32">Job / Data</th>
+                            <th class="px-3 py-3 border-b border-slate-200 w-24">Impianto</th>
+                            <th class="px-3 py-3 border-b border-slate-200 w-56">Indirizzo / Venditore</th>
+                            <th class="px-3 py-3 border-b border-slate-200 w-20">Contratto</th>
+                            <th class="px-3 py-3 border-b border-slate-200 w-72">Tipologia</th>
+                            <th class="px-3 py-3 border-b border-slate-200 text-center w-28">🤖 IA</th>
+                            <th class="px-3 py-3 border-b border-slate-200 text-center w-14">Dur.</th>
+                            <th class="px-3 py-3 border-b border-slate-200 text-center w-16">Info</th>
+                            <th class="px-3 py-3 border-b border-slate-200 text-right w-28">COSTO</th>
+                            <th class="px-3 py-3 border-b border-slate-200 w-48">NOTE</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pricing-table-body" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+        </main>
+
+        <div id="view-analytics" class="hidden flex-1 overflow-auto bg-slate-50 p-6 w-full">
+            <!-- Popolato da analisi.js -->
+        </div>
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- MODALI                                        -->
+<!-- ============================================ -->
+
+<!-- Scheda tecnica -->
+<div id="info-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto">
+        <div class="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-blue-50 rounded-t-xl sticky top-0 z-10">
+            <h3 class="text-lg font-bold text-blue-800">📋 Scheda Tecnica</h3>
+            <button type="button" onclick="closeInfo()" class="text-blue-400 hover:text-blue-700 text-2xl leading-none">&times;</button>
+        </div>
+        <div class="p-6 space-y-6" id="info-modal-content"></div>
+    </div>
+</div>
+
+<!-- Modale dettaglio job (multi-task) -->
+<div id="details-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+        <div class="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 rounded-t-xl">
+            <div>
+                <h3 class="text-lg font-bold text-slate-800" id="modal-title">Dettaglio</h3>
+                <p class="text-xs text-slate-500" id="modal-subtitle"></p>
+            </div>
+            <button type="button" onclick="closeDetails()" class="text-slate-400 hover:text-red-500 text-2xl">&times;</button>
+        </div>
+        <div class="flex-1 overflow-auto p-0">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-slate-100 text-slate-600 font-semibold text-xs uppercase sticky top-0 shadow-sm z-10">
+                    <tr>
+                        <th class="px-4 py-3 w-10">Info</th>
+                        <th class="px-4 py-3">Componente</th>
+                        <th class="px-4 py-3">Descrizione</th>
+                        <th class="px-4 py-3 text-center">Qtà</th>
+                        <th class="px-4 py-3 text-center">Min</th>
+                    </tr>
+                </thead>
+                <tbody id="modal-body" class="divide-y divide-slate-100"></tbody>
+            </table>
+        </div>
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 text-right">
+            <button type="button" onclick="closeDetails()" class="px-6 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg font-bold shadow-lg">Chiudi</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- MODALE REDISTRIBUZIONE TOTALE JOB             -->
+<!-- ============================================ -->
+<div id="job-redistribute-modal" class="hidden fixed inset-0 z-[60] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl">
+        <div class="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-blue-50 rounded-t-xl">
+            <div>
+                <h3 class="text-lg font-bold text-blue-800">🔀 Redistribuzione Totale Job</h3>
+                <p class="text-xs text-slate-500 mt-0.5" id="redist-job-label">—</p>
+            </div>
+            <button type="button" onclick="chiudiRedistribuzione()" class="text-blue-400 hover:text-blue-700 text-2xl leading-none">&times;</button>
+        </div>
+
+        <div class="p-6 space-y-5">
+            <div class="grid grid-cols-3 gap-4">
+                <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                    <div class="text-[10px] font-bold text-slate-400 uppercase">Totale attuale</div>
+                    <div class="text-xl font-bold font-mono text-slate-700" id="redist-tot-attuale">€ 0</div>
+                </div>
+                <div class="bg-blue-50 p-3 rounded-lg border-2 border-blue-300">
+                    <div class="text-[10px] font-bold text-blue-600 uppercase">Nuovo totale</div>
+                    <div class="text-xl font-bold font-mono text-blue-700" id="redist-tot-nuovo">€ 0</div>
+                </div>
+                <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                    <div class="text-[10px] font-bold text-slate-400 uppercase">Differenza</div>
+                    <div class="text-xl font-bold font-mono" id="redist-delta">€ 0</div>
+                </div>
+            </div>
+
+            <div>
+                <div class="text-xs font-bold text-slate-500 uppercase mb-2">Come vuoi redistribuire?</div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button type="button" onclick="eseguiAzioneRedistribuzione('principale')" class="bg-white hover:bg-blue-50 border-2 border-slate-200 hover:border-blue-400 rounded-lg p-3 text-left transition">
+                        <div class="font-bold text-slate-800">⭐ Tutto su principale</div>
+                        <div class="text-[10px] text-slate-500 mt-1">Il nuovo totale va sulla lavorazione principale, le altre a zero.</div>
+                    </button>
+                    <button type="button" onclick="eseguiAzioneRedistribuzione('uniforme')" class="bg-white hover:bg-blue-50 border-2 border-slate-200 hover:border-blue-400 rounded-lg p-3 text-left transition">
+                        <div class="font-bold text-slate-800">↔ Uniforme</div>
+                        <div class="text-[10px] text-slate-500 mt-1">Diviso in parti uguali, resto sulle prime righe.</div>
+                    </button>
+                    <button type="button" onclick="eseguiAzioneRedistribuzione('riproporziona')" class="bg-white hover:bg-blue-50 border-2 border-slate-200 hover:border-blue-400 rounded-lg p-3 text-left transition">
+                        <div class="font-bold text-slate-800">📊 Riproporziona IA</div>
+                        <div class="text-[10px] text-slate-500 mt-1">Mantiene le proporzioni dei prezzi IA, scala al nuovo totale.</div>
+                    </button>
+                    <button type="button" onclick="eseguiAzioneRedistribuzione('ripristina')" class="bg-white hover:bg-amber-50 border-2 border-slate-200 hover:border-amber-400 rounded-lg p-3 text-left transition">
+                        <div class="font-bold text-slate-800">🤖 Ripristina IA</div>
+                        <div class="text-[10px] text-slate-500 mt-1">Riporta ogni riga al prezzo IA originale.</div>
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-slate-900 rounded-lg p-4 text-slate-200 font-mono text-xs whitespace-pre" id="redist-preview">
+                <!-- popolata da JS -->
+            </div>
+
+            <div id="redist-warning" class="hidden bg-amber-50 border border-amber-300 rounded-lg p-3 text-sm text-amber-800"></div>
+        </div>
+
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 rounded-b-xl flex justify-end gap-3">
+            <button type="button" onclick="chiudiRedistribuzione()" class="px-5 py-2 bg-white hover:bg-slate-100 text-slate-600 border border-slate-300 rounded-lg font-bold transition">Annulla</button>
+            <button type="button" id="redist-confirm-btn" onclick="confermaRedistribuzione()" disabled class="px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg font-bold shadow-lg transition">✅ Applica redistribuzione</button>
+        </div>
+    </div>
+</div>
+
+<div id="notif-container" class="notif-container"></div>
+
+<!-- ============================================ -->
+<!-- SCRIPTS                                       -->
+<!-- ============================================ -->
+<script src="app.js"></script>
+<script src="analisi.js"></script>
+</body>
+</html>

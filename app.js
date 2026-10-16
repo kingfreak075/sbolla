@@ -1,14 +1,16 @@
 // ============================================
-// Sbolla Manager v4 - Core Application
+// Sbolla Manager v5 - Core Application (Job-aware)
 // ============================================
 
 console.log("==========================================");
-console.log("🚀 Sbolla Manager v4 - Bootstrap");
+console.log("🚀 Sbolla Manager v5 - Bootstrap (Job-aware)");
 console.log("==========================================");
 
 // ============================================
 // 1. COSTANTI
 // ============================================
+
+const SCHEMA_VERSION = 5;
 
 const COLS = {
     JOB: "Job",
@@ -34,8 +36,6 @@ const COLS = {
     COSTO: "COSTO",
     NOTE: "NOTE"
 };
-
-// Esposizione globale
 window.COLS = COLS;
 
 const IA_COLS = {
@@ -53,7 +53,6 @@ const IA_COLS = {
     INTERVALLO: "INTERVALLO STORICO",
     CREDITO: "CREDITO COMMERCIALE"
 };
-
 window.IA_COLS = IA_COLS;
 
 const REQUIRED_COLS = [
@@ -72,7 +71,6 @@ const STATI = {
     MODIFICATO: 'modificato',
     AZZERATO: 'azzerato'
 };
-
 window.STATI = STATI;
 
 const MONTHS_IT = ["GEN", "FEB", "MAR", "APR", "MAG", "GIU", "LUG", "AGO", "SET", "OTT", "NOV", "DIC"];
@@ -90,6 +88,8 @@ let appData = {
     rawRows: [],
     jobGroups: {},
     venditore: {},
+    // MODIFICA 10: promemoria separato, non tocca lo stato economico
+    promemoria: {},
     uniqueVenditori: new Set(),
     uniqueWorkPerf: new Set(),
     uniqueContracts: new Set(),
@@ -98,9 +98,12 @@ let appData = {
 
 let storicoInterventi = null;
 let storicoRicerche = [];
-let storicoIndex = new Map(); // Map<impianto, interventi[]>
+let storicoIndex = new Map();
 
-// ── ESPOSIZIONE GLOBALE DI appData E storicoInterventi ──
+// Stato temporaneo modale redistribuzione
+let _redistState = null;
+
+// ── ESPOSIZIONE GLOBALE ──
 Object.defineProperty(window, 'appData', {
     get: () => appData,
     configurable: true
@@ -122,8 +125,6 @@ Object.defineProperty(window, 'storicoRicerche', {
 // 3. UTILITIES
 // ============================================
 
-
-// ── Download sicuro di un blob (evita reload pagina) ──
 function downloadBlob(blob, filename) {
     window._isDownloading = true;
     const url = URL.createObjectURL(blob);
@@ -169,28 +170,59 @@ function debounce(func, wait) {
     };
 }
 
+function pickMainRow(group) {
+    if (!group || !group.rows || group.rows.length === 0) return null;
+    const withPrice = group.rows.find(r => (r._ia?.prezzoConsigliato || 0) > 0);
+    return withPrice || group.rows[0];
+}
+
+function safeNum(v) {
+    const n = parseFloat(v);
+    return isNaN(n) ? 0 : n;
+}
+
+function roundEuro(n) {
+    return Math.max(0, Math.round(Number(n) || 0));
+}
+
+/**
+ * Arrotonda al multiplo di 5 più vicino.
+ * 122,5 → 125 (half up)
+ */
+function roundTo5(n) {
+    const v = Number(n) || 0;
+    return Math.round(v / 5) * 5;
+}
+
+/**
+ * Estrae gli indici originali dell'input "slider" dal dataset dell'HTML
+ * (usato dai listener dinamici).
+ */
+function isJobMulti(group) {
+    return group && group.rows && group.rows.length > 1;
+}
+
 // ============================================
 // 4. PERSISTENZA
 // ============================================
 
 function storageKey() {
-    return `SP_V4_${appData.fileName || 'default'}`;
+    return `SP_V5_${appData.fileName || 'default'}`;
 }
 
-// ── saveState con debounce (500ms) ──
 let _saveStateTimer = null;
 
 function saveState() {
     if (!appData.fileName) return;
-    
     if (_saveStateTimer) clearTimeout(_saveStateTimer);
-    
     _saveStateTimer = setTimeout(() => {
         try {
-            const state = {
-                venditore: appData.venditore,
-                timestamp: new Date().toISOString()
-            };
+          const state = {
+    _v: SCHEMA_VERSION,
+    venditore: appData.venditore,
+    promemoria: appData.promemoria,
+    timestamp: new Date().toISOString()
+};
             localStorage.setItem(storageKey(), JSON.stringify(state));
         } catch (e) {
             console.error("❌ Errore salvataggio:", e);
@@ -198,7 +230,6 @@ function saveState() {
     }, 500);
 }
 
-// ── Salvataggio immediato (per chiusura pagina) ──
 function saveStateNow() {
     if (!appData.fileName) return;
     if (_saveStateTimer) {
@@ -207,6 +238,7 @@ function saveStateNow() {
     }
     try {
         const state = {
+            _v: SCHEMA_VERSION,
             venditore: appData.venditore,
             timestamp: new Date().toISOString()
         };
@@ -216,18 +248,27 @@ function saveStateNow() {
     }
 }
 
-
-
 function loadState() {
     if (!appData.fileName) return false;
     try {
         const raw = localStorage.getItem(storageKey());
         if (!raw) return false;
         const state = JSON.parse(raw);
-        if (state.venditore) {
-            appData.venditore = state.venditore;
-            return true;
+
+        // ✅ SCARTA dati con schema diverso (v4 o precedenti)
+        if (state._v !== SCHEMA_VERSION) {
+            console.warn(`⚠️ Stato salvato con schema ${state._v || 'v4'} — scartato (atteso ${SCHEMA_VERSION})`);
+            localStorage.removeItem(storageKey());
+            return false;
         }
+
+       if (state.venditore) {
+    appData.venditore = state.venditore;
+}
+if (state.promemoria) {
+    appData.promemoria = state.promemoria;
+}
+return !!(state.venditore);
     } catch (e) {
         console.error("❌ Errore caricamento stato:", e);
     }
@@ -261,34 +302,27 @@ function setStoricoStatus(state, testo) {
     }
 }
 
-// ── Costruisce indice impianti per lookup veloce ──
 function buildStoricoIndex() {
     console.log("🏗️ Costruzione indice impianti...");
     const startTime = performance.now();
-    
+
     storicoIndex = new Map();
-    
+
     if (!storicoInterventi?.interventi) {
         console.log("⚠️ Nessuno storico da indicizzare");
         return;
     }
-    
+
     storicoInterventi.interventi.forEach(row => {
         const imp = row[COLS.IMPIANTO] || row['Impiantodiriferimento (Job) (Job)'];
         if (!imp) return;
-        
-        if (!storicoIndex.has(imp)) {
-            storicoIndex.set(imp, []);
-        }
+        if (!storicoIndex.has(imp)) storicoIndex.set(imp, []);
         storicoIndex.get(imp).push(row);
     });
-    
+
     const elapsed = (performance.now() - startTime).toFixed(0);
     console.log(`✅ Indice costruito: ${storicoIndex.size} impianti, ${storicoInterventi.interventi.length} interventi in ${elapsed}ms`);
 }
-
-
-
 
 async function caricaStoricoAvvio() {
     console.log("📚 Caricamento storico in background");
@@ -319,12 +353,8 @@ async function caricaStoricoAvvio() {
                 stats: manifest.stats
             };
 
-               buildStoricoIndex();  // ✅ NUOVO
-
+            buildStoricoIndex();
             const impiantiUnici = new Set(tutti.map(r => r[COLS.IMPIANTO]).filter(Boolean)).size;
-
-
-
 
             console.log(`✅ Storico: ${tutti.length} interventi, ${impiantiUnici} impianti`);
             setStoricoStatus('ok', `${impiantiUnici}`);
@@ -342,9 +372,7 @@ async function caricaStoricoAvvio() {
         const resp = await fetch('sbolla.json');
         if (resp.ok) {
             storicoInterventi = await resp.json();
-
-   buildStoricoIndex();  // ✅ NUOVO
-
+            buildStoricoIndex();
             const impiantiUnici = new Set(storicoInterventi.interventi.map(r => r[COLS.IMPIANTO]).filter(Boolean)).size;
             console.log(`✅ Storico (singolo): ${storicoInterventi.interventi.length}`);
             setStoricoStatus('ok', `${impiantiUnici}`);
@@ -370,7 +398,6 @@ async function ricaricaStoricoDefault() {
 async function caricaStoricoFile(input) {
     const file = input.files[0];
     if (!file) return;
-
     setStoricoStatus('loading', '...');
 
     try {
@@ -383,12 +410,9 @@ async function caricaStoricoFile(input) {
                 setStoricoStatus('ok', '—');
                 return;
             }
-
             mostraNotifica(`📦 Download di ${data.numChunks} chunk...`, 'info');
-
             const chunks = new Array(data.numChunks);
             let completati = 0;
-
             await Promise.all(data.chunks.map(async (chunkInfo) => {
                 const resp = await fetch(chunkInfo.fileName);
                 if (!resp.ok) throw new Error(`Errore chunk ${chunkInfo.index}`);
@@ -396,23 +420,15 @@ async function caricaStoricoFile(input) {
                 completati++;
                 setStoricoStatus('loading', `${completati}/${data.numChunks}`);
             }));
-
             const tutti = chunks.flat();
-            storicoInterventi = {
-                fileName: data.fileName,
-                timestamp: data.timestamp,
-                interventi: tutti,
-                stats: data.stats
-            };
-
+            storicoInterventi = { fileName: data.fileName, timestamp: data.timestamp, interventi: tutti, stats: data.stats };
             const impianti = new Set(tutti.map(r => r[COLS.IMPIANTO]).filter(Boolean)).size;
             setStoricoStatus('ok', `${impianti}`);
             mostraNotifica(`✅ Storico: ${tutti.length} interventi · ${impianti} impianti`, 'success');
         }
         else if (data.interventi) {
             storicoInterventi = data;
-
-            buildStoricoIndex();  // ✅ NUOVO
+            buildStoricoIndex();
             const impianti = new Set(data.interventi.map(r => r[COLS.IMPIANTO]).filter(Boolean)).size;
             setStoricoStatus('ok', `${impianti}`);
             mostraNotifica(`✅ Storico: ${data.interventi.length} interventi · ${impianti} impianti`, 'success');
@@ -454,7 +470,6 @@ async function loadExcelIA(file) {
         const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
 
         console.log(`📊 ${aoa.length} righe dal foglio "${sheetName}"`);
-
         if (aoa.length < 2) throw new Error("File troppo piccolo");
         const headers = aoa[0];
         console.log(`📋 Header: ${headers.length} colonne`);
@@ -473,12 +488,13 @@ async function loadExcelIA(file) {
         appData.aoa = aoa;
         appData.headers = headers;
         appData.columnIndex = columnIndex;
-        appData.dataStartRow = 1;
-        appData.venditore = {};
+       appData.dataStartRow = 1;
+appData.venditore = {};
+appData.promemoria = {};
 
         const hadState = loadState();
         if (hadState) {
-            mostraNotifica(`📂 Ripristinate ${Object.keys(appData.venditore).length} modifiche precedenti`, 'info');
+            mostraNotifica(`📂 Ripristinate ${Object.keys(appData.venditore).length} revisioni precedenti`, 'info');
         }
 
         processRows();
@@ -548,6 +564,8 @@ function processRows() {
             appData.jobGroups[jobId] = {
                 jobId: jobId,
                 rows: [],
+                rowIndices: [],
+                iaRows: [],
                 totalMin: 0,
                 masterRow: processed,
                 ia: processed._ia
@@ -555,11 +573,12 @@ function processRows() {
         }
         const group = appData.jobGroups[jobId];
         group.rows.push(processed);
+        group.rowIndices.push(processed._id);
+        group.iaRows.push(processed._ia.prezzoConsigliato || 0);
         group.totalMin += parseInt(processed[COLS.TEMPO]) || 0;
     }
 
     console.log(`📊 ${Object.keys(appData.jobGroups).length} job raggruppati`);
-
     precompilaTuttiCosti();
 }
 
@@ -587,37 +606,60 @@ function extractIAData(row, ci) {
 }
 
 function precompilaTuttiCosti() {
-    console.log("💰 Precompilazione COSTO da IA...");
+    console.log("💰 Precompilazione prezzi per riga da IA...");
     let precompilati = 0;
+    let ricostruiti = 0;
 
     Object.values(appData.jobGroups).forEach(group => {
-        if (appData.venditore[group.jobId]) return;
+        const esistente = appData.venditore[group.jobId];
 
-        const ia = group.ia;
-        let costoIniziale = 0;
-        let statoIniziale = STATI.DA_RIVEDERE;
-
-        if (ia.fatturabilita === 'NO') {
-            costoIniziale = 0;
-            statoIniziale = STATI.AZZERATO;
-        } else {
-            costoIniziale = ia.prezzoConsigliato || 0;
-            statoIniziale = STATI.CONFERMATO;
+        // ✅ Se il Job esiste già E ha rowPrices completo → lascialo com'è
+        if (esistente && esistente.rowPrices && esistente._v === SCHEMA_VERSION) {
+            return;
         }
 
+        if (esistente) {
+            ricostruiti++;
+            console.warn(`🔄 Job ${group.jobId}: struttura venditore non valida, ricostruisco`);
+        } else {
+            precompilati++;
+        }
+
+        const rowPrices = {};
+        let tutteZero = true;
+        let tutteNoFattura = true;
+
+        group.rows.forEach(r => {
+            const iaPrice = r._ia.prezzoConsigliato || 0;
+            const isNo = (r._ia.fatturabilita === 'NO');
+            const val = isNo ? 0 : iaPrice;
+            rowPrices[r._id] = val;
+            if (val !== 0) tutteZero = false;
+            if (!isNo) tutteNoFattura = false;
+        });
+
+        const mainRow = pickMainRow(group);
+        const totale = Object.values(rowPrices).reduce((a, b) => a + b, 0);
+
+        let statoIniziale = STATI.CONFERMATO;
+        if (tutteZero || tutteNoFattura) statoIniziale = STATI.AZZERATO;
+
         appData.venditore[group.jobId] = {
-            costo: costoIniziale,
-            note: '',
-            stato: statoIniziale
+            rowPrices,
+            note: esistente?.note || '',
+            stato: esistente?.stato || statoIniziale,
+            mainRowIndex: esistente?.mainRowIndex != null ? esistente.mainRowIndex : (mainRow ? mainRow._id : null),
+            totaleJob: totale,
+            valid: true,
+            _v: SCHEMA_VERSION
         };
-        precompilati++;
     });
 
-    console.log(`✅ ${precompilati} job precompilati`);
+    console.log(`✅ ${precompilati} job precompilati · ${ricostruiti} ricostruiti`);
 }
 
 // ============================================
-// 7. UI
+// 7. UI INIT
 // ============================================
 
 function initUI() {
@@ -665,7 +707,6 @@ function applyFilters() {
     const credito = document.getElementById('filter-credito').value;
     const indicazione = document.getElementById('filter-indicazione').value;
     const stato = document.getElementById('filter-stato').value;
-    const showHistory = document.getElementById('toggle-history').checked;
 
     const dateStartVal = document.getElementById('filter-date-start').value;
     const dateEndVal = document.getElementById('filter-date-end').value;
@@ -733,6 +774,8 @@ function applySorting() {
         if (sortMode === 'date-asc') return (ra._jobDate || 0) - (rb._jobDate || 0);
         if (sortMode === 'impianto-asc') return (ra[COLS.IMPIANTO] || '').localeCompare(rb[COLS.IMPIANTO] || '');
         if (sortMode === 'addr-asc') return (ra[COLS.INDIRIZZO] || '').localeCompare(rb[COLS.INDIRIZZO] || '');
+        if (sortMode === 'costo-desc') return sommaRigheJob(b.jobId) - sommaRigheJob(a.jobId);
+        if (sortMode === 'costo-asc') return sommaRigheJob(a.jobId) - sommaRigheJob(b.jobId);
         return 0;
     });
 
@@ -753,7 +796,6 @@ function resetFilters() {
     document.getElementById('filter-credito').value = 'ALL';
     document.getElementById('filter-indicazione').value = 'ALL';
     document.getElementById('filter-stato').value = 'ALL';
-    document.getElementById('toggle-history').checked = false;
     applyFilters();
 }
 
@@ -761,31 +803,29 @@ function resetFilters() {
 // 9. RENDERING TABELLA
 // ============================================
 
-// ── Render completo tabella (batch) ──
 function renderTable() {
     const tbody = document.getElementById('pricing-table-body');
     if (!tbody) return;
     tbody.innerHTML = '';
-
-    // DocumentFragment per inserimento batch (più veloce)
     const fragment = document.createDocumentFragment();
-    
     appData.displayList.forEach(group => {
         const tr = buildRow(group);
         fragment.appendChild(tr);
     });
-    
     tbody.appendChild(fragment);
 }
 
-// ── Costruisci una singola riga ──
 function buildRow(group) {
     const tr = document.createElement('tr');
     tr.id = `row-${group.jobId}`;
-    
+
     const r = group.masterRow;
     const ia = group.ia;
-    const mod = appData.venditore[group.jobId] || { costo: 0, note: '', stato: STATI.DA_RIVEDERE };
+    const mod = appData.venditore[group.jobId];
+    const totaleVend = mod ? sommaRigheJob(group.jobId) : 0;
+    const isMulti = group.rows.length > 1;
+    const incoerente = isMulti && mod && !jobCoerente(group.jobId);
+    const isConfermato = mod && mod.stato === STATI.CONFERMATO;
 
     const wp = r[COLS.WORK_PERFORMED] || '';
     let wpClass = 'text-slate-500';
@@ -793,19 +833,30 @@ function buildRow(group) {
     else if (wp.includes('Normale')) wpClass = 'wp-normale';
     else if (wp.includes('consuntivo')) wpClass = 'wp-consuntivo';
 
+    // MODIFICA 8: evidenza Job incoerenti
     let rowClass = 'hover:bg-slate-50';
-    if (ia.fatturabilita === 'NO') rowClass = 'row-critical';
-    else if (ia.confidenza === 'BASSA' || ia.fatturabilita === 'DA VERIFICARE') rowClass = 'row-warning';
+    if (incoerente) {
+        rowClass = 'row-critical border-l-4 border-l-red-500';
+    } else if (ia.fatturabilita === 'NO') {
+        rowClass = 'row-critical';
+    } else if (ia.confidenza === 'BASSA' || ia.fatturabilita === 'DA VERIFICARE') {
+        rowClass = 'row-warning';
+    }
 
-    const isModified = mod.stato === STATI.MODIFICATO;
-    const isAzzerato = mod.stato === STATI.AZZERATO;
+    const stato = mod?.stato || STATI.DA_RIVEDERE;
+const isModified = stato === STATI.MODIFICATO;
+const isAzzerato = stato === STATI.AZZERATO;
+const isPromemoria = !!appData.promemoria[group.jobId];
     const inputClass = isModified ? 'modified' : (isAzzerato ? 'azzera' : '');
 
     tr.className = `${rowClass} border-b border-slate-200 transition-colors`;
 
     tr.innerHTML = `
         <td class="px-2 py-2 align-top">
-            <div class="font-bold text-slate-800 text-xs">${group.jobId}</div>
+            <div class="font-bold text-slate-800 text-xs flex items-center gap-1">
+                ${group.jobId}
+                ${incoerente ? `<span class="text-red-600" title="Somma righe ≠ totale Job">⚠️</span>` : ''}
+            </div>
             <div class="text-[10px] text-slate-500 mt-0.5 font-mono">${formatDateItalian(r._jobDate)}</div>
         </td>
         <td class="px-2 py-2 align-top">
@@ -824,9 +875,10 @@ function buildRow(group) {
             <div class="text-[10px] ${wpClass} uppercase font-bold mb-0.5 truncate">${wp}</div>
             <div class="text-xs font-medium text-slate-700 leading-tight truncate" title="${r[COLS.COMPONENTE]}">${r[COLS.COMPONENTE] || 'N/D'}</div>
             ${r[COLS.COMP_CODE] ? `<div class="inline-block bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px] px-1.5 py-0.5 rounded border border-indigo-200 mt-0.5">${r[COLS.COMP_CODE]}</div>` : ''}
+            ${isMulti ? `<div class="inline-block bg-blue-100 text-blue-700 font-bold text-[9px] px-1.5 py-0.5 rounded border border-blue-200 mt-0.5">${group.rows.length} righe</div>` : ''}
         </td>
         <td class="px-2 py-2 align-top text-right">
-            ${renderIACell(ia)}
+            ${renderIACell(ia, group)}
         </td>
         <td class="px-2 py-2 align-top text-center">
             <span class="text-[10px] font-mono font-bold text-slate-600 bg-slate-100 px-1 py-0.5 rounded">${group.totalMin}'</span>
@@ -840,52 +892,58 @@ function buildRow(group) {
         </td>
         <td class="px-2 py-2 align-top text-right">
             <div class="flex items-center gap-0.5 justify-end">
-                <button onclick="azzeraCosto('${group.jobId}')" 
+                <button onclick="azzeraCostoJob('${group.jobId}')" 
                     class="text-slate-400 hover:text-red-600 hover:bg-red-50 px-1 py-0.5 rounded transition text-xs font-bold flex-shrink-0"
-                    title="Azzera prezzo">0️⃣</button>
+                    title="Azzera totale Job">0️⃣</button>
+                <button onclick="togglePromemoria('${group.jobId}')" 
+    class="px-1 py-0.5 rounded transition text-xs font-bold flex-shrink-0 ${isPromemoria ? 'text-emerald-600 bg-emerald-50 border border-emerald-300' : 'text-slate-300 hover:text-emerald-600 hover:bg-emerald-50'}"
+    title="${isPromemoria ? 'Rimuovi promemoria' : 'Aggiungi promemoria'}">✓</button>
                 <input type="number"
                     class="price-input ${inputClass}"
-                    value="${mod.costo}"
-                    onchange="salvaCosto('${group.jobId}', this.value)"
-                    step="0.01"
-                    min="0">
+                    value="${totaleVend}"
+                    onchange="salvaCostoTotale('${group.jobId}', this.value)"
+                    step="1"
+                    min="0"
+                    ${isMulti ? 'title="Modifica il totale Job: si aprirà la redistribuzione"' : ''}>
             </div>
         </td>
         <td class="px-2 py-2 align-top">
-            <textarea class="note-input" rows="2" placeholder="Note..." onchange="salvaNota('${group.jobId}', this.value)">${mod.note || ''}</textarea>
+            <textarea class="note-input" rows="2" placeholder="Note..." onchange="salvaNota('${group.jobId}', this.value)">${mod?.note || ''}</textarea>
         </td>
     `;
 
     return tr;
 }
 
-// ── Aggiorna solo la riga di un job (incrementale) ──
 function aggiornaRiga(jobId) {
     const group = appData.jobGroups[jobId];
     if (!group) return;
-    
+
     const oldRow = document.getElementById(`row-${jobId}`);
     if (!oldRow) return;
-    
-    // Verifica se la riga è ancora visibile (potrebbe essere stata filtrata fuori)
+
     const stillVisible = appData.displayList.some(g => g.jobId === jobId);
-    
+
     if (!stillVisible) {
         oldRow.remove();
         return;
     }
-    
+
     const newRow = buildRow(group);
     oldRow.replaceWith(newRow);
 }
 
-function renderIACell(ia) {
+function renderIACell(ia, group) {
     const badge = badgeConfidenza(ia.confidenza);
     const fatturBadge = badgeFatturabilita(ia.fatturabilita);
 
+    const iaTotale = group && group.iaRows
+        ? group.iaRows.reduce((a, b) => a + (b || 0), 0)
+        : (ia.prezzoConsigliato || 0);
+
     return `
         <div class="ia-cell">
-            <span class="ia-price">${formatEuro(ia.prezzoConsigliato)}</span>
+            <span class="ia-price">${formatEuro(iaTotale)}</span>
             <div class="flex gap-0.5 justify-end flex-wrap">
                 ${fatturBadge}
                 ${badge}
@@ -907,57 +965,508 @@ function badgeFatturabilita(f) {
 }
 
 // ============================================
-// 10. EDITING
+// 10. MODELLO JOB (v5)
 // ============================================
 
-function salvaCosto(jobId, valore) {
-    const v = parseFloat(valore) || 0;
+function getModJob(jobId) {
+    return appData.venditore[jobId] || null;
+}
+
+function sommaRigheJob(jobId) {
+    const mod = appData.venditore[jobId];
+    if (!mod || !mod.rowPrices) return 0;
+    return Object.values(mod.rowPrices).reduce((a, b) => a + (Number(b) || 0), 0);
+}
+
+function jobCoerente(jobId) {
+    const mod = appData.venditore[jobId];
+    if (!mod) return true;
+    if (!mod.valid) return false;
+    return sommaRigheJob(jobId) === (mod.totaleJob || 0);
+}
+
+function isJobIncoerente(jobId) {
+    return !jobCoerente(jobId);
+}
+
+function ricalcolaStatoJob(jobId) {
     const group = appData.jobGroups[jobId];
-    if (!group) return;
+    const mod = appData.venditore[jobId];
+    if (!group || !mod) return STATI.DA_RIVEDERE;
 
-    const prev = appData.venditore[jobId] || { costo: 0, note: '', stato: STATI.DA_RIVEDERE };
-    const costoIA = group.ia.prezzoConsigliato;
+    let tutteZero = true;
+    let tutteComeIA = true;
 
-    let nuovoStato;
-    if (v === 0 && costoIA > 0) nuovoStato = STATI.AZZERATO;
-    else if (v === costoIA) nuovoStato = STATI.CONFERMATO;
-    else nuovoStato = STATI.MODIFICATO;
+    group.rows.forEach(r => {
+        const ia = r._ia.prezzoConsigliato || 0;
+        const v = mod.rowPrices[r._id] || 0;
+        if (v !== 0) tutteZero = false;
+        if (v !== ia) tutteComeIA = false;
+    });
 
-    appData.venditore[jobId] = {
-        ...prev,
-        costo: v,
-        stato: nuovoStato
-    };
+    if (tutteZero) return STATI.AZZERATO;
+    if (tutteComeIA) return STATI.CONFERMATO;
+    return STATI.MODIFICATO;
+}
+
+function salvaCostoRiga(jobId, originalIndex, valore) {
+    const group = appData.jobGroups[jobId];
+    const mod = appData.venditore[jobId];
+    if (!group || !mod) return;
+
+    const v = roundEuro(valore);
+    mod.rowPrices[originalIndex] = v;
+    mod.totaleJob = sommaRigheJob(jobId);
+    mod.valid = true;
+    mod.stato = ricalcolaStatoJob(jobId);
 
     saveState();
     updateHeaderStats();
-    aggiornaRiga(jobId); // ✅ incrementale
+    aggiornaRiga(jobId);
+
+    const modal = document.getElementById('info-modal');
+    if (modal && !modal.classList.contains('hidden') && modal.dataset.currentJobId === jobId) {
+        openInfo(jobId, { preserveScroll: true });
+    }
+}
+
+function azzeraCostoRiga(jobId, originalIndex) {
+    salvaCostoRiga(jobId, originalIndex, 0);
+}
+
+function azzeraCostoJob(jobId) {
+    const mod = appData.venditore[jobId];
+    if (!mod) return;
+    Object.keys(mod.rowPrices).forEach(k => { mod.rowPrices[k] = 0; });
+    mod.totaleJob = 0;
+    mod.valid = true;
+    mod.stato = STATI.AZZERATO;
+
+    saveState();
+    updateHeaderStats();
+    aggiornaRiga(jobId);
+
+    const modal = document.getElementById('info-modal');
+    if (modal && !modal.classList.contains('hidden') && modal.dataset.currentJobId === jobId) {
+        openInfo(jobId, { preserveScroll: true });
+    }
+}
+
+/**
+ * MODIFICA 1 (parte 2): Ripristina IA per un Job.
+ * Riporta tutte le righe al valore IA di ciascuna.
+ */
+function ripristinaIAJob(jobId) {
+    const group = appData.jobGroups[jobId];
+    const mod = appData.venditore[jobId];
+    if (!group || !mod) return;
+
+    group.rows.forEach(r => {
+        const isNo = (r._ia.fatturabilita === 'NO');
+        const iaPrice = r._ia.prezzoConsigliato || 0;
+        mod.rowPrices[r._id] = isNo ? 0 : iaPrice;
+    });
+
+    mod.totaleJob = sommaRigheJob(jobId);
+    mod.valid = true;
+    mod.stato = ricalcolaStatoJob(jobId);
+
+    saveState();
+    updateHeaderStats();
+    aggiornaRiga(jobId);
+
+    const modal = document.getElementById('info-modal');
+    if (modal && !modal.classList.contains('hidden') && modal.dataset.currentJobId === jobId) {
+        openInfo(jobId, { preserveScroll: true });
+    }
+
+    mostraNotifica(`↺ Ripristinato IA per Job ${jobId}`, 'info');
+}
+
+/**
+ * MODIFICA 7: Conferma il prezzo attuale del Job senza toccare nulla.
+ */
+/**
+ * MODIFICA 10: promemoria toggle (non tocca lo stato economico).
+ */
+function togglePromemoria(jobId) {
+    if (appData.promemoria[jobId]) {
+        delete appData.promemoria[jobId];
+    } else {
+        appData.promemoria[jobId] = true;
+    }
+    saveState();
+    aggiornaRiga(jobId);
 }
 
 function salvaNota(jobId, testo) {
-    const prev = appData.venditore[jobId] || { costo: 0, note: '', stato: STATI.DA_RIVEDERE };
-    appData.venditore[jobId] = {
-        ...prev,
-        note: String(testo || '').trim()
-    };
+    const mod = appData.venditore[jobId];
+    if (!mod) return;
+    mod.note = String(testo || '').trim();
     saveState();
-    // Non serve aggiornare la riga: il textarea ha già il valore
+}
+
+/**
+ * MODIFICA 5: Azzera tutti i Job visibili (rispetta i filtri).
+ */
+function azzeraTuttiVisibili() {
+    const jobIds = appData.displayList.map(g => g.jobId);
+    if (jobIds.length === 0) {
+        alert('Nessun Job visibile da azzerare.');
+        return;
+    }
+
+    const ok = confirm(
+        `Azzerare ${jobIds.length} Job visibili?\n\n` +
+        `Verranno impostati a 0 tutti i prezzi di tutti i Job nella vista corrente.\n` +
+        `L'operazione non è reversibile (a meno di ricaricare).`
+    );
+    if (!ok) return;
+
+    let azzerati = 0;
+    jobIds.forEach(jobId => {
+        const mod = appData.venditore[jobId];
+        if (!mod) return;
+        Object.keys(mod.rowPrices).forEach(k => { mod.rowPrices[k] = 0; });
+        mod.totaleJob = 0;
+        mod.valid = true;
+        mod.stato = STATI.AZZERATO;
+        azzerati++;
+    });
+
+    saveStateNow();
+    updateHeaderStats();
+    renderTable();
+    mostraNotifica(`🗑️ ${azzerati} Job azzerati`, 'success');
+}
+
+/**
+ * MODIFICA 3: Applica lo slider percentuale (-50% .. +50%).
+ * Riproporziona sulle righe correnti. Righe a 0 restano a 0.
+ * Arrotondamento al multiplo di 5 più vicino.
+ */
+/**
+ * MODIFICA 13: Applica lo slider percentuale (-50% .. +50%).
+ * - A: la variazione si applica sempre rispetto al TOTALE IA originale
+ * - B2: il cursore NON si resetta (resta dove l'utente l'ha lasciato)
+ * - C1: applicazione solo al rilascio (il drag è anteprima)
+ * - Opzione B: aggiorna anche gli input delle singole righe
+ * - Riproporziona sulle righe correnti. Righe a 0 restano a 0.
+ * - Arrotondamento al multiplo di 5 più vicino.
+ */
+function applicaSliderJob(jobId, percentuale) {
+    const group = appData.jobGroups[jobId];
+    const mod = appData.venditore[jobId];
+    if (!group || !mod) return;
+
+    const totIA = group.iaRows.reduce((a, b) => a + (b || 0), 0);
+    if (totIA === 0) return;
+
+    // Percentuale -50..+50
+    const pct = Math.max(-50, Math.min(50, Number(percentuale) || 0));
+    // A: variazione SEMPRE rispetto a IA originale
+    const nuovoTotaleRaw = totIA * (1 + pct / 100);
+
+    // Se pct = 0 → valore IA esatto, NON arrotondato
+    let nuovoTotale;
+    if (pct === 0) {
+        nuovoTotale = totIA;
+    } else {
+        nuovoTotale = roundTo5(nuovoTotaleRaw);
+    }
+    nuovoTotale = Math.max(0, nuovoTotale);
+
+    // Riproporziona sulle righe correnti (righe a 0 restano a 0)
+    const totaleAttuale = sommaRigheJob(jobId);
+
+    if (totaleAttuale === 0) {
+        // Nessuna riga valorizzata → tutto sulla riga principale
+        const mainIdx = mod.mainRowIndex != null ? mod.mainRowIndex : group.rows[0]._id;
+        group.rows.forEach(r => { mod.rowPrices[r._id] = (r._id === mainIdx) ? nuovoTotale : 0; });
+    } else {
+        // Riproporziona
+        const righeConValore = group.rows.filter(r => (mod.rowPrices[r._id] || 0) > 0);
+        let somma = 0;
+        righeConValore.forEach(r => {
+            const q = Math.floor(nuovoTotale * (mod.rowPrices[r._id] || 0) / totaleAttuale);
+            mod.rowPrices[r._id] = q;
+            somma += q;
+        });
+        // Aggiusta il resto sull'ultima riga non-zero
+        const resto = nuovoTotale - somma;
+        if (resto !== 0 && righeConValore.length > 0) {
+            const ultima = righeConValore[righeConValore.length - 1];
+            mod.rowPrices[ultima._id] = (mod.rowPrices[ultima._id] || 0) + resto;
+        }
+        // Righe a 0 restano a 0
+        group.rows.forEach(r => {
+            if (!righeConValore.includes(r)) mod.rowPrices[r._id] = 0;
+        });
+    }
+
+    mod.totaleJob = sommaRigheJob(jobId);
+    mod.valid = true;
+    mod.stato = ricalcolaStatoJob(jobId);
+
+    saveState();
+    updateHeaderStats();
+    aggiornaRiga(jobId);
+
+    // Opzione B: aggiorna gli input delle righe nella Scheda Tecnica
+    const modal = document.getElementById('info-modal');
+    if (modal && !modal.classList.contains('hidden') && modal.dataset.currentJobId === jobId) {
+        // Aggiorna input delle righe
+        group.rows.forEach(r => {
+            const input = document.querySelector(`#info-modal input[data-row-price="${r._id}"]`);
+            if (input) input.value = mod.rowPrices[r._id] || 0;
+        });
+        // Aggiorna KPI
+        const kpiVend = document.getElementById('sdv-tot-vend');
+        const kpiDiff = document.getElementById('sdv-diff');
+        if (kpiVend) kpiVend.textContent = formatEuro(mod.totaleJob);
+        if (kpiDiff) {
+            const d = mod.totaleJob - totIA;
+            kpiDiff.textContent = (d >= 0 ? '+' : '') + formatEuro(d);
+            kpiDiff.className = `text-2xl font-bold font-mono ${d > 0 ? 'text-red-600' : d < 0 ? 'text-emerald-600' : 'text-slate-500'}`;
+        }
+        // Aggiorna label preview dello slider
+        const previewEl = document.getElementById('sdv-slider-preview');
+        if (previewEl) previewEl.textContent = formatEuro(mod.totaleJob);
+    }
+}
+
+function setMainRow(jobId, originalIndex) {
+    const mod = appData.venditore[jobId];
+    if (!mod) return;
+    mod.mainRowIndex = originalIndex;
+    saveState();
+}
+
+// ── Wrapper retrocompatibili ──
+
+function salvaCosto(jobId, valore) {
+    salvaCostoTotale(jobId, valore);
 }
 
 function azzeraCosto(jobId) {
+    azzeraCostoJob(jobId);
+}
+
+function salvaCostoTotale(jobId, valore) {
+    const group = appData.jobGroups[jobId];
+    const mod = appData.venditore[jobId];
+    if (!group || !mod) return;
+
+    const nuovoTotale = roundEuro(valore);
+
+    if (group.rows.length === 1) {
+        const onlyRow = group.rows[0];
+        mod.rowPrices[onlyRow._id] = nuovoTotale;
+        mod.totaleJob = nuovoTotale;
+        mod.valid = true;
+        mod.stato = ricalcolaStatoJob(jobId);
+        saveState();
+        updateHeaderStats();
+        aggiornaRiga(jobId);
+        return;
+    }
+
+    apriRedistribuzione(jobId, nuovoTotale);
+}
+
+// ============================================
+// 11. MODALE REDISTRIBUZIONE
+// ============================================
+
+function apriRedistribuzione(jobId, nuovoTotale) {
+    const group = appData.jobGroups[jobId];
+    const mod = appData.venditore[jobId];
+    if (!group || !mod) return;
+
+    const totaleAttuale = sommaRigheJob(jobId);
+
+    _redistState = {
+        jobId,
+        nuovoTotale,
+        totaleAttuale,
+        distribuzione: Object.assign({}, mod.rowPrices),
+        azione: null
+    };
+
+    const modal = document.getElementById('job-redistribute-modal');
+    if (!modal) {
+        console.warn('⚠️ Modale redistribuzione non trovato, applico "tutto su principale"');
+        const mainIdx = mod.mainRowIndex != null ? mod.mainRowIndex : (group.rows[0]?._id);
+        const dist = {};
+        group.rows.forEach(r => { dist[r._id] = (r._id === mainIdx) ? nuovoTotale : 0; });
+        applicaRedistribuzione(jobId, dist);
+        return;
+    }
+
+    document.getElementById('redist-job-label').textContent = `Job ${jobId} · ${group.rows.length} lavorazioni`;
+    document.getElementById('redist-tot-attuale').textContent = formatEuro(totaleAttuale);
+    document.getElementById('redist-tot-nuovo').textContent = formatEuro(nuovoTotale);
+
+    const delta = nuovoTotale - totaleAttuale;
+    const deltaEl = document.getElementById('redist-delta');
+    deltaEl.textContent = (delta >= 0 ? '+' : '') + formatEuro(delta);
+    deltaEl.className = `text-xl font-bold font-mono ${delta > 0 ? 'text-red-600' : delta < 0 ? 'text-emerald-600' : 'text-slate-500'}`;
+
+    renderRedistPreview();
+    document.getElementById('redist-confirm-btn').disabled = true;
+    document.getElementById('redist-warning').classList.add('hidden');
+
+    modal.classList.remove('hidden');
+}
+
+function chiudiRedistribuzione() {
+    const modal = document.getElementById('job-redistribute-modal');
+    if (modal) modal.classList.add('hidden');
+    _redistState = null;
+    if (appData.displayList.length > 0) renderTable();
+}
+
+function eseguiAzioneRedistribuzione(tipo) {
+    if (!_redistState) return;
+    const { jobId, nuovoTotale } = _redistState;
+    const group = appData.jobGroups[jobId];
+    const mod = appData.venditore[jobId];
+    if (!group || !mod) return;
+
+    const dist = {};
+    const rows = group.rows;
+
+    switch (tipo) {
+        case 'principale': {
+            const mainIdx = mod.mainRowIndex != null ? mod.mainRowIndex : rows[0]._id;
+            rows.forEach(r => { dist[r._id] = (r._id === mainIdx) ? nuovoTotale : 0; });
+            break;
+        }
+        case 'uniforme': {
+            const n = rows.length;
+            const base = Math.floor(nuovoTotale / n);
+            const rem = nuovoTotale - base * n;
+            rows.forEach((r, i) => { dist[r._id] = base + (i < rem ? 1 : 0); });
+            break;
+        }
+        case 'riproporziona': {
+            const totIA = rows.reduce((s, r) => s + (r._ia.prezzoConsigliato || 0), 0);
+            if (totIA <= 0) {
+                const n = rows.length;
+                const base = Math.floor(nuovoTotale / n);
+                const rem = nuovoTotale - base * n;
+                rows.forEach((r, i) => { dist[r._id] = base + (i < rem ? 1 : 0); });
+            } else {
+                let somma = 0;
+                rows.forEach(r => {
+                    const q = Math.floor(nuovoTotale * (r._ia.prezzoConsigliato || 0) / totIA);
+                    dist[r._id] = q;
+                    somma += q;
+                });
+                const resto = nuovoTotale - somma;
+                if (resto !== 0) dist[rows[0]._id] = (dist[rows[0]._id] || 0) + resto;
+            }
+            break;
+        }
+        case 'ripristina': {
+            rows.forEach(r => { dist[r._id] = r._ia.prezzoConsigliato || 0; });
+            break;
+        }
+        case 'azzera': {
+            rows.forEach(r => { dist[r._id] = 0; });
+            break;
+        }
+        default:
+            return;
+    }
+
+    _redistState.distribuzione = dist;
+    _redistState.azione = tipo;
+    renderRedistPreview();
+
+    const somma = Object.values(dist).reduce((a, b) => a + b, 0);
+    const btn = document.getElementById('redist-confirm-btn');
+    const warning = document.getElementById('redist-warning');
+
+    if (somma === nuovoTotale) {
+        btn.disabled = false;
+        warning.classList.add('hidden');
+    } else {
+        btn.disabled = true;
+        warning.classList.remove('hidden');
+        warning.innerHTML = `⚠️ La somma delle righe (${formatEuro(somma)}) non coincide con il nuovo totale (${formatEuro(nuovoTotale)}). Riprova con un'altra azione.`;
+    }
+}
+
+function renderRedistPreview() {
+    if (!_redistState) return;
+    const { jobId, distribuzione, nuovoTotale } = _redistState;
     const group = appData.jobGroups[jobId];
     if (!group) return;
 
-    const prev = appData.venditore[jobId] || { costo: 0, note: '', stato: STATI.DA_RIVEDERE };
-    appData.venditore[jobId] = {
-        ...prev,
-        costo: 0,
-        stato: STATI.AZZERATO
-    };
+    const somma = Object.values(distribuzione).reduce((a, b) => a + b, 0);
+    const ok = somma === nuovoTotale;
+
+    const lines = group.rows.map((r, i) => {
+        const v = distribuzione[r._id] || 0;
+        const comp = (r[COLS.COMPONENTE] || 'Lavorazione').substring(0, 45);
+        return `${String(i + 1).padStart(2, ' ')}. ${comp.padEnd(45, ' ')} → ${formatEuro(v)}`;
+    }).join('\n');
+
+    const header = `ANTEPRIMA DISTRIBUZIONE\n${'─'.repeat(72)}\n`;
+    const footer = `\n${'─'.repeat(72)}\nSOMMA RIGHE : ${formatEuro(somma)}\nNUOVO TOTALE: ${formatEuro(nuovoTotale)}\nSTATO       : ${ok ? '✅ coerente' : '❌ incoerente'}`;
+
+    const el = document.getElementById('redist-preview');
+    if (el) el.textContent = header + lines + footer;
+}
+
+function applicaRedistribuzione(jobId, distribuzione) {
+    const mod = appData.venditore[jobId];
+    const group = appData.jobGroups[jobId];
+    if (!mod || !group) return;
+
+    Object.keys(distribuzione).forEach(k => {
+        mod.rowPrices[k] = roundEuro(distribuzione[k]);
+    });
+
+    mod.totaleJob = sommaRigheJob(jobId);
+    mod.valid = true;
+    mod.stato = ricalcolaStatoJob(jobId);
+
     saveState();
     updateHeaderStats();
-    aggiornaRiga(jobId); // ✅ incrementale
+    aggiornaRiga(jobId);
+
+    const modal = document.getElementById('info-modal');
+    if (modal && !modal.classList.contains('hidden') && modal.dataset.currentJobId === jobId) {
+        openInfo(jobId, { preserveScroll: true });
+    }
 }
+
+function confermaRedistribuzione() {
+    if (!_redistState) return;
+    const { jobId, distribuzione, nuovoTotale } = _redistState;
+
+    const somma = Object.values(distribuzione).reduce((a, b) => a + b, 0);
+    if (somma !== nuovoTotale) {
+        alert('La somma non coincide col totale. Scegli un\'azione di redistribuzione.');
+        return;
+    }
+
+    applicaRedistribuzione(jobId, distribuzione);
+
+    const modal = document.getElementById('job-redistribute-modal');
+    if (modal) modal.classList.add('hidden');
+    _redistState = null;
+
+    if (appData.displayList.length > 0) renderTable();
+    mostraNotifica(`🔀 Redistribuzione applicata al Job ${jobId}`, 'success');
+}
+
+// ============================================
+// 12. CONFERMA TUTTI (job-aware)
+// ============================================
+
 function confermaTutti() {
     const daConfermare = Object.values(appData.jobGroups).filter(g => {
         const mod = appData.venditore[g.jobId];
@@ -969,24 +1478,45 @@ function confermaTutti() {
         return;
     }
 
-    if (!confirm(`Confermare ${daConfermare.length} job con il prezzo IA?\n\nI prezzi già modificati verranno preservati.`)) return;
+    if (!confirm(`Confermare ${daConfermare.length} job?\n\n` +
+        `• Job singoli: confermati direttamente.\n` +
+        `• Job multipli già coerenti: confermati.\n` +
+        `• Job multipli incoerenti: restano "Da rivedere".\n\n` +
+        `I prezzi già modificati verranno preservati.`)) return;
+
+    let confermati = 0;
+    let rimastiDaRivedere = 0;
 
     daConfermare.forEach(g => {
-        appData.venditore[g.jobId] = {
-            costo: g.ia.prezzoConsigliato,
-            note: appData.venditore[g.jobId]?.note || '',
-            stato: STATI.CONFERMATO
-        };
+        const mod = appData.venditore[g.jobId];
+        if (!mod) return;
+
+        if (g.rows.length === 1) {
+            mod.stato = STATI.CONFERMATO;
+            confermati++;
+            return;
+        }
+
+        if (jobCoerente(g.jobId)) {
+            mod.stato = STATI.CONFERMATO;
+            confermati++;
+        } else {
+            rimastiDaRivedere++;
+        }
     });
 
     saveState();
     updateHeaderStats();
     renderTable();
-    mostraNotifica(`✅ ${daConfermare.length} job confermati`, 'success');
+
+    mostraNotifica(
+        `✅ ${confermati} job confermati${rimastiDaRivedere > 0 ? ` · ${rimastiDaRivedere} incoerenti lasciati "Da rivedere"` : ''}`,
+        rimastiDaRivedere > 0 ? 'warning' : 'success'
+    );
 }
 
 // ============================================
-// 11. HEADER STATS
+// 13. HEADER STATS
 // ============================================
 
 function updateHeaderStats() {
@@ -994,9 +1524,8 @@ function updateHeaderStats() {
     let totVend = 0;
 
     appData.displayList.forEach(g => {
-        totIA += g.ia.prezzoConsigliato || 0;
-        const mod = appData.venditore[g.jobId];
-        totVend += mod?.costo || 0;
+        totIA += g.iaRows.reduce((a, b) => a + (b || 0), 0);
+        totVend += sommaRigheJob(g.jobId);
     });
 
     const delta = totVend - totIA;
@@ -1016,10 +1545,10 @@ function updateHeaderStats() {
 }
 
 // ============================================
-// 12. SCHEDA TECNICA
+// 14. SCHEDA TECNICA
 // ============================================
 
-function openInfo(jobId) {
+function openInfo(jobId, opts = {}) {
     const group = appData.jobGroups[jobId];
     if (!group) return;
 
@@ -1028,48 +1557,56 @@ function openInfo(jobId) {
 
     const r = group.masterRow;
     const ia = group.ia;
-    const mod = appData.venditore[jobId] || { costo: ia.prezzoConsigliato, note: '', stato: STATI.DA_RIVEDERE };
+    const mod = appData.venditore[jobId] || {
+        rowPrices: {}, note: '', stato: STATI.DA_RIVEDERE,
+        mainRowIndex: null, totaleJob: 0, valid: true
+    };
+
+    const scrollParent = modal.querySelector('.overflow-y-auto');
+    const prevScroll = opts.preserveScroll && scrollParent ? scrollParent.scrollTop : 0;
 
     const html = `
         ${renderSezioneIA(ia)}
         ${renderSezioneIntervento(group)}
         ${renderSezioneTimeline(r[COLS.IMPIANTO])}
-        ${group.rows.length > 1 ? renderSezioneComponenti(group) : ''}
-        ${renderSezioneDecisione(jobId, mod, ia)}
+        ${renderSezioneDecisioneJob(jobId, group, mod, ia)}
     `;
 
     document.getElementById('info-modal-content').innerHTML = html;
     modal.classList.remove('hidden');
 
-    setTimeout(() => {
-        const inputCosto = document.getElementById('info-costo-input');
-        if (inputCosto) {
-           inputCosto.addEventListener('change', (e) => {
-    salvaCosto(jobId, e.target.value);
-    // ✅ NON ricaricare la scheda: l'input è già aggiornato
-    // Aggiorna solo il badge di stato
-    const badgeContainer = document.querySelector('#info-modal .bg-blue-100');
-    if (badgeContainer) {
-        const mod = appData.venditore[jobId];
-        const newBadge = {
-            [STATI.CONFERMATO]: '<span class="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-1 rounded uppercase">✅ Confermato (IA)</span>',
-            [STATI.MODIFICATO]: '<span class="bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-1 rounded uppercase">✏️ Modificato</span>',
-            [STATI.AZZERATO]: '<span class="bg-red-100 text-red-700 text-[10px] font-bold px-2 py-1 rounded uppercase">0️⃣ Azzerato</span>',
-            [STATI.DA_RIVEDERE]: '<span class="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-1 rounded uppercase">⏳ Da rivedere</span>'
-        };
-        // Trova e sostituisci il badge esistente
-        const existingBadge = badgeContainer.querySelector('span:last-child');
-        if (existingBadge && newBadge[mod.stato]) {
-            existingBadge.outerHTML = newBadge[mod.stato];
-        }
+    if (opts.preserveScroll && scrollParent) {
+        setTimeout(() => { scrollParent.scrollTop = prevScroll; }, 0);
     }
-});
-        }
+
+    setTimeout(() => {
         const inputNote = document.getElementById('info-note-input');
         if (inputNote) {
             inputNote.addEventListener('change', (e) => {
                 salvaNota(jobId, e.target.value);
             });
+        }
+        // Listener slider (Modifica 3)
+        const slider = document.getElementById('sdv-slider');
+        if (slider) {
+            let _sliderLive = null;
+            slider.addEventListener('input', (e) => {
+                // Preview live del valore senza scrivere nel modello
+                const pct = Number(e.target.value);
+                const totIA = group.iaRows.reduce((a, b) => a + (b || 0), 0);
+                const raw = totIA * (1 + pct / 100);
+                const preview = (pct === 0) ? totIA : roundTo5(raw);
+                const label = document.getElementById('sdv-slider-label');
+                const previewEl = document.getElementById('sdv-slider-preview');
+                if (label) label.textContent = `${pct > 0 ? '+' : ''}${pct}%`;
+                if (previewEl) previewEl.textContent = formatEuro(Math.max(0, preview));
+            });
+     slider.addEventListener('change', (e) => {
+    // Al rilascio: applica al modello. B2: il cursore resta dove l'utente l'ha lasciato.
+    applicaSliderJob(jobId, Number(e.target.value));
+    const label = document.getElementById('sdv-slider-label');
+    if (label) label.textContent = `${Number(e.target.value) > 0 ? '+' : ''}${Number(e.target.value)}%`;
+});
         }
     }, 10);
 }
@@ -1105,7 +1642,7 @@ function renderSezioneIA(ia) {
             </div>
             <div class="p-5 bg-white">
                 <div class="flex items-baseline gap-3 mb-4 pb-4 border-b border-slate-100">
-                    <div class="text-xs font-bold text-slate-400 uppercase">Prezzo suggerito</div>
+                    <div class="text-xs font-bold text-slate-400 uppercase">Prezzo suggerito IA (Job)</div>
                     <div class="text-3xl font-bold font-mono text-blue-700">${formatEuro(ia.prezzoConsigliato)}</div>
                 </div>
 
@@ -1158,6 +1695,7 @@ function renderSezioneIntervento(group) {
                 <h3 class="font-bold text-slate-700 flex items-center gap-2">
                     📋 Dettaglio Intervento
                     <span class="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full font-mono">${group.jobId}</span>
+                    <span class="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">${group.rows.length} righe</span>
                 </h3>
             </div>
             <div class="p-5">
@@ -1190,20 +1728,13 @@ function renderSezioneIntervento(group) {
                         <div class="text-sm text-slate-700">${r[COLS.CLIENTE] || '—'}</div>
                     </div>
                     <div>
-                        <div class="text-[10px] font-bold text-slate-400 uppercase mb-1">Amministratore</div>
-                        <div class="text-sm text-slate-700">${r[COLS.AMMINISTRATORE] || '—'}</div>
-                    </div>
-                    <div>
                         <div class="text-[10px] font-bold text-slate-400 uppercase mb-1">Venditore</div>
                         <div class="text-sm text-slate-700">${r[COLS.VENDITORE] || '—'}</div>
                     </div>
-                    <div>
-                        <div class="text-[10px] font-bold text-slate-400 uppercase mb-1">Tecnico</div>
-                        <div class="text-sm text-slate-700">${r[COLS.TECNICO] || '—'}</div>
-                    </div>
                 </div>
 
-                <div class="bg-slate-50 rounded-lg p-4 border border-slate-100">
+                <!-- NUOVO: Componente (riga master, quella che riassume il Job) -->
+                <div class="bg-slate-50 rounded-lg p-4 border border-slate-100 mb-4">
                     <div class="text-[10px] font-bold text-slate-400 uppercase mb-2">🔧 Componente</div>
                     <div class="text-sm font-bold text-slate-800 mb-1">${r[COLS.COMPONENTE] || 'N/D'}</div>
                     <div class="text-xs text-slate-500 mb-2">${r[COLS.CATEGORIA] || ''}</div>
@@ -1212,10 +1743,11 @@ function renderSezioneIntervento(group) {
                     <span class="ml-3 text-xs text-slate-500">Durata: <strong>${group.totalMin}'</strong></span>
                 </div>
 
+                <!-- NUOVO: TaskDescription -->
                 ${r[COLS.DESCRIZIONE] ? `
-                    <div class="mt-4">
+                    <div>
                         <div class="text-[10px] font-bold text-slate-400 uppercase mb-2">📝 Task Description</div>
-                        <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-slate-700 leading-relaxed">
+                        <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
                             ${r[COLS.DESCRIZIONE]}
                         </div>
                     </div>
@@ -1245,7 +1777,6 @@ function renderSezioneTimeline(impianto) {
         `;
     }
 
-    // ✅ Lookup O(1) tramite indice
     const interventi = storicoIndex.get(impianto) || [];
 
     if (interventi.length === 0) {
@@ -1339,45 +1870,18 @@ function renderSezioneTimeline(impianto) {
     `;
 }
 
-function renderSezioneComponenti(group) {
-    if (group.rows.length <= 1) return '';
-
-    const comps = group.rows.map((row, idx) => `
-        <tr class="hover:bg-slate-50 border-b border-slate-100">
-            <td class="px-3 py-2 text-xs font-mono text-slate-500">${idx + 1}</td>
-            <td class="px-3 py-2">
-                <div class="font-bold text-xs text-slate-700">${row[COLS.COMPONENTE] || '—'}</div>
-                <div class="text-[10px] text-slate-400">${row[COLS.CATEGORIA] || ''}</div>
-            </td>
-            <td class="px-3 py-2 text-xs text-slate-600">${row[COLS.DESCRIZIONE] || '—'}</td>
-            <td class="px-3 py-2 text-center text-xs font-bold">${row[COLS.QUANTITA] || 1}</td>
-            <td class="px-3 py-2 text-center text-xs font-mono">${row[COLS.TEMPO] || 0}'</td>
-        </tr>
-    `).join('');
-
-    return `
-        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <div class="px-5 py-3 bg-slate-50 border-b border-slate-200">
-                <h3 class="font-bold text-slate-700">🔧 Componenti del Job (${group.rows.length})</h3>
-            </div>
-            <table class="w-full text-sm">
-                <thead class="bg-slate-50 text-xs uppercase text-slate-500">
-                    <tr>
-                        <th class="px-3 py-2 text-left w-8">#</th>
-                        <th class="px-3 py-2 text-left">Componente</th>
-                        <th class="px-3 py-2 text-left">Descrizione</th>
-                        <th class="px-3 py-2 text-center w-16">Qtà</th>
-                        <th class="px-3 py-2 text-center w-16">Min</th>
-                    </tr>
-                </thead>
-                <tbody>${comps}</tbody>
-            </table>
-        </div>
-    `;
-}
-
-function renderSezioneDecisione(jobId, mod, ia) {
-    const isAzzerato = mod.stato === STATI.AZZERATO;
+/**
+ * Sezione Decisione Job-aware.
+ * Modifiche incluse: 1 (pulsanti riga), 2 (input editabile Job singolo),
+ *                    3 (slider), 8 (KPI coerenti).
+ */
+function renderSezioneDecisioneJob(jobId, group, mod, ia) {
+    const totIA = group.iaRows.reduce((a, b) => a + (b || 0), 0);
+    const totVend = sommaRigheJob(jobId);
+    const delta = totVend - totIA;
+    const isCoerente = jobCoerente(jobId);
+    const isMulti = group.rows.length > 1;
+    const isZero = totIA === 0;
 
     const statoBadge = {
         [STATI.CONFERMATO]: '<span class="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-1 rounded uppercase">✅ Confermato (IA)</span>',
@@ -1386,6 +1890,130 @@ function renderSezioneDecisione(jobId, mod, ia) {
         [STATI.DA_RIVEDERE]: '<span class="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-1 rounded uppercase">⏳ Da rivedere</span>'
     };
 
+    // --- SLIDER (Modifica 3) ---
+    const sliderBlock = isMulti ? `
+        <div class="bg-slate-50 rounded-lg p-4 border border-slate-200">
+            <div class="flex justify-between items-center mb-3">
+                <div class="text-[10px] font-bold text-slate-500 uppercase">Variazione rapida sul totale Job</div>
+                <div class="flex items-center gap-3 text-xs font-mono">
+                    <span class="text-slate-400">IA: ${formatEuro(totIA)}</span>
+                    <span class="text-blue-700 font-bold" id="sdv-slider-label">0%</span>
+                    <span class="text-emerald-700 font-bold" id="sdv-slider-preview">${formatEuro(totVend)}</span>
+                </div>
+            </div>
+            <input type="range" id="sdv-slider" min="-50" max="50" step="1" value="0"
+                class="w-full accent-blue-600 cursor-pointer"
+                ${isZero ? 'disabled title="IA = 0, nessun valore base"' : ''}>
+            <div class="flex justify-between text-[10px] text-slate-400 mt-1 font-mono">
+                <span>−50%</span>
+                <span>0 (IA)</span>
+                <span>+50%</span>
+            </div>
+            ${isZero ? '<div class="text-[10px] text-amber-600 mt-2 italic">Slider disabilitato: il Job ha valore IA = 0.</div>' : ''}
+        </div>
+    ` : '';
+
+    // --- INPUT EDITABILE (Modifica 2 - Job singolo) ---
+   // --- INPUT EDITABILE (Modifica 2 - Job singolo) ---
+const singleRowBlock = !isMulti ? (() => {
+    const onlyRow = group.rows[0];
+    const onlyRowIdx = onlyRow._id;
+    const onlyVend = mod.rowPrices[onlyRowIdx] != null ? mod.rowPrices[onlyRowIdx] : 0;
+    return `
+        <div class="bg-blue-50 rounded-lg p-4 border-2 border-blue-200">
+            <div class="flex justify-between items-center gap-4">
+                <div class="flex-1">
+                    <div class="text-[10px] font-bold text-blue-600 uppercase mb-1">Modifica prezzo</div>
+                    <div class="text-xs text-slate-500">Job con una sola lavorazione. Scrivi il prezzo direttamente.</div>
+                </div>
+                <input type="number"
+                    class="price-input"
+                    style="width: 110px; text-align: right;"
+                    value="${onlyVend}"
+                    step="1"
+                    min="0"
+                    onchange="salvaCostoRiga('${jobId}', ${onlyRowIdx}, this.value)">
+            </div>
+        </div>
+    `;
+})() : '';
+
+    // --- TABELLA RIGHE (solo multi) con pulsanti 0️⃣ e radio principale ---
+    const rowsHtml = group.rows.map((r, idx) => {
+        const rowIdx = r._id;
+        const iaRow = r._ia.prezzoConsigliato || 0;
+        const vendRow = mod.rowPrices[rowIdx] != null ? mod.rowPrices[rowIdx] : 0;
+        const isMain = (mod.mainRowIndex === rowIdx);
+        const comp = r[COLS.COMPONENTE] || '—';
+        const cat = r[COLS.CATEGORIA] || '';
+        const desc = (r[COLS.DESCRIZIONE] || '').substring(0, 200);
+
+        return `
+            <tr class="border-b border-slate-100 hover:bg-slate-50 ${isMain ? 'bg-blue-50/40' : ''}">
+                <td class="px-3 py-3 text-center">
+                    <input type="radio" name="job-main-${jobId}" 
+                        ${isMain ? 'checked' : ''}
+                        onchange="setMainRow('${jobId}', ${rowIdx})"
+                        class="cursor-pointer"
+                        title="Segna come lavorazione principale">
+                </td>
+                <td class="px-3 py-3 text-center text-xs font-mono text-slate-400">${idx + 1}</td>
+                <td class="px-3 py-3">
+                    <div class="font-bold text-xs text-slate-800">${comp}</div>
+                    <div class="text-[10px] text-slate-400 uppercase">${cat}</div>
+                </td>
+                <td class="px-3 py-3 text-xs text-slate-600 max-w-xs">
+                    ${desc || '—'}
+                </td>
+                <td class="px-3 py-3 text-center text-xs font-bold text-slate-500">${r[COLS.QUANTITA] || 1}</td>
+                <td class="px-3 py-3 text-center text-xs font-mono text-slate-500">${r[COLS.TEMPO] || 0}'</td>
+                <td class="px-3 py-3 text-right font-mono text-sm text-blue-700 font-bold">
+                    ${formatEuro(iaRow)}
+                </td>
+                <td class="px-3 py-3">
+                    <div class="flex items-center gap-1 justify-end">
+                        <button onclick="azzeraCostoRiga('${jobId}', ${rowIdx}); openInfo('${jobId}', {preserveScroll:true});"
+                            class="bg-blue-100 hover:bg-blue-200 text-blue-700 border border-blue-300 px-2 py-1 rounded font-bold text-xs transition"
+                            title="Azzera questa riga">0️⃣</button>
+                        <input type="number"
+                            class="price-input"
+                            style="width: 110px; text-align: right;"
+                            value="${vendRow}"
+                            step="1"
+                            min="0"
+                            onchange="salvaCostoRiga('${jobId}', ${rowIdx}, this.value)">
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    const tableBlock = isMulti ? `
+        <div class="mt-5">
+            <div class="flex justify-between items-center mb-3">
+                <h4 class="text-sm font-bold text-slate-600 uppercase tracking-wide">Lavorazioni del Job (${group.rows.length})</h4>
+                <div class="text-[10px] text-slate-400 italic">Seleziona la lavorazione principale col radio a sinistra</div>
+            </div>
+            <div class="border border-slate-200 rounded-lg overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-50 text-slate-500 font-semibold text-[10px] uppercase tracking-wide">
+                        <tr>
+                            <th class="px-3 py-2 w-10" title="Principale">⭐</th>
+                            <th class="px-3 py-2 w-8">#</th>
+                            <th class="px-3 py-2 text-left">Componente</th>
+                            <th class="px-3 py-2 text-left">Descrizione</th>
+                            <th class="px-3 py-2 w-12 text-center">Qtà</th>
+                            <th class="px-3 py-2 w-14 text-center">Min</th>
+                            <th class="px-3 py-2 w-20 text-right">IA</th>
+                            <th class="px-3 py-2 w-44 text-right">Venditore</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+            </div>
+        </div>
+    ` : '';
+
     return `
         <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-300 overflow-hidden">
             <div class="px-5 py-3 bg-blue-100 border-b border-blue-200 flex justify-between items-center">
@@ -1393,36 +2021,67 @@ function renderSezioneDecisione(jobId, mod, ia) {
                 ${statoBadge[mod.stato] || ''}
             </div>
             <div class="p-5 bg-white">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div>
-                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2">Prezzo Finale (€)</label>
-                        <div class="flex gap-2">
-                            <input type="number" 
-                                id="info-costo-input"
-                                class="price-input text-2xl font-bold py-3 px-4 flex-1"
-                                value="${mod.costo}" 
-                                step="0.01" 
-                                min="0">
-                            <button onclick="azzeraCosto('${jobId}'); openInfo('${jobId}');" 
-                                class="bg-red-100 hover:bg-red-200 text-red-700 border border-red-300 px-4 py-3 rounded font-bold transition whitespace-nowrap">
-                                0️⃣ Azzera
-                            </button>
-                        </div>
-                        <div class="mt-2 text-xs text-slate-400">
-                            IA suggerisce: <span class="font-mono font-bold text-slate-600">${formatEuro(ia.prezzoConsigliato)}</span>
-                            ${mod.costo !== ia.prezzoConsigliato && !isAzzerato
-                                ? `<span class="ml-2 text-amber-600 font-bold">Δ ${formatEuro(mod.costo - ia.prezzoConsigliato)}</span>`
-                                : ''}
+                <!-- KPI Job -->
+                <div class="grid grid-cols-4 gap-4 mb-5">
+                    <div class="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                        <div class="text-[10px] font-bold text-blue-600 uppercase">Totale IA Job</div>
+                        <div class="text-2xl font-bold font-mono text-blue-700">${formatEuro(totIA)}</div>
+                    </div>
+                    <div class="bg-emerald-50 rounded-lg p-3 border border-emerald-200">
+                        <div class="text-[10px] font-bold text-emerald-600 uppercase">Totale Venditore</div>
+                        <div class="text-2xl font-bold font-mono text-emerald-700" id="sdv-tot-vend">${formatEuro(totVend)}</div>
+                    </div>
+                    <div class="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                        <div class="text-[10px] font-bold text-slate-400 uppercase">Differenza</div>
+                        <div class="text-2xl font-bold font-mono ${delta > 0 ? 'text-red-600' : delta < 0 ? 'text-emerald-600' : 'text-slate-500'}" id="sdv-diff">
+                            ${delta >= 0 ? '+' : ''}${formatEuro(delta)}
                         </div>
                     </div>
+                    <div class="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                        <div class="text-[10px] font-bold text-slate-400 uppercase">Righe</div>
+                        <div class="text-2xl font-bold font-mono text-slate-600">${group.rows.length}</div>
+                    </div>
+                </div>
 
-                    <div>
-                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2">Note per l'inserimento dati</label>
+                ${!isCoerente ? `
+                    <div class="bg-red-50 border border-red-300 rounded-lg p-3 mb-4 text-sm text-red-800">
+                        ⚠️ Somma righe ≠ totale Job. L'export è bloccato per questo Job.
+                    </div>
+                ` : ''}
+
+                <!-- Modifica 2: input editabile Job singolo -->
+                ${singleRowBlock}
+
+                <!-- Modifica 3: slider -->
+                ${sliderBlock}
+
+                <!-- Tabella righe (solo multi) -->
+                ${tableBlock}
+
+                <!-- Nota Job + Ripristina IA + Azzera tutto -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
+                    <div class="md:col-span-1">
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2">Note per l'inserimento dati (una per Job)</label>
                         <textarea 
                             id="info-note-input"
                             class="note-input w-full"
                             rows="3"
                             placeholder="Annotazioni per chi inserirà i dati nel gestionale...">${mod.note || ''}</textarea>
+                    </div>
+                    <div class="md:col-span-2 flex flex-col justify-end gap-2">
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="ripristinaIAJob('${jobId}'); openInfo('${jobId}', {preserveScroll:true});"
+                                class="bg-amber-100 hover:bg-amber-200 text-amber-700 border-2 border-amber-300 px-4 py-3 rounded-lg font-bold transition">
+                                ↺ Ripristina IA
+                            </button>
+                            <button onclick="azzeraCostoJob('${jobId}'); openInfo('${jobId}', {preserveScroll:true});"
+                                class="bg-red-100 hover:bg-red-200 text-red-700 border-2 border-red-300 px-4 py-3 rounded-lg font-bold transition">
+                                0️⃣ Azzera tutto il Job
+                            </button>
+                        </div>
+                        <div class="text-[10px] text-slate-400 text-center italic">
+                            Ripristina IA: ogni riga torna al valore IA originale · Azzera: tutte le righe a 0
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1468,12 +2127,37 @@ function closeDetails() {
 }
 
 // ============================================
-// 13. EXPORT EXCEL
+// 15. EXPORT EXCEL
 // ============================================
+
+function preflightExport() {
+    const incoerenti = [];
+    Object.values(appData.jobGroups).forEach(g => {
+        const mod = appData.venditore[g.jobId];
+        if (!mod) return;
+        const somma = sommaRigheJob(g.jobId);
+        if (!mod.valid || somma !== (mod.totaleJob || 0)) {
+            incoerenti.push(g.jobId);
+        }
+    });
+    return { ok: incoerenti.length === 0, incoerenti };
+}
 
 function exportExcel() {
     if (!appData.fileName || appData.aoa.length === 0) {
         alert('Nessun file caricato');
+        return;
+    }
+
+    const check = preflightExport();
+    if (!check.ok) {
+        alert(
+            `🚫 Export bloccato.\n\n` +
+            `${check.incoerenti.length} Job hanno una distribuzione incoerente:\n` +
+            check.incoerenti.slice(0, 10).join(', ') +
+            (check.incoerenti.length > 10 ? `\n… e altri ${check.incoerenti.length - 10}` : '') +
+            `\n\nRisolvi la redistribuzione prima di esportare.`
+        );
         return;
     }
 
@@ -1485,6 +2169,9 @@ function exportExcel() {
         const idxNote = ci[COLS.NOTE];
 
         let scritti = 0;
+        const rowById = new Map();
+        appData.rawRows.forEach(r => rowById.set(r._id, r));
+
         for (let i = appData.dataStartRow; i < out.length; i++) {
             const row = out[i];
             if (!row || !row.length) continue;
@@ -1492,20 +2179,23 @@ function exportExcel() {
             if (!jobId) continue;
 
             const mod = appData.venditore[jobId];
-            if (mod) {
-                row[idxCosto] = mod.costo;
-                row[idxNote] = mod.note || '';
-                scritti++;
-            }
+            if (!mod) continue;
+
+            const processedRow = rowById.get(i);
+            if (!processedRow) continue;
+
+            const prezzoRiga = mod.rowPrices[i];
+            row[idxCosto] = (prezzoRiga != null) ? prezzoRiga : 0;
+            row[idxNote] = mod.note || '';
+            scritti++;
         }
 
-        console.log(`📝 Scritti COSTO+NOTE per ${scritti} righe`);
+        console.log(`📝 Scritti COSTO+NOTE per ${scritti} righe (export master)`);
 
         const ws = XLSX.utils.aoa_to_sheet(out);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Interventi');
 
-        // ✅ Genera blob, poi download manuale sicuro
         const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
         const blob = new Blob([wbout], { type: 'application/octet-stream' });
 
@@ -1527,6 +2217,12 @@ function exportFiltered() {
         return;
     }
 
+    const check = preflightExport();
+    if (!check.ok) {
+        alert(`🚫 Export filtrato bloccato.\n\n${check.incoerenti.length} Job hanno una distribuzione incoerente.`);
+        return;
+    }
+
     try {
         const headerRow = [...appData.headers];
         const out = [headerRow];
@@ -1543,7 +2239,8 @@ function exportFiltered() {
                 const newRow = [...originalRow];
                 const mod = appData.venditore[group.jobId];
                 if (mod) {
-                    newRow[idxCosto] = mod.costo;
+                    const prezzoRiga = mod.rowPrices[row._id];
+                    newRow[idxCosto] = (prezzoRiga != null) ? prezzoRiga : 0;
                     newRow[idxNote] = mod.note || '';
                 }
                 out.push(newRow);
@@ -1554,7 +2251,6 @@ function exportFiltered() {
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Filtrato');
 
-        // ✅ Stessa tecnica sicura
         const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
         const blob = new Blob([wbout], { type: 'application/octet-stream' });
 
@@ -1576,7 +2272,11 @@ function esportaJobPDF(jobId) {
 
     const r = group.masterRow;
     const ia = group.ia;
-    const mod = appData.venditore[jobId] || { costo: ia.prezzoConsigliato, note: '' };
+    const mod = appData.venditore[jobId] || {
+        rowPrices: {}, note: '', stato: STATI.DA_RIVEDERE,
+        mainRowIndex: null, totaleJob: 0, valid: true
+    };
+    const totVend = sommaRigheJob(jobId);
 
     try {
         const { jsPDF } = window.jspdf;
@@ -1635,46 +2335,34 @@ function esportaJobPDF(jobId) {
 
         doc.setFontSize(10);
         doc.setFont('helvetica', 'bold');
-        doc.text('Componente', margin, y);
-        y += 6;
+        doc.text('Lavorazioni', margin, y);
+        y += 4;
 
-        const componenti = [
-            ['Descrizione', r[COLS.COMPONENTE] || '—'],
-            ['Categoria', r[COLS.CATEGORIA] || '—'],
-            ['Codice', r[COLS.COMP_CODE] || '—'],
-            ['Quantità', r[COLS.QUANTITA] || '1'],
-            ['Durata', `${group.totalMin}'`]
-        ];
+        const rowsBody = group.rows.map((row, idx) => {
+            const vend = mod.rowPrices[row._id] || 0;
+            const iaRow = row._ia.prezzoConsigliato || 0;
+            return [
+                idx + 1,
+                (row[COLS.COMPONENTE] || '—').substring(0, 40),
+                (row[COLS.DESCRIZIONE] || '—').substring(0, 60),
+                row[COLS.QUANTITA] || 1,
+                (row[COLS.TEMPO] || 0) + "'",
+                formatEuro(iaRow),
+                formatEuro(vend)
+            ];
+        });
 
         doc.autoTable({
             startY: y,
-            body: componenti,
-            theme: 'plain',
-            styles: { fontSize: 10, cellPadding: { top: 1.5, bottom: 1.5, left: 0, right: 0 } },
-            columnStyles: {
-                0: { fontStyle: 'bold', cellWidth: 45, textColor: [100, 116, 139] },
-                1: { cellWidth: 130, textColor: [15, 23, 42] }
-            },
+            head: [['#', 'Componente', 'Descrizione', 'Qtà', 'Min', 'IA', 'Venditore']],
+            body: rowsBody,
+            theme: 'grid',
+            styles: { fontSize: 8, cellPadding: 2 },
+            headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: 'bold' },
             margin: { left: margin, right: margin }
         });
 
-        y = doc.lastAutoTable.finalY + 6;
-
-        if (r[COLS.DESCRIZIONE]) {
-            if (y > 240) { doc.addPage(); y = margin; }
-            doc.line(margin, y, pageWidth - margin, y);
-            y += 6;
-            doc.setFontSize(10);
-            doc.setFont('helvetica', 'bold');
-            doc.text('Descrizione Lavoro', margin, y);
-            y += 5;
-            doc.setFontSize(9);
-            doc.setFont('helvetica', 'normal');
-            doc.setTextColor(71, 85, 105);
-            const lines = doc.splitTextToSize(r[COLS.DESCRIZIONE], pageWidth - 2 * margin);
-            doc.text(lines, margin, y);
-            y += lines.length * 4 + 4;
-        }
+        y = doc.lastAutoTable.finalY + 8;
 
         if (mod.note) {
             if (y > 240) { doc.addPage(); y = margin; }
@@ -1692,7 +2380,7 @@ function esportaJobPDF(jobId) {
         }
 
         if (y > 250) { doc.addPage(); y = margin; }
-        const boxY = Math.max(y + 6, 260);
+        const boxY = Math.max(y + 6, 250);
         doc.setFillColor(240, 253, 244);
         doc.rect(margin, boxY, pageWidth - 2 * margin, 20, 'F');
         doc.setDrawColor(16, 185, 129);
@@ -1702,9 +2390,9 @@ function esportaJobPDF(jobId) {
         doc.setFontSize(10);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(4, 120, 87);
-        doc.text('PREZZO FINALE', margin + 4, boxY + 8);
+        doc.text('TOTALE VENDITORE JOB', margin + 4, boxY + 8);
         doc.setFontSize(16);
-        doc.text(formatEuro(mod.costo), pageWidth - margin - 4, boxY + 13, { align: 'right' });
+        doc.text(formatEuro(totVend), pageWidth - margin - 4, boxY + 13, { align: 'right' });
 
         const pageCount = doc.internal.getNumberOfPages();
         for (let i = 1; i <= pageCount; i++) {
@@ -1712,12 +2400,12 @@ function esportaJobPDF(jobId) {
             doc.setFontSize(7);
             doc.setTextColor(148, 163, 184);
             doc.text(`Pagina ${i} di ${pageCount}`, pageWidth - margin, 290, { align: 'right' });
-            doc.text('Sbolla Manager v4', margin, 290);
+            doc.text('Sbolla Manager v5', margin, 290);
         }
 
-      const nomeFile = `Job_${jobId}_${new Date().toISOString().slice(0, 10)}.pdf`;
-const pdfBlob = doc.output('blob');
-downloadBlob(pdfBlob, nomeFile);
+        const nomeFile = `Job_${jobId}_${new Date().toISOString().slice(0, 10)}.pdf`;
+        const pdfBlob = doc.output('blob');
+        downloadBlob(pdfBlob, nomeFile);
         mostraNotifica(`📄 PDF: ${nomeFile}`, 'success');
     } catch (e) {
         console.error('Errore PDF:', e);
@@ -1726,10 +2414,10 @@ downloadBlob(pdfBlob, nomeFile);
 }
 
 // ============================================
-// 14. RICERCHE SALVATE
+// 16. RICERCHE SALVATE
 // ============================================
 
-const RICERCHE_KEY = 'SP_V4_RICERCHE';
+const RICERCHE_KEY = 'SP_V5_RICERCHE';
 
 function caricaRicercheSalvate() {
     try {
@@ -1740,6 +2428,7 @@ function caricaRicercheSalvate() {
 }
 
 function salvaRicercaCorrente() {
+    // MODIFICA 6: rimuovo mostraStorico
     const filtro = {
         testo: document.getElementById('searchBox').value.trim(),
         venditore: document.getElementById('filter-venditore').value,
@@ -1753,13 +2442,11 @@ function salvaRicercaCorrente() {
         credito: document.getElementById('filter-credito').value,
         indicazione: document.getElementById('filter-indicazione').value,
         stato: document.getElementById('filter-stato').value,
-        mostraStorico: document.getElementById('toggle-history').checked,
         timestamp: new Date().toISOString()
     };
 
     const hasFilter = Object.entries(filtro).some(([k, v]) => {
-        if (k === 'timestamp' || k === 'mostraStorico') return false;
-        if (typeof v === 'boolean') return v === true;
+        if (k === 'timestamp') return false;
         return v && v !== 'ALL' && v !== '';
     });
 
@@ -1808,7 +2495,7 @@ function applicaRicerca(filtro) {
     document.getElementById('filter-credito').value = filtro.credito || 'ALL';
     document.getElementById('filter-indicazione').value = filtro.indicazione || 'ALL';
     document.getElementById('filter-stato').value = filtro.stato || 'ALL';
-    document.getElementById('toggle-history').checked = filtro.mostraStorico || false;
+    // MODIFICA 6: mostraStorico non più gestito
     applyFilters();
     mostraNotifica(`🔍 Filtro applicato: "${filtro.nome}"`, 'info');
 }
@@ -1869,7 +2556,7 @@ function clearRicerche() {
 }
 
 // ============================================
-// 15. MENU / DEBUG
+// 17. MENU / DEBUG
 // ============================================
 
 function toggleSettingsMenu() {
@@ -1913,17 +2600,19 @@ function ricaricaStorico() {
 }
 
 // ============================================
-// 16. SESSIONE
+// 18. SESSIONE
 // ============================================
 
 function downloadSession() {
     if (!appData.fileName) { alert('Nessun file caricato'); return; }
-    const sessionData = {
-        version: 'v4',
-        fileName: appData.fileName,
-        timestamp: new Date().toISOString(),
-        venditore: appData.venditore
-    };
+  const sessionData = {
+    _v: SCHEMA_VERSION,
+    version: 'v5',
+    fileName: appData.fileName,
+    timestamp: new Date().toISOString(),
+    venditore: appData.venditore,
+    promemoria: appData.promemoria
+};
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(sessionData, null, 2));
     const link = document.createElement('a');
     link.href = dataStr;
@@ -1938,23 +2627,72 @@ function loadSessionFile(input) {
     reader.onload = function (e) {
         try {
             const data = JSON.parse(e.target.result);
-            if (data.venditore) {
-                appData.venditore = data.venditore;
-                saveState();
-                renderTable();
-                updateHeaderStats();
-                mostraNotifica(`📂 ${Object.keys(data.venditore).length} job ripristinati`, 'success');
-            }
+           if (data.venditore) {
+    const migrato = migraVenditoreSeNecessario(data.venditore, data._v || data.version);
+    appData.venditore = migrato;
+    appData.promemoria = data.promemoria || {};
+    saveState();
+    renderTable();
+    updateHeaderStats();
+    mostraNotifica(`📂 ${Object.keys(migrato).length} job ripristinati`, 'success');
+}
         } catch (err) {
-            alert('Errore caricamento sessione');
+            console.error(err);
+            alert('Errore caricamento sessione: ' + err.message);
         }
     };
     reader.readAsText(file);
     input.value = '';
 }
 
+function migraVenditoreSeNecessario(venditore, versionHint) {
+    if (!venditore) return {};
+
+    const out = {};
+    let migrati = 0;
+
+    Object.entries(venditore).forEach(([jobId, old]) => {
+        if (old && old.rowPrices && typeof old.rowPrices === 'object' && old._v === SCHEMA_VERSION) {
+            out[jobId] = old;
+            return;
+        }
+
+        const group = appData.jobGroups[jobId];
+        if (!group) return;
+
+        const mainRow = pickMainRow(group);
+        const rowPrices = {};
+        const costoV4 = safeNum(old?.costo);
+
+        group.rows.forEach(r => {
+            rowPrices[r._id] = (r._id === mainRow._id) ? costoV4 : 0;
+        });
+
+        out[jobId] = {
+            rowPrices,
+            note: old?.note || '',
+            stato: STATI.DA_RIVEDERE,
+            mainRowIndex: mainRow._id,
+            totaleJob: costoV4,
+            valid: true,
+            _v: SCHEMA_VERSION,
+            _migrato_da_v4: true
+        };
+        migrati++;
+    });
+
+    if (migrati > 0) {
+        console.log(`🔄 Migrati ${migrati} job da v4 a v5 (forzato stato DA_RIVEDERE)`);
+        setTimeout(() => {
+            mostraNotifica(`🔄 ${migrati} job migrati da sessione v4. Verificare le distribuzioni.`, 'warning');
+        }, 100);
+    }
+
+    return out;
+}
+
 // ============================================
-// 17. NAVIGAZIONE
+// 19. NAVIGAZIONE
 // ============================================
 
 function switchTab(tab) {
@@ -1968,7 +2706,7 @@ function switchTab(tab) {
 }
 
 // ============================================
-// 18. NOTIFICHE
+// 20. NOTIFICHE
 // ============================================
 
 function mostraNotifica(testo, tipo) {
@@ -1994,7 +2732,7 @@ function mostraNotifica(testo, tipo) {
 }
 
 // ============================================
-// 19. RICERCA IMPIANTO
+// 21. RICERCA IMPIANTO
 // ============================================
 
 function cercaPerImpianto(codice) {
@@ -2004,7 +2742,7 @@ function cercaPerImpianto(codice) {
 }
 
 // ============================================
-// 20. AUTO-REFRESH SCHEDA TECNICA
+// 22. AUTO-REFRESH SCHEDA TECNICA
 // ============================================
 
 window.addEventListener('storicoCaricato', () => {
@@ -2013,17 +2751,17 @@ window.addEventListener('storicoCaricato', () => {
         const jobId = modal.dataset.currentJobId;
         if (jobId) {
             console.log("🔄 Storico arrivato, aggiorno scheda tecnica");
-            openInfo(jobId);
+            openInfo(jobId, { preserveScroll: true });
         }
     }
 });
 
 // ============================================
-// 21. INIZIALIZZAZIONE
+// 23. INIZIALIZZAZIONE
 // ============================================
 
 document.addEventListener('DOMContentLoaded', () => {
-    console.log("🚀 DOM caricato — init Sbolla v4");
+    console.log("🚀 DOM caricato — init Sbolla v5");
 
     const fileInput = document.getElementById('fileInput');
     if (fileInput) {
@@ -2046,11 +2784,11 @@ document.addEventListener('DOMContentLoaded', () => {
     caricaRicercheSalvate();
     caricaStoricoAvvio();
 
-    console.log("✅ Sbolla v4 pronto");
+    console.log("✅ Sbolla v5 pronto");
 });
 
 // ============================================
-// 22. ESPOSIZIONE GLOBALE
+// 24. ESPOSIZIONE GLOBALE
 // ============================================
 
 window.loadExcelIA = loadExcelIA;
@@ -2058,9 +2796,33 @@ window.apriCaricaExcel = apriCaricaExcel;
 window.applyFilters = applyFilters;
 window.applySorting = applySorting;
 window.resetFilters = resetFilters;
-window.salvaCosto = salvaCosto;
+
+// Editing v5 job-aware
+window.salvaCostoRiga = salvaCostoRiga;
+window.azzeraCostoRiga = azzeraCostoRiga;
+window.azzeraCostoJob = azzeraCostoJob;
+window.azzeraTuttiVisibili = azzeraTuttiVisibili;
+window.salvaCostoTotale = salvaCostoTotale;
 window.salvaNota = salvaNota;
+window.setMainRow = setMainRow;
+window.applicaRedistribuzione = applicaRedistribuzione;
+window.applicaSliderJob = applicaSliderJob;
+window.sommaRigheJob = sommaRigheJob;
+window.jobCoerente = jobCoerente;
+window.isJobIncoerente = isJobIncoerente;
+window.ripristinaIAJob = ripristinaIAJob;
+window.togglePromemoria = togglePromemoria;
+
+// Wrapper retrocompatibili
+window.salvaCosto = salvaCosto;
 window.azzeraCosto = azzeraCosto;
+
+// Redistribuzione
+window.apriRedistribuzione = apriRedistribuzione;
+window.chiudiRedistribuzione = chiudiRedistribuzione;
+window.eseguiAzioneRedistribuzione = eseguiAzioneRedistribuzione;
+window.confermaRedistribuzione = confermaRedistribuzione;
+
 window.confermaTutti = confermaTutti;
 window.openInfo = openInfo;
 window.closeInfo = closeInfo;
@@ -2069,6 +2831,7 @@ window.closeDetails = closeDetails;
 window.exportExcel = exportExcel;
 window.exportFiltered = exportFiltered;
 window.esportaJobPDF = esportaJobPDF;
+window.preflightExport = preflightExport;
 window.cercaPerImpianto = cercaPerImpianto;
 window.salvaRicercaCorrente = salvaRicercaCorrente;
 window.applicaRicerca = applicaRicerca;
@@ -2093,25 +2856,11 @@ window.debounce = debounce;
 window.renderIACell = renderIACell;
 window.badgeConfidenza = badgeConfidenza;
 window.badgeFatturabilita = badgeFatturabilita;
+window.migraVenditoreSeNecessario = migraVenditoreSeNecessario;
 
-console.log("✅ Tutte le funzioni di app.js esposte globalmente");
-
-
-// ── DIAGNOSTICA: intercetta tentativi di navigazione ──
-window.addEventListener('beforeunload', (e) => {
-    console.warn('🚨 beforeunload triggered!');
-    console.trace();
+// Salvataggio prima di chiusura
+window.addEventListener('beforeunload', () => {
+    saveStateNow();
 });
 
-// ── DIAGNOSTICA: intercetta errori globali ──
-window.addEventListener('error', (e) => {
-    console.error('🚨 Errore globale:', e.message, e.filename, e.lineno);
-});
-
-// ── DIAGNOSTICA: intercetta click su link ──
-document.addEventListener('click', (e) => {
-    const target = e.target.closest('a, button');
-    if (target) {
-        console.log('🖱️ Click su:', target.tagName, target.href || target.onclick || target.textContent?.substring(0, 30));
-    }
-}, true);
+console.log("✅ Sbolla Manager v5 pronto — tutte le funzioni esposte");
