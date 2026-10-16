@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sbolla Manager v4</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.0/jspdf.plugin.autotable.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #e2e8f0; }
+        ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+        .badge {
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: inline-block;
+        }
+        .badge-green { background-color: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+        .badge-yellow { background-color: #fefce8; color: #854d0e; border: 1px solid #fde047; }
+        .badge-red { background-color: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+        .badge-orange { background-color: #fff7ed; color: #9a3412; border: 1px solid #fdba74; }
+        .badge-gray { background-color: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+
+        .wp-reperibilita { color: #dc2626; font-weight: 800; }
+        .wp-normale { color: #16a34a; font-weight: 800; }
+        .wp-consuntivo { color: #2563eb; font-weight: 800; }
+
+        .price-input {
+            background: #fff;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            color: #0f172a;
+            font-weight: 700;
+            text-align: right;
+            width: 100%;
+            padding: 4px 8px;
+            transition: all 0.2s;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        .price-input:focus {
+            border-color: #3b82f6;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+            color: #2563eb;
+        }
+        .price-input.modified {
+            background: #fef3c7;
+            border-color: #f59e0b;
+        }
+
+        .note-input {
+            background: #fff;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            color: #334155;
+            width: 100%;
+            padding: 4px 8px;
+            font-size: 12px;
+            font-family: inherit;
+            transition: all 0.2s;
+            resize: none;
+        }
+        .note-input:focus {
+            border-color: #3b82f6;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+        .nav-tab {
+            padding: 0 1.5rem;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            color: #94a3b8;
+            font-weight: 500;
+            font-size: 0.875rem;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+        }
+        .nav-tab:hover { color: white; }
+        .nav-tab.active {
+            color: white;
+            border-bottom-color: #3b82f6;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .loader-ring {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+        }
+        .loader-ring:after {
+            content: " ";
+            display: block;
+            width: 32px;
+            height: 32px;
+            margin: 4px;
+            border-radius: 50%;
+            border: 3px solid #3b82f6;
+            border-color: #3b82f6 transparent #3b82f6 transparent;
+            animation: loader-ring 1.2s linear infinite;
+        }
+        @keyframes loader-ring {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .animate-slide-up { animation: slideUp 0.3s ease-out; }
+        @keyframes slideUp {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .notif-container {
+            position: fixed;
+            bottom: 16px;
+            right: 16px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-width: 400px;
+        }
+
+        .ia-cell {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 2px;
+        }
+        .ia-price {
+            font-family: monospace;
+            font-weight: 800;
+            font-size: 14px;
+            color: #1e40af;
+        }
+        .ia-badge {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 3px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .row-warning { background: #fffbeb; }
+        .row-critical { background: #fef2f2; }
+        .row-info { background: #eff6ff; }
+
+css
+.loader-mini {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid #818cf8;
+    border-color: #818cf8 transparent #818cf8 transparent;
+    border-radius: 50%;
+    animation: loader-ring 1s linear infinite;
+}
+
+
+
+
+
+        /* ============================================================
+           JOB PRICING v5 - estensione non invasiva
+           ============================================================ */
+        .job-kpi-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+        .job-kpi { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; }
+        .job-kpi-label { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:#64748b; font-weight:800; }
+        .job-kpi-value { margin-top:3px; font-size:18px; font-weight:800; color:#0f172a; }
+        .job-price-input { width:112px; border:1px solid #cbd5e1; border-radius:6px; padding:7px 9px; text-align:right; font-family:monospace; font-weight:800; background:#fff; }
+        .job-price-input:focus { outline:none; border-color:#2563eb; box-shadow:0 0 0 2px rgba(37,99,235,.16); }
+        .job-main-row { background:#eff6ff; }
+        .job-main-chip { display:inline-flex; align-items:center; gap:4px; padding:2px 7px; border-radius:999px; background:#dbeafe; color:#1d4ed8; font-size:9px; font-weight:800; text-transform:uppercase; }
+        .job-balance-ok { background:#ecfdf5; border-color:#a7f3d0; color:#047857; }
+        .job-balance-error { background:#fef2f2; border-color:#fecaca; color:#b91c1c; }
+        .job-balance-box { border:1px solid; border-radius:10px; padding:10px 12px; font-size:12px; font-weight:700; }
+        .job-action-btn { border:1px solid #cbd5e1; background:#fff; color:#334155; border-radius:7px; padding:7px 10px; font-size:11px; font-weight:800; transition:.15s; }
+        .job-action-btn:hover { background:#f8fafc; border-color:#94a3b8; }
+        .job-action-btn.active { background:#dbeafe; color:#1d4ed8; border-color:#93c5fd; }
+        .job-export-locked { opacity:.5 !important; cursor:not-allowed !important; }
+        @media (max-width: 900px) { .job-kpi-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+
+    </style>
+</head>
+<body class="text-slate-800">
+
+<!-- ============================================ -->
+<!-- HEADER                                        -->
+<!-- ============================================ -->
+<header class="bg-slate-900 text-white shadow-md z-40 h-16 flex-none flex justify-between items-center px-6">
+    <div class="flex items-center gap-3 w-72">
+        <div class="bg-blue-600 w-8 h-8 rounded flex items-center justify-center font-bold text-white shadow shadow-blue-500/50">KF</div>
+        <div>
+            <h1 class="font-bold text-lg leading-tight">Buono Prezzo del King</h1>
+            <div class="text-[10px] text-slate-400">Sbolla Manager v4</div>
+        </div>
+    </div>
+
+    <div class="flex h-full">
+        <button type="button" onclick
+="switchTab('pricing')" id="tab-btn-pricing" class="nav-tab active">💰 Pricing</button>
+        <button type="button" onclick
+="switchTab('analytics')" id="tab-btn-analytics" class="nav-tab">📊 Analisi</button>
+        <a href="put_in.html" class="nav-tab">🎱 Put-in-COG</a>
+    </div>
+
+    <div class="flex items-center gap-3">
+        <input type="file" id="sessionInput" accept=".json" class="hidden" onchange="loadSessionFile(this)">
+        <input type="file" id="storicoInput" accept=".json" class="hidden" onchange="caricaStoricoFile(this)">
+
+        <div class="flex gap-1">
+            <button type="button" onclick
+="downloadSession()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded border border-slate-700 transition" title="Scarica backup JSON">💾 Salva</button>
+            <button type="button" onclick
+="document.getElementById('sessionInput').click()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded border border-slate-700 transition" title="Carica backup JSON">📂 Carica</button>
+            <!-- Bottone storico con due azioni -->
+<div class="relative group">
+    <button class="text-xs bg-indigo-800 hover:bg-indigo-700 text-slate-300 px-3 py-1.5 rounded border border-indigo-700 transition flex items-center gap-1.5" title="Gestione storico">
+        <span id="storico-label">📚</span>
+        <span id="storico-indicator" class="hidden loader-mini"></span>
+    </button>
+    <div class="hidden group-hover:block absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-1 z-50">
+        <button type="button" onclick
+="ricaricaStoricoDefault()" class="w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-700 text-sm flex items-center gap-2">
+            🔄 Ricarica
+        </button>
+        <button type="button" onclick
+="document.getElementById('storicoInput').click()" class="w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-700 text-sm flex items-center gap-2 border-t border-slate-100">
+            📁 Cambia file
+        </button>
+    </div>
+</div>
+            <button type="button" onclick
+="apriCaricaExcel()" id="btn-carica-excel" class="text-xs bg-emerald-800 hover:bg-emerald-700 text-slate-300 px-3 py-1.5 rounded border border-emerald-700 transition" title="Aggiungi file Excel">
+                ➕ Excel
+            </button>
+        </div>
+
+        <div class="h-8 w-px bg-slate-700 mx-1"></div>
+
+        <!-- Doppio totale -->
+        <div class="bg-slate-800 px-3 py-1 rounded border border-slate-700 text-right">
+            <span class="block text-[10px] text-slate-400 uppercase font-bold">Totali</span>
+            <div class="text-sm leading-none flex items-center gap-2 font-mono">
+                <span class="text-blue-400">IA <span id="header-total-ia">€ 0</span></span>
+                <span class="text-slate-500">→</span>
+                <span class="text-emerald-400">Vend <span id="header-total-vend">€ 0</span></span>
+                <span id="header-total-delta" class="text-xs text-slate-500"></span>
+            </div>
+        </div>
+
+        <!-- Menu configurazione -->
+        <div class="relative" id="settings-menu-container">
+            <button type="button" onclick
+="toggleSettingsMenu()" class="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition" title="Menu Configurazione">⚙️</button>
+            <div id="settings-menu" class="hidden absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 z-50 py-1 overflow-hidden">
+                <div class="px-4 py-2 bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Configurazione
+                </div>
+                <a href="Legenda_Interpretazione_File_Prezzamento.pdf" download class="w-full text-left px-4 py-3 hover:bg-blue-50 text-slate-700 text-sm flex items-center gap-3 transition">
+                    <span class="text-xl bg-blue-100 w-8 h-8 rounded-full flex items-center justify-center text-blue-600">📖</span>
+                    <div>
+                        <div class="font-bold">Legenda</div>
+                        <div class="text-[10px] text-slate-400">Guida interpretazione file</div>
+                    </div>
+                </a>
+                <button type="button" onclick
+="open('admin.html', '_blank'); toggleSettingsMenu()" class="w-full text-left px-4 py-3 hover:bg-purple-50 text-slate-700 text-sm flex items-center gap-3 transition border-t border-slate-100">
+                    <span class="text-xl bg-purple-100 w-8 h-8 rounded-full flex items-center justify-center text-purple-600">📚</span>
+                    <div>
+                        <div class="font-bold">Gestione Storico</div>
+                        <div class="text-[10px] text-slate-400">Crea/aggiorna sbolla.json</div>
+                    </div>
+                </button>
+            </div>
+        </div>
+
+        <!-- Debug panel -->
+        <div class="relative" id="debug-storico-container">
+            <button type="button" onclick
+="toggleDebugPanel()" class="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition" title="Info storico">📊</button>
+            <div id="debug-storico-panel" class="hidden absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 overflow-hidden">
+                <div class="bg-gradient-to-r from-indigo-600 to-blue-600 px-4 py-3 text-white">
+                    <h3 class="font-bold flex items-center gap-2"><span>📚</span> Database Storico</h3>
+                </div>
+                <div class="p-4 space-y-3">
+                    <div id="debug-status" class="text-sm">Verifica in corso...</div>
+                    <div id="debug-stats" class="grid grid-cols-2 gap-2 text-xs hidden">
+                        <div class="bg-slate-50 p-2 rounded">
+                            <div class="text-slate-400">Interventi</div>
+                            <div class="text-lg font-bold" id="debug-totale">0</div>
+                        </div>
+                        <div class="bg-slate-50 p-2 rounded">
+                            <div class="text-slate-400">Impianti</div>
+                            <div class="text-lg font-bold text-indigo-600" id="debug-impianti">0</div>
+                        </div>
+                    </div>
+                    <div id="debug-file" class="text-xs bg-slate-100 p-2 rounded hidden">
+                        <div class="font-medium text-slate-600">Ultimo aggiornamento</div>
+                        <div class="text-slate-500" id="debug-data">-</div>
+                        <div class="text-slate-500 text-[10px] mt-1 truncate" id="debug-nomefile">-</div>
+                    </div>
+                    <div class="flex gap-2 pt-2 border-t border-slate-100">
+                        <button type="button" onclick
+="ricaricaStorico()" class="flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold py-2 rounded transition">🔄 Ricarica</button>
+                        <button type="button" onclick
+="nascondiDebugPanel()" class="flex-1 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold py-2 rounded transition">✕ Chiudi</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex gap-1">
+            <button type="button" onclick="confermaTutti()" class="bg-amber-600 hover:bg-amber-500 text-white px-3 py-2 rounded shadow text-sm font-bold flex items-center gap-2 transition" title="Conferma tutti i prezzi IA non modificati">✅ Tutti</button>
+            <button type="button" onclick="exportFiltered()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded shadow text-sm font-bold flex items-center gap-2 transition" title="Scarica solo la vista attuale">📤 Filtro</button>
+            <button type="button" onclick="exportExcel()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded shadow text-sm font-bold flex items-center gap-2 transition" title="Scarica file completo">📥 Master</button>
+        </div>
+    </div>
+</header>
+
+<!-- ============================================ -->
+<!-- MAIN                                          -->
+<!-- ============================================ -->
+<div class="flex flex-1 overflow-hidden relative w-full">
+
+    <!-- SIDEBAR -->
+    <aside class="w-72 bg-white border-r border-slate-200 flex flex-col z-30 shadow-sm hidden" id="sidebar">
+        <div class="p-4 border-b border-slate-100 bg-slate-50">
+            <input type="text" id="searchBox" placeholder="🔍 Cerca Job, Via, Impianto..." class="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+        </div>
+        <div class="flex-1 overflow-y-auto p-4 space-y-4">
+
+            <!-- Filtri base -->
+            <div>
+                <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Venditore</label>
+                <select id="filter-venditore" onchange="applyFilters()" class="w-full text-sm border-slate-200 rounded p-2 bg-white focus:ring-2 focus:ring-blue-100 outline-none">
+                    <option value="ALL">Tutti</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Contratto</label>
+                <select id="filter-contract" onchange="applyFilters()" class="w-full text-sm border-slate-200 rounded p-2 bg-white focus:ring-2 focus:ring-blue-100 outline-none">
+                    <option value="ALL">Tutti</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Periodo</label>
+                <div class="flex gap-2">
+                    <input type="date" id="filter-date-start" onchange="applyFilters()" class="w-full text-xs border-slate-200 rounded bg-white p-1.5 outline-none">
+                    <input type="date" id="filter-date-end" onchange="applyFilters()" class="w-full text-xs border-slate-200 rounded bg-white p-1.5 outline-none">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Tipo Intervento</label>
+                <select id="filter-workperf" onchange="applyFilters()" class="w-full text-sm border-slate-200 rounded p-2 bg-white focus:ring-2 focus:ring-blue-100 outline-none">
+                    <option value="ALL">Tutti</option>
+                </select>
+            </div>
+
+            <hr class="border-slate-100">
+
+            <!-- Filtri IA -->
+            <div class="bg-blue-50 -mx-2 px-2 py-2 rounded">
+                <div class="text-[10px] font-bold text-blue-600 uppercase mb-2">🤖 Filtri IA</div>
+
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Confidenza</label>
+                        <select id="filter-confidenza" onchange="applyFilters()" class="w-full text-sm border-slate-200 rounded p-2 bg-white outline-none">
+                            <option value="ALL">Tutte</option>
+                            <option value="ALTA">ALTA</option>
+                            <option value="MEDIA">MEDIA</option>
+                            <option value="BASSA">BASSA</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Fatturabilità</label>
+                        <select id="filter-fatturab" onchange="applyFilters()" class="w-full text-sm border-slate-200 rounded p-2 bg-white outline-none">
+                            <option value="ALL">Tutte</option>
+                            <option value="SÌ">SÌ</option>
+                            <option value="NO">NO</option>
+                            <option value="DA VERIFICARE">DA VERIFICARE</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Criticità Impianto</label>
+                        <select id="filter-criticita" onchange="applyFilters()" class="w-full text-sm border-slate-200 rounded p-2 bg-white outline-none">
+                            <option value="ALL">Tutte</option>
+                            <option value="ALTO">ALTO</option>
+                            <option value="MEDIO">MEDIO</option>
+                            <option value="BASSO">BASSO</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Credito Commerciale</label>
+                        <select id="filter-credito" onchange="applyFilters()" class="w-full text-sm border-slate-200 rounded p-2 bg-white outline-none">
+                            <option value="ALL">Tutti</option>
+                            <option value="ALTO">ALTO</option>
+                            <option value="MEDIO">MEDIO</option>
+                            <option value="BASSO">BASSO</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Indicazione</label>
+                        <select id="filter-indicazione" onchange="applyFilters()" class="w-full text-sm border-slate-200 rounded p-2 bg-white outline-none">
+                            <option value="ALL">Tutte</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="border-slate-100">
+
+            <!-- Stato revisione -->
+            <div>
+                <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Stato Revisione</label>
+                <select id="filter-stato" onchange="applyFilters()" class="w-full text-sm border-slate-200 rounded p-2 bg-white outline-none">
+                    <option value="ALL">Tutti</option>
+                    <option value="da-rivedere">⏳ Da rivedere</option>
+                    <option value="confermato">✅ Confermato (IA)</option>
+                    <option value="modificato">✏️ Modificato</option>
+                    <option value="azzerato">0️⃣ Azzerato</option>
+                </select>
+            </div>
+
+            <!-- Toggle storico -->
+            <div class="flex items-center justify-between bg-slate-50 p-3 rounded border border-slate-200">
+                <span class="text-xs font-bold text-slate-700">Mostra Storico</span>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="toggle-history" class="sr-only peer" onchange="applyFilters()">
+                    <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+            </div>
+
+            <!-- Storico ricerche -->
+            <div class="pt-2 border-t border-slate-100">
+                <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Storico Ricerche</label>
+                <div class="space-y-1">
+                    <button type="button" onclick
+="salvaRicercaCorrente()" class="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded px-2 py-1.5 text-xs font-bold transition">💾 Salva ricerca corrente</button>
+                    <div id="ricerche-salvate" class="max-h-40 overflow-y-auto space-y-1 mt-2"></div>
+                    <button type="button" onclick
+="clearRicerche()" class="w-full text-slate-400 hover:text-red-500 text-[10px] transition text-center mt-1">Cancella cronologia</button>
+                </div>
+            </div>
+
+        </div>
+        <div class="p-4 border-t border-slate-200 bg-slate-50 text-center">
+            <button type="button" onclick
+="resetFilters()" class="text-xs text-slate-500 hover:text-blue-600 font-medium w-full py-2 hover:bg-white rounded border border-transparent hover:border-slate-200 transition">Resetta Filtri</button>
+        </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <div class="flex-1 flex flex-col relative bg-white overflow-hidden">
+
+        <!-- Upload Overlay -->
+        <div id="upload-overlay" class="absolute inset-0 z-40 bg-slate-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl shadow-xl p-12 text-center max-w-lg w-full border border-slate-100">
+                <div class="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+                    <span class="text-4xl">📂</span>
+                </div>
+                <h2 class="text-3xl font-bold text-slate-800 mb-2">Carica File Interventi IA</h2>
+                <p class="text-slate-500 mb-8">Seleziona il file Excel generato dall'analisi IA</p>
+
+                <input type="file" id="fileInput" accept=".xlsx, .xls" class="hidden">
+                <button type="button" onclick
+="document.getElementById('fileInput').click()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-xl transition shadow-lg transform hover:-translate-y-1">
+                    📂 Seleziona File Excel
+                </button>
+
+                <div id="loader" class="hidden mt-8">
+                    <div class="loader-ring"></div>
+                    <p class="text-sm text-slate-400 mt-2">Elaborazione in corso...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pricing View -->
+        <main id="main-content" class="flex-1 flex flex-col hidden h-full overflow-hidden">
+            <div class="bg-white border-b border-slate-200 px-6 py-3 flex justify-between items-center shadow-sm flex-none z-20">
+                <div class="flex items-center gap-3">
+                    <h2 class="font-bold text-slate-700 text-lg">Elenco Interventi</h2>
+                    <span class="bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md text-xs font-mono border border-slate-200" id="row-count">0</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-slate-400 uppercase">Ordina per:</span>
+                    <select id="sort-order" onchange="applySorting()" class="text-xs border border-slate-300 rounded px-2 py-1.5 bg-white focus:border-blue-500 outline-none font-medium text-slate-600">
+                        <option value="date-desc">📅 Data (Recenti)</option>
+                        <option value="date-asc">📅 Data (Vecchi)</option>
+                        <option value="impianto-asc">🏢 Impianto (A-Z)</option>
+                        <option value="addr-asc">📍 Indirizzo (A-Z)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex-1 overflow-auto bg-white relative">
+                <table class="w-full text-sm text-left border-collapse">
+                    <thead class="bg-slate-50 text-slate-500 font-semibold sticky top-0 z-10 shadow-sm text-xs uppercase tracking-wide">
+                        <tr>
+                            <th class="px-3 py-3 border-b border-slate-200 w-32">Job / Data</th>
+                            <th class="px-3 py-3 border-b border-slate-200 w-24">Impianto</th>
+                            <th class="px-3 py-3 border-b border-slate-200 w-56">Indirizzo / Venditore</th>
+                            <th class="px-3 py-3 border-b border-slate-200 w-20">Contratto</th>
+                            <th class="px-3 py-3 border-b border-slate-200 w-72">Tipologia</th>
+                            <th class="px-3 py-3 border-b border-slate-200 text-center w-28">🤖 IA</th>
+                            <th class="px-3 py-3 border-b border-slate-200 text-center w-14">Dur.</th>
+                            <th class="px-3 py-3 border-b border-slate-200 text-center w-16">Info</th>
+                            <th class="px-3 py-3 border-b border-slate-200 text-right w-28">COSTO</th>
+                            <th class="px-3 py-3 border-b border-slate-200 w-48">NOTE</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pricing-table-body" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+        </main>
+
+        <!-- Analytics View -->
+        <div id="view-analytics" class="hidden flex-1 overflow-auto bg-slate-50 p-6 w-full">
+            <!-- Popolato da analisi.js -->
+        </div>
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- MODALI                                        -->
+<!-- ============================================ -->
+
+<!-- Scheda tecnica -->
+<div id="info-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto">
+        <div class="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-blue-50 rounded-t-xl sticky top-0 z-10">
+            <h3 class="text-lg font-bold text-blue-800">📋 Scheda Tecnica</h3>
+            <button type="button" onclick
+="closeInfo()" class="text-blue-400 hover:text-blue-700 text-2xl leading-none">&times;</button>
+        </div>
+        <div class="p-6 space-y-6" id="info-modal-content"></div>
+    </div>
+</div>
+
+<!-- Modale dettaglio Job - revisione e distribuzione economica -->
+<div id="details-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[94vh] flex flex-col">
+        <div class="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 rounded-t-xl">
+            <div>
+                <h3 class="text-lg font-bold text-slate-800" id="modal-title">Dettaglio Job</h3>
+                <p class="text-xs text-slate-500" id="modal-subtitle"></p>
+            </div>
+            <div class="flex items-center gap-3">
+                <span id="job-review-status" class="badge badge-yellow">DA RIVEDERE</span>
+                <button type="button" onclick="closeDetails()" class="text-slate-400 hover:text-red-500 text-2xl">&times;</button>
+            </div>
+        </div>
+
+        <div class="flex-1 overflow-auto">
+            <section class="p-5 border-b border-slate-200 bg-white">
+                <div class="flex justify-between items-center mb-3">
+                    <h4 class="font-bold text-slate-700">📊 Riepilogo economico del Job</h4>
+                    <span class="text-[10px] text-slate-400 uppercase font-bold">Il file IA originale non viene modificato</span>
+                </div>
+                <div class="job-kpi-grid">
+                    <div class="job-kpi"><div class="job-kpi-label">Totale IA Job</div><div id="job-total-ia" class="job-kpi-value text-blue-700">€ 0</div></div>
+                    <div class="job-kpi"><div class="job-kpi-label">Totale Venditore</div><div id="job-total-vend" class="job-kpi-value text-emerald-700">€ 0</div></div>
+                    <div class="job-kpi"><div class="job-kpi-label">Lavorazioni</div><div id="job-task-count" class="job-kpi-value">0</div></div>
+                    <div class="job-kpi"><div class="job-kpi-label">Differenza IA/Venditore</div><div id="job-total-delta" class="job-kpi-value">€ 0</div></div>
+                </div>
+            </section>
+
+            <section class="p-5 border-b border-slate-200 bg-slate-50">
+                <div class="flex flex-wrap justify-between items-center gap-3 mb-3">
+                    <div>
+                        <h4 class="font-bold text-slate-700">🔧 Lavorazioni e distribuzione economica</h4>
+                        <p class="text-xs text-slate-500 mt-1">Ogni riga mantiene un importo autonomo. L'export utilizza solo questi importi, mai il totale Job duplicato.</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" class="job-action-btn" onclick="JobPricing.distributeToMain()">⭐ Tutto sulla principale</button>
+                        <button type="button" class="job-action-btn" onclick="JobPricing.distributeEvenly()">↔ Uniforme</button>
+                        <button type="button" class="job-action-btn" onclick="JobPricing.resetToAI()">🤖 Ripristina IA</button>
+                        <button type="button" class="job-action-btn" onclick="JobPricing.zeroAll()">0️⃣ Azzera Job</button>
+                    </div>
+                </div>
+                <div class="overflow-x-auto bg-white rounded-xl border border-slate-200">
+                    <table class="w-full text-sm text-left">
+                        <thead class="bg-slate-100 text-slate-600 font-semibold text-xs uppercase">
+                            <tr>
+                                <th class="px-4 py-3 w-12">#</th>
+                                <th class="px-4 py-3">Componente</th>
+                                <th class="px-4 py-3">Descrizione</th>
+                                <th class="px-4 py-3 text-center w-16">Qtà</th>
+                                <th class="px-4 py-3 text-center w-16">Min</th>
+                                <th class="px-4 py-3 text-right w-32">IA riga</th>
+                                <th class="px-4 py-3 text-right w-40">Prezzo lavorazione</th>
+                                <th class="px-4 py-3 text-center w-24">Principale</th>
+                            </tr>
+                        </thead>
+                        <tbody id="modal-body" class="divide-y divide-slate-100"></tbody>
+                        <tfoot class="bg-slate-50 border-t-2 border-slate-200 font-bold">
+                            <tr>
+                                <td colspan="5" class="px-4 py-3 text-right text-slate-600">TOTALI</td>
+                                <td id="job-footer-ia" class="px-4 py-3 text-right text-blue-700">€ 0</td>
+                                <td id="job-footer-vend" class="px-4 py-3 text-right text-emerald-700">€ 0</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </section>
+
+            <section class="p-5 bg-white">
+                <div id="job-balance" class="job-balance-box job-balance-ok">✅ Distribuzione coerente: somma lavorazioni uguale al totale Job.</div>
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
+                    <div class="lg:col-span-1">
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2">Totale finale Job (€)</label>
+                        <input id="job-final-total" type="number" min="0" step="1" class="price-input text-lg" oninput="JobPricing.setFinalTotal(this.value)">
+                        <p class="text-[10px] text-slate-400 mt-1">Il totale deve coincidere con la somma delle lavorazioni prima dell'esportazione.</p>
+                    </div>
+                    <div class="lg:col-span-2">
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2">Note per l'inserimento dati</label>
+                        <textarea id="job-final-note" class="note-input h-20" placeholder="Annotazioni per chi inserirà i dati nel gestionale..."></textarea>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center rounded-b-xl">
+            <span id="job-export-message" class="text-xs font-bold text-emerald-700">✅ Job pronto per l'esportazione</span>
+            <div class="flex gap-2">
+                <button type="button" onclick="closeDetails()" class="px-5 py-2 bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-lg font-bold">Chiudi</button>
+                <button id="job-confirm-button" type="button" onclick="JobPricing.confirmJob()" class="px-5 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg font-bold shadow-lg">✓ Conferma Job</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Container notifiche -->
+<div id="notif-container" class="notif-container"></div>
+
+<!-- ============================================ -->
+<!-- SCRIPTS                                       -->
+<!-- ============================================ -->
+
+<script>
+/* ================================================================
+   JOB PRICING v5
+   Modulo UI non invasivo. app.js può alimentarlo tramite:
+   JobPricing.open({ job, subtitle, rows:[...] })
+   Ogni riga mantiene originalIndex per un export senza duplicazioni.
+   ================================================================ */
+const JobPricing = (() => {
+    const state = { job: '', rows: [], aiTotal: 0, finalTotal: 0, note: '', confirmed: false };
+    const euro = value => new Intl.NumberFormat('it-IT', {style:'currency', currency:'EUR', maximumFractionDigits:0}).format(Number(value || 0));
+    const amount = value => Math.max(0, Math.round(Number(value) || 0));
+
+    function normalizeRows(rows) {
+        return (rows || []).map((row, index) => ({
+            originalIndex: row.originalIndex ?? row.index ?? index,
+            component: row.component ?? row.LocalComponent ?? '',
+            category: row.category ?? row.LocalComponentCategory ?? '',
+            description: row.description ?? row.TaskDescription ?? '',
+            quantity: row.quantity ?? row.Quantity ?? '',
+            minutes: row.minutes ?? row.tempo ?? row['Tempo Lavoro (Job) (Job)'] ?? '',
+            aiPrice: amount(row.aiPrice ?? row['PREZZO CONSIGLIATO'] ?? row.prezzoIA ?? 0),
+            sellerPrice: amount(row.sellerPrice ?? row.prezzoVenditore ?? row.aiPrice ?? row['PREZZO CONSIGLIATO'] ?? 0),
+            isMain: Boolean(row.isMain),
+            raw: row.raw ?? row
+        }));
+    }
+
+    function chooseMain() {
+        if (!state.rows.length) return;
+        if (state.rows.some(row => row.isMain)) return;
+        const priced = state.rows.find(row => row.aiPrice > 0);
+        (priced || state.rows[0]).isMain = true;
+    }
+
+    function open(payload) {
+        state.job = payload?.job || '';
+        state.rows = normalizeRows(payload?.rows || []);
+        chooseMain();
+        state.aiTotal = payload?.aiTotal != null ? amount(payload.aiTotal) : state.rows.reduce((sum,row) => sum + row.aiPrice, 0);
+        state.finalTotal = payload?.finalTotal != null ? amount(payload.finalTotal) : state.rows.reduce((sum,row) => sum + row.sellerPrice, 0);
+        state.note = payload?.note || '';
+        state.confirmed = Boolean(payload?.confirmed);
+        document.getElementById('modal-title').textContent = `Job ${state.job || 'senza codice'}`;
+        document.getElementById('modal-subtitle').textContent = payload?.subtitle || 'Verifica e distribuzione economica delle lavorazioni';
+        document.getElementById('job-final-note').value = state.note;
+        document.getElementById('details-modal').classList.remove('hidden');
+        render();
+    }
+
+    function render() {
+        const body = document.getElementById('modal-body');
+        if (!body) return;
+        body.innerHTML = state.rows.map((row,index) => `
+            <tr class="${row.isMain ? 'job-main-row' : ''}">
+                <td class="px-4 py-3 text-slate-400">${index + 1}</td>
+                <td class="px-4 py-3"><div class="font-bold text-slate-700">${escapeHtml(row.component)}</div><div class="text-[10px] text-slate-400 uppercase">${escapeHtml(row.category)}</div>${row.isMain ? '<span class="job-main-chip mt-1">⭐ principale</span>' : ''}</td>
+                <td class="px-4 py-3 text-xs text-slate-600">${escapeHtml(row.description)}</td>
+                <td class="px-4 py-3 text-center font-bold">${escapeHtml(row.quantity)}</td>
+                <td class="px-4 py-3 text-center font-mono">${escapeHtml(row.minutes)}${row.minutes !== '' ? "'" : ''}</td>
+                <td class="px-4 py-3 text-right font-mono font-bold text-blue-700">${euro(row.aiPrice)}</td>
+                <td class="px-4 py-3 text-right"><input class="job-price-input" type="number" min="0" step="1" value="${row.sellerPrice}" oninput="JobPricing.setRowPrice(${index}, this.value)"></td>
+                <td class="px-4 py-3 text-center"><input type="radio" name="job-main-task" ${row.isMain ? 'checked' : ''} onchange="JobPricing.setMain(${index})" title="Imposta lavorazione principale"></td>
+            </tr>`).join('');
+        refreshTotals();
+    }
+
+    function refreshTotals() {
+        const sellerSum = state.rows.reduce((sum,row) => sum + amount(row.sellerPrice), 0);
+        state.finalTotal = amount(document.getElementById('job-final-total')?.value || state.finalTotal || sellerSum);
+        if (!document.activeElement || document.activeElement.id !== 'job-final-total') document.getElementById('job-final-total').value = state.finalTotal;
+        const delta = state.finalTotal - state.aiTotal;
+        document.getElementById('job-total-ia').textContent = euro(state.aiTotal);
+        document.getElementById('job-total-vend').textContent = euro(state.finalTotal);
+        document.getElementById('job-task-count').textContent = state.rows.length;
+        document.getElementById('job-total-delta').textContent = `${delta >= 0 ? '+' : ''}${euro(delta)}`;
+        document.getElementById('job-footer-ia').textContent = euro(state.rows.reduce((s,r)=>s+r.aiPrice,0));
+        document.getElementById('job-footer-vend').textContent = euro(sellerSum);
+        const matches = sellerSum === state.finalTotal;
+        const balance = document.getElementById('job-balance');
+        balance.className = `job-balance-box ${matches ? 'job-balance-ok' : 'job-balance-error'}`;
+        balance.textContent = matches ? `✅ Distribuzione coerente: ${euro(sellerSum)} sulle lavorazioni = ${euro(state.finalTotal)} totale Job.` : `⚠️ Esportazione bloccata: lavorazioni ${euro(sellerSum)}, totale Job ${euro(state.finalTotal)}, differenza ${euro(state.finalTotal-sellerSum)}.`;
+        const message = document.getElementById('job-export-message');
+        message.textContent = matches ? '✅ Job pronto per l’esportazione' : '⛔ Correggere la distribuzione prima dell’esportazione';
+        message.className = `text-xs font-bold ${matches ? 'text-emerald-700' : 'text-red-700'}`;
+        document.getElementById('job-confirm-button').disabled = !matches;
+        document.getElementById('job-confirm-button').classList.toggle('job-export-locked', !matches);
+        document.dispatchEvent(new CustomEvent('jobpricing:balance', {detail:{job:state.job, valid:matches, finalTotal:state.finalTotal, sellerSum}}));
+    }
+
+    function setRowPrice(index,value){ state.rows[index].sellerPrice = amount(value); state.confirmed=false; refreshTotals(); }
+    function setFinalTotal(value){ state.finalTotal = amount(value); state.confirmed=false; refreshTotals(); }
+    function setMain(index){ state.rows.forEach((row,i)=>row.isMain=i===index); render(); }
+    function distributeToMain(){ chooseMain(); state.rows.forEach(row=>row.sellerPrice=row.isMain?state.finalTotal:0); render(); }
+    function distributeEvenly(){ if(!state.rows.length)return; const base=Math.floor(state.finalTotal/state.rows.length), remainder=state.finalTotal-(base*state.rows.length); state.rows.forEach((row,i)=>row.sellerPrice=base+(i<remainder?1:0)); render(); }
+    function resetToAI(){ state.finalTotal=state.aiTotal; state.rows.forEach(row=>row.sellerPrice=row.aiPrice); render(); }
+    function zeroAll(){ state.finalTotal=0; state.rows.forEach(row=>row.sellerPrice=0); render(); }
+    function isValid(){ return state.rows.reduce((s,r)=>s+amount(r.sellerPrice),0)===amount(state.finalTotal); }
+
+    function confirmJob(){
+        if(!isValid()) return;
+        state.note = document.getElementById('job-final-note').value;
+        state.confirmed = true;
+        const payload = getExportPayload();
+        document.getElementById('job-review-status').className='badge badge-green';
+        document.getElementById('job-review-status').textContent='CONFERMATO';
+        document.dispatchEvent(new CustomEvent('jobpricing:confirmed',{detail:payload}));
+        if(typeof window.onJobPricingConfirmed==='function') window.onJobPricingConfirmed(payload);
+    }
+
+    function getExportPayload(){
+        if(!isValid()) throw new Error('Distribuzione economica non coerente: export bloccato.');
+        return {
+            job:state.job, aiTotal:state.aiTotal, finalTotal:state.finalTotal,
+            note:document.getElementById('job-final-note')?.value || state.note,
+            confirmed:state.confirmed,
+            rows:state.rows.map(row=>({originalIndex:row.originalIndex, sellerPrice:amount(row.sellerPrice), aiPrice:row.aiPrice, isMain:row.isMain}))
+        };
+    }
+
+    function escapeHtml(value){ return String(value ?? '').replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch])); }
+    return {open,render,setRowPrice,setFinalTotal,setMain,distributeToMain,distributeEvenly,resetToAI,zeroAll,confirmJob,getExportPayload,isValid};
+})();
+</script>
+
+<script src="app.js"></script>
+<script src="analisi.js"></script>
+</body>
+</html>
