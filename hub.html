@@ -1,0 +1,1219 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sbolla Manager — Hub</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #f1f5f9; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #e2e8f0; }
+        ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        .nav-tab {
+            padding: 0.5rem 1rem;
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: #94a3b8;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+            background: transparent;
+            cursor: pointer;
+        }
+        .nav-tab:hover { color: white; }
+        .nav-tab.active {
+            color: white;
+            border-bottom-color: #3b82f6;
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            border: 1px solid #e2e8f0;
+        }
+        .loader-ring {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+        }
+        .loader-ring:after {
+            content: " ";
+            display: block;
+            width: 32px;
+            height: 32px;
+            margin: 4px;
+            border-radius: 50%;
+            border: 3px solid #3b82f6;
+            border-color: #3b82f6 transparent #3b82f6 transparent;
+            animation: loader-ring 1.2s linear infinite;
+        }
+        @keyframes loader-ring { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .drop-zone {
+            border: 3px dashed #cbd5e1;
+            border-radius: 12px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #f8fafc;
+        }
+        .drop-zone:hover {
+            border-color: #3b82f6;
+            background: #eff6ff;
+        }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .badge-green { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+        .badge-yellow { background: #fefce8; color: #854d0e; border: 1px solid #fde047; }
+        .badge-red { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+        .badge-orange { background: #fff7ed; color: #9a3412; border: 1px solid #fdba74; }
+        .badge-gray { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+        .section { display: none; }
+        .section.active { display: block; }
+        .notif-container {
+            position: fixed;
+            bottom: 16px;
+            right: 16px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-width: 400px;
+        }
+    </style>
+</head>
+<body class="text-slate-800">
+
+<!-- HEADER -->
+<header class="bg-slate-900 text-white shadow-md sticky top-0 z-40">
+    <div class="flex items-center justify-between px-6 h-14">
+        <div class="flex items-center gap-3">
+            <div class="bg-blue-600 w-8 h-8 rounded flex items-center justify-center font-bold text-white shadow">KF</div>
+            <div>
+                <h1 class="font-bold text-lg leading-tight">Sbolla Manager — Hub</h1>
+                <div class="text-[10px] text-slate-400">Tool unificato v2</div>
+            </div>
+        </div>
+        <div class="flex items-center gap-2">
+            <a href="index_job_v6_editabile.html" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded border border-slate-700 transition">💰 Pricing</a>
+            <a href="put_in.html" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded border border-slate-700 transition">🎱 Put-in-COG</a>
+        </div>
+    </div>
+    <div class="flex px-6 h-12 border-t border-slate-800">
+        <button class="nav-tab active" onclick="switchTab('storico', this)">📚 Storico</button>
+        <button class="nav-tab" onclick="switchTab('analisi', this)">📊 Analisi IA</button>
+        <button class="nav-tab" onclick="switchTab('ispeziona', this)">🔍 Ispeziona</button>
+        <button class="nav-tab" onclick="switchTab('split', this)">✂️ Split</button>
+        <button class="nav-tab" onclick="switchTab('merge', this)">📥 Merge</button>
+    </div>
+</header>
+
+<main class="p-6 max-w-7xl mx-auto">
+
+    <!-- ============================================ -->
+    <!-- SEZIONE 1: STORICO                            -->
+    <!-- ============================================ -->
+    <section id="section-storico" class="section active">
+        <div class="card p-6 mb-6">
+            <h2 class="text-xl font-bold text-slate-800 mb-2">📚 Gestione Storico</h2>
+            <p class="text-sm text-slate-500 mb-4">Carica un file Excel di interventi e genera <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs">sbolla_manifest.json</code> + chunk JSON. Ogni chunk pesa al massimo <b>18 MB</b>.</p>
+
+            <div class="drop-zone" onclick="document.getElementById('storicoFileInput').click()">
+                <div class="text-4xl mb-2">📊</div>
+                <div class="font-bold text-slate-700">Trascina qui il file Excel interventi</div>
+                <div class="text-xs text-slate-500 mt-1">oppure clicca per selezionare</div>
+                <div id="storicoFileStatus" class="text-sm mt-3 font-mono text-slate-500">Nessun file caricato</div>
+            </div>
+            <input type="file" id="storicoFileInput" accept=".xlsx,.xls" class="hidden">
+        </div>
+
+        <div id="storicoStats" class="hidden">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div class="card p-4">
+                    <div class="text-xs text-slate-500 uppercase font-bold">Righe</div>
+                    <div class="text-2xl font-bold text-slate-800" id="storico-totale-righe">0</div>
+                </div>
+                <div class="card p-4">
+                    <div class="text-xs text-slate-500 uppercase font-bold">Impianti</div>
+                    <div class="text-2xl font-bold text-blue-700" id="storico-totale-impianti">0</div>
+                </div>
+                <div class="card p-4">
+                    <div class="text-xs text-slate-500 uppercase font-bold">Chunk</div>
+                    <div class="text-2xl font-bold text-indigo-700" id="storico-totale-chunk">0</div>
+                </div>
+                <div class="card p-4">
+                    <div class="text-xs text-slate-500 uppercase font-bold">Dimensione totale</div>
+                    <div class="text-2xl font-bold text-emerald-700" id="storico-totale-dimensione">0 MB</div>
+                </div>
+            </div>
+
+            <div class="card p-6">
+                <h3 class="font-bold text-slate-700 mb-3">⚙️ Esportazione</h3>
+                <p class="text-sm text-slate-500 mb-3">I chunk sono generati in base alla dimensione (max 18 MB ciascuno), non al numero di righe.</p>
+                <button onclick="esportaStorico()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-3 rounded-lg shadow transition">📤 Esporta Manifest + Chunk</button>
+                <button onclick="resetStorico()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-6 py-3 rounded-lg transition ml-2">↺ Ricomincia</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================ -->
+    <!-- SEZIONE 2: ANALISI IA                         -->
+    <!-- ============================================ -->
+    <section id="section-analisi" class="section">
+        <div class="card p-6 mb-6">
+            <h2 class="text-xl font-bold text-slate-800 mb-2">📊 Analisi IA vs Storico</h2>
+            <p class="text-sm text-slate-500 mb-4">Classificazione SICURO / DA_VALUTARE / ASSORBI — modello commerciale completo (v2).</p>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div class="drop-zone" onclick="document.getElementById('analisiIAFile').click()">
+                    <div class="text-4xl mb-2">📊</div>
+                    <div class="font-bold text-slate-700">File IA (Excel)</div>
+                    <div id="analisi-ia-status" class="text-xs mt-3 font-mono text-slate-500">Nessun file caricato</div>
+                    <input type="file" id="analisiIAFile" accept=".xlsx,.xls" class="hidden">
+                </div>
+                <div class="drop-zone" onclick="document.getElementById('analisiStoricoFile').click()">
+                    <div class="text-4xl mb-2">📚</div>
+                    <div class="font-bold text-slate-700">Storico (manifest JSON)</div>
+                    <div id="analisi-storico-status" class="text-xs mt-3 font-mono text-slate-500">Nessun file caricato</div>
+                    <input type="file" id="analisiStoricoFile" accept=".json" class="hidden">
+                </div>
+            </div>
+        </div>
+
+        <div id="analisiRisultati" class="hidden">
+            <!-- KPI -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div class="card p-4">
+                    <div class="text-xs text-slate-500 uppercase font-bold">Job totali</div>
+                    <div class="text-2xl font-bold text-slate-800" id="analisi-jobs">0</div>
+                </div>
+                <div class="card p-4">
+                    <div class="text-xs text-blue-600 uppercase font-bold">Totale IA</div>
+                    <div class="text-2xl font-bold text-blue-700" id="analisi-totale-ia">€ 0</div>
+                </div>
+                <div class="card p-4">
+                    <div class="text-xs text-emerald-600 uppercase font-bold">SICURO</div>
+                    <div class="text-2xl font-bold text-emerald-700" id="analisi-sicuro-tot">€ 0</div>
+                    <div class="text-xs text-slate-400 mt-1" id="analisi-sicuro-jobs">0 job</div>
+                </div>
+                <div class="card p-4">
+                    <div class="text-xs text-amber-600 uppercase font-bold">DA VALUTARE</div>
+                    <div class="text-2xl font-bold text-amber-700" id="analisi-valutare-tot">€ 0</div>
+                    <div class="text-xs text-slate-400 mt-1" id="analisi-valutare-jobs">0 job</div>
+                </div>
+            </div>
+
+            <!-- Distribuzione sicurezza -->
+            <div class="card p-6 mb-6">
+                <h3 class="font-bold text-slate-700 mb-3">🎯 Distribuzione per Sicurezza</h3>
+                <div class="grid grid-cols-3 gap-4">
+                    <div class="border-2 border-emerald-200 rounded-xl p-5 bg-emerald-50">
+                        <div class="text-2xl font-bold text-emerald-700" id="dist-sicuro-jobs">0</div>
+                        <div class="text-xs text-emerald-600 uppercase font-bold mt-1">SICURO</div>
+                        <div class="text-lg font-mono font-bold text-emerald-800 mt-2" id="dist-sicuro-tot">€ 0</div>
+                    </div>
+                    <div class="border-2 border-amber-200 rounded-xl p-5 bg-amber-50">
+                        <div class="text-2xl font-bold text-amber-700" id="dist-valutare-jobs">0</div>
+                        <div class="text-xs text-amber-600 uppercase font-bold mt-1">DA VALUTARE</div>
+                        <div class="text-lg font-mono font-bold text-amber-800 mt-2" id="dist-valutare-tot">€ 0</div>
+                    </div>
+                    <div class="border-2 border-slate-200 rounded-xl p-5 bg-slate-50">
+                        <div class="text-2xl font-bold text-slate-600" id="dist-assorbi-jobs">0</div>
+                        <div class="text-xs text-slate-500 uppercase font-bold mt-1">ASSORBI</div>
+                        <div class="text-lg font-mono font-bold text-slate-700 mt-2" id="dist-assorbi-tot">€ 0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabella dettaglio regole -->
+            <div class="card p-6 mb-6">
+                <h3 class="font-bold text-slate-700 mb-3">📋 Dettaglio Regole Applicate</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-slate-50 text-slate-500 font-semibold text-xs uppercase">
+                            <tr>
+                                <th class="px-3 py-2 text-left">Regola</th>
+                                <th class="px-3 py-2 text-right">Job</th>
+                                <th class="px-3 py-2 text-right">Totale IA</th>
+                                <th class="px-3 py-2 text-right">Simulato</th>
+                                <th class="px-3 py-2 text-right">Delta</th>
+                            </tr>
+                        </thead>
+                        <tbody id="analisi-regole-body" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Tabella per tipo -->
+            <div class="card p-6 mb-6">
+                <h3 class="font-bold text-slate-700 mb-3">🔧 Distribuzione per Tipo</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-slate-50 text-slate-500 font-semibold text-xs uppercase">
+                            <tr>
+                                <th class="px-3 py-2 text-left">Tipo</th>
+                                <th class="px-3 py-2 text-right">Job</th>
+                                <th class="px-3 py-2 text-right">Totale IA</th>
+                                <th class="px-3 py-2 text-left">Sicurezza prevalente</th>
+                            </tr>
+                        </thead>
+                        <tbody id="analisi-tipi-body" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card p-6 flex justify-between items-center">
+                <div class="text-xs text-slate-500">💡 Esporta il dettaglio riga per riga</div>
+                <div class="flex gap-2">
+                    <button onclick="exportAnalisiDettaglio()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2 rounded-lg shadow transition">📥 Esporta Dettaglio</button>
+                    <button onclick="resetAnalisi()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-5 py-2 rounded-lg transition">↺ Ricomincia</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================ -->
+    <!-- SEZIONE 3: ISPEZIONA                          -->
+    <!-- ============================================ -->
+    <section id="section-ispeziona" class="section">
+        <div class="card p-6 mb-6">
+            <h2 class="text-xl font-bold text-slate-800 mb-2">🔍 Ispeziona File IA</h2>
+            <p class="text-sm text-slate-500 mb-4">Verifica che il file IA rispetti il contratto colonne A-AL.</p>
+
+            <div class="drop-zone" onclick="document.getElementById('ispezionaFile').click()">
+                <div class="text-4xl mb-2">🔍</div>
+                <div class="font-bold text-slate-700">Trascina qui il file Excel IA</div>
+                <div class="text-xs text-slate-500 mt-1">oppure clicca per selezionare</div>
+                <input type="file" id="ispezionaFile" accept=".xlsx,.xls" class="hidden">
+            </div>
+        </div>
+
+        <div id="ispezionaRisultati" class="hidden">
+            <div class="card p-6 mb-6">
+                <h3 class="font-bold text-slate-700 mb-3">✅ Validazione Contratto</h3>
+                <div id="ispeziona-checks" class="grid grid-cols-1 md:grid-cols-2 gap-2"></div>
+            </div>
+
+            <div class="card p-6">
+                <h3 class="font-bold text-slate-700 mb-3">📋 Struttura Colonne</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs">
+                        <thead class="bg-slate-50 text-slate-500 font-semibold uppercase">
+                            <tr>
+                                <th class="px-2 py-1 text-left">#</th>
+                                <th class="px-2 py-1 text-left">Ltr</th>
+                                <th class="px-2 py-1 text-left">Nome</th>
+                                <th class="px-2 py-1 text-left">Tipo</th>
+                                <th class="px-2 py-1 text-left">Esempio</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ispeziona-colonne-body" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================ -->
+    <!-- SEZIONE 4: SPLIT (ZIP unico)                  -->
+    <!-- ============================================ -->
+    <section id="section-split" class="section">
+        <div class="card p-6 mb-6">
+            <h2 class="text-xl font-bold text-slate-800 mb-2">✂️ Split per Commerciale</h2>
+            <p class="text-sm text-slate-500 mb-4">Carica il file IA e genera un file Excel per ogni venditore (in base alla colonna "Venditore" H/7). Tutti i file vengono raccolti in un unico ZIP.</p>
+
+            <div class="drop-zone" onclick="document.getElementById('splitFileInput').click()">
+                <div class="text-4xl mb-2">✂️</div>
+                <div class="font-bold text-slate-700">Trascina qui il file Excel IA</div>
+                <div class="text-xs text-slate-500 mt-1">oppure clicca per selezionare</div>
+                <div id="split-file-status" class="text-sm mt-3 font-mono text-slate-500">Nessun file caricato</div>
+                <input type="file" id="splitFileInput" accept=".xlsx,.xls" class="hidden">
+            </div>
+        </div>
+
+        <div id="splitRisultati" class="hidden">
+            <div class="card p-6 mb-6">
+                <h3 class="font-bold text-slate-700 mb-3">📋 Venditori rilevati</h3>
+                <div id="split-venditori-list" class="space-y-2"></div>
+            </div>
+
+            <div class="card p-6">
+                <button onclick="esportaSplit()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-3 rounded-lg shadow transition">📤 Esporta ZIP (tutti i file)</button>
+                <button onclick="resetSplit()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-6 py-3 rounded-lg transition ml-2">↺ Ricomincia</button>
+                <div class="text-xs text-slate-500 mt-3">Verrà generato un unico file <code class="bg-slate-100 px-1 py-0.5 rounded">KAPPA_SPLIT_[DATA].zip</code> con un file Excel per ogni venditore.</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================ -->
+    <!-- SEZIONE 5: MERGE (wizard a step)              -->
+    <!-- ============================================ -->
+    <section id="section-merge" class="section">
+
+        <!-- Step 1 -->
+        <div class="card p-6 mb-6">
+            <h2 class="text-xl font-bold text-slate-800 mb-2">📥 Merge File Venditori</h2>
+            <p class="text-sm text-slate-500 mb-4">Unisci i file Excel prezzati dai venditori in un unico file finale pronto per Put-in-COG.</p>
+
+            <div class="flex items-end gap-3">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Quanti file vuoi caricare?</label>
+                    <input type="number" id="merge-num-files" min="1" max="50" value="2" class="border border-slate-300 rounded px-3 py-2 text-sm w-24">
+                </div>
+                <button onclick="generaUploadersMerge()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2 rounded-lg shadow transition">Genera uploader</button>
+            </div>
+        </div>
+
+        <!-- Step 2 -->
+        <div id="merge-uploaders-container" class="hidden">
+            <div class="card p-6 mb-6">
+                <h3 class="font-bold text-slate-700 mb-3">📁 Carica i file</h3>
+                <div id="merge-uploaders-list" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+            </div>
+
+            <!-- Report live -->
+            <div class="card p-6 mb-6">
+                <h3 class="font-bold text-slate-700 mb-3">📊 Report live</h3>
+                <div id="merge-report" class="text-sm space-y-1 font-mono">
+                    <div>In attesa di caricamento...</div>
+                </div>
+            </div>
+
+            <!-- Step 4 -->
+            <div class="card p-6 flex justify-between items-center">
+                <div class="text-xs text-slate-500">Quando tutti i file sono caricati, puoi procedere con il merge.</div>
+                <div class="flex gap-2">
+                    <button id="merge-export-btn" onclick="esportaMerge()" disabled class="bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold px-6 py-3 rounded-lg shadow transition">📤 Unisci e scarica</button>
+                    <button onclick="resetMerge()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-6 py-3 rounded-lg transition">↺ Ricomincia</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<!-- MODALE CONFLITTO MERGE -->
+<div id="merge-conflict-modal" class="hidden fixed inset-0 z-50 bg-slate-900/70 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl">
+        <div class="px-6 py-4 border-b border-slate-200 bg-amber-50 rounded-t-xl">
+            <h3 class="text-lg font-bold text-amber-800">⚠️ Conflitto rilevato</h3>
+            <p class="text-xs text-slate-500 mt-1" id="merge-conflict-title">—</p>
+        </div>
+        <div class="p-6">
+            <p class="text-sm text-slate-700 mb-4" id="merge-conflict-message">Il Job appare in più file. Quale versione tenere?</p>
+            <div id="merge-conflict-options" class="space-y-2"></div>
+        </div>
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 rounded-b-xl flex justify-end gap-2">
+            <button onclick="mergeConflictChoice(null)" class="px-4 py-2 bg-white hover:bg-slate-100 text-slate-600 border border-slate-300 rounded-lg font-bold transition">Annulla merge</button>
+        </div>
+    </div>
+</div>
+
+<!-- NOTIFICHE -->
+<div id="notif-container" class="notif-container"></div>
+
+<script>
+// ============================================
+// TAB SWITCHING
+// ============================================
+function switchTab(name, btn) {
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+    document.getElementById('section-' + name).classList.add('active');
+    btn.classList.add('active');
+}
+
+function notifica(msg, tipo = 'info') {
+    const container = document.getElementById('notif-container');
+    const colors = {
+        success: 'border-emerald-200 text-emerald-600',
+        warning: 'border-amber-200 text-amber-600',
+        error: 'border-red-200 text-red-600',
+        info: 'border-blue-200 text-blue-600'
+    };
+    const icons = { success: '✅', warning: '⚠️', error: '❌', info: 'ℹ️' };
+    const n = document.createElement('div');
+    n.className = `bg-white rounded-lg shadow-xl border p-3 ${colors[tipo] || colors.info}`;
+    n.innerHTML = `<div class="flex items-start gap-2"><span class="text-lg">${icons[tipo]}</span><div class="text-sm font-medium">${msg}</div></div>`;
+    container.appendChild(n);
+    setTimeout(() => n.remove(), 4000);
+}
+
+function formatEuro(n) {
+    if (n === null || n === undefined || isNaN(n)) return '€ 0';
+    return '€ ' + Number(n).toLocaleString('it-IT', { maximumFractionDigits: 0 });
+}
+
+// ============================================
+// SEZIONE 1: STORICO (chunk per dimensione, max 18 MB)
+// ============================================
+let storicoData = null;
+
+document.getElementById('storicoFileInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: 'array', cellDates: false });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
+        if (aoa.length < 2) throw new Error('File troppo piccolo');
+
+        const headers = aoa[0];
+        const rows = aoa.slice(1).filter(r => r.some(c => c !== '' && c !== null && c !== undefined));
+
+        const idxImpianto = headers.findIndex(h => h === 'Impiantodiriferimento (Job) (Job)');
+        const impianti = new Set(rows.map(r => r[idxImpianto]).filter(Boolean));
+
+        storicoData = {
+            fileName: file.name,
+            headers,
+            rows,
+            totaleRighe: rows.length,
+            totaleImpianti: impianti.size
+        };
+
+        document.getElementById('storicoFileStatus').innerHTML = `<span class="text-emerald-600">✅ ${file.name}</span>`;
+        document.getElementById('storico-totale-righe').textContent = rows.length.toLocaleString('it-IT');
+        document.getElementById('storico-totale-impianti').textContent = impianti.size.toLocaleString('it-IT');
+        document.getElementById('storico-totale-chunk').textContent = '—';
+        document.getElementById('storico-totale-dimensione').textContent = '—';
+        document.getElementById('storicoStats').classList.remove('hidden');
+        notifica(`File caricato: ${rows.length} righe, ${impianti.size} impianti`, 'success');
+    } catch (err) {
+        notifica('Errore: ' + err.message, 'error');
+    }
+});
+
+async function esportaStorico() {
+    if (!storicoData) return;
+    const { headers, rows, fileName } = storicoData;
+
+    // Converti ogni riga in oggetto
+    const objects = rows.map(row => {
+        const obj = {};
+        headers.forEach((h, j) => { obj[h] = row[j]; });
+        return obj;
+    });
+
+    // Chunk per dimensione (max 18 MB)
+    const MAX_BYTES = 18 * 1024 * 1024;
+    const chunks = [];
+    let current = [];
+    let currentBytes = 0;
+    for (const obj of objects) {
+        const serialized = JSON.stringify(obj);
+        const size = new Blob([serialized]).size;
+        if (current.length > 0 && currentBytes + size > MAX_BYTES) {
+            chunks.push(current);
+            current = [];
+            currentBytes = 0;
+        }
+        current.push(obj);
+        currentBytes += size;
+    }
+    if (current.length > 0) chunks.push(current);
+
+    const baseName = fileName.replace(/\.xlsx?$/i, '');
+
+    // Scarica i chunk
+    for (let i = 0; i < chunks.length; i++) {
+        const blob = new Blob([JSON.stringify(chunks[i])], { type: 'application/json' });
+        scaricaBlob(blob, `${baseName}_chunk_${i}.json`);
+        await new Promise(r => setTimeout(r, 200));
+    }
+
+    // Genera manifest
+    const manifest = {
+        fileName: fileName,
+        timestamp: new Date().toISOString(),
+        numChunks: chunks.length,
+        totalInterventi: rows.length,
+        chunks: chunks.map((c, i) => ({
+            index: i,
+            fileName: `${baseName}_chunk_${i}.json`,
+            numRighe: c.length
+        }))
+    };
+    const manifestBlob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
+    scaricaBlob(manifestBlob, `sbolla_manifest.json`);
+
+    // Statistiche finali
+    const totBytes = chunks.reduce((sum, c) => sum + new Blob([JSON.stringify(c)]).size, 0);
+    document.getElementById('storico-totale-chunk').textContent = chunks.length;
+    document.getElementById('storico-totale-dimensione').textContent = (totBytes / 1024 / 1024).toFixed(1) + ' MB';
+    notifica(`Esportati ${chunks.length} chunk (max 18 MB ciascuno) + manifest`, 'success');
+}
+
+function resetStorico() {
+    storicoData = null;
+    document.getElementById('storicoFileInput').value = '';
+    document.getElementById('storicoStats').classList.add('hidden');
+    document.getElementById('storicoFileStatus').textContent = 'Nessun file caricato';
+}
+
+// ============================================
+// SEZIONE 2: ANALISI IA (logica completa da analizzaIA_v2)
+// ============================================
+const COLS_IA = {
+    JOB: "Job",
+    IMPIANTO: "Impiantodiriferimento (Job) (Job)",
+    INDIRIZZO: "Indrizzo Edificio (LocalUnitId) (Impianto)",
+    CONTRATTO: "Contract template (LocalUnitId) (Impianto)",
+    WORK_PERFORMED: "LocalWorkPerformed",
+    COMP_CODE: "ComponentCode (LocalComponent) (Component)",
+    CATEGORIA: "LocalComponentCategory",
+    COMPONENTE: "LocalComponent",
+    DESCRIZIONE: "TaskDescription",
+    PREZZO_CONSIGLIATO: "PREZZO CONSIGLIATO",
+    VENDITORE: "Venditore (LocalUnitId) (Impianto)",
+    DATA: "ScheduledDate (Job) (Job)"
+};
+
+const KEYWORDS_CAUSA_ESTERNA = [
+    'vandalismo', 'vandalici', 'manomissione', 'manomesso',
+    'uso improprio', 'atti vandalici',
+    'recupero chiavi', 'recupero cellulare', 'recupero oggetti', 'recupero oggetto',
+    'porte lasciate aperte', 'porta lasciata aperta',
+    'causa esterna', 'cause esterne',
+    'imputabile al cliente', "imputabile all'utenza", "imputabile all'utente",
+    'lavori di terzi',
+    'infiltrazione', 'allagamento', 'incendio', 'urto', 'sovraccarico',
+    'danno procurato', 'danneggiato da', 'sforzata', 'sforzato'
+];
+const KEYWORDS_GARANZIA = ['garanzia', 'in garanzia'];
+const KEYWORDS_COMMESSA = ['commessa', 'da commessa', 'come da preventivo', 'preventivo'];
+const KEYWORDS_REPERIBILITA = ['reperibilità'];
+const KEYWORDS_SOSTITUZIONE = ['SOST', 'SOSTITUZIONE', 'INSTALLAZIONE', 'FORNITURA', 'FORN.', 'MONTAGGIO'];
+const KEYWORDS_RIPARAZIONE = ['RIPARAZIONE A CONSUNTIVO', 'RIPAR', 'RIPR', 'SMONT', 'REVIS', 'RIPRISTINO', 'RICERCA GUASTI'];
+const KEYWORDS_OPERATIVO = ['RESET', 'LIBERARE', 'CONTROLLO', 'VERIFICA', 'REGOL', 'LUBRIFICAZIONE', 'ELIMINATO', 'MATERIALE ESTRANEO', 'REGISTRATO', 'REGISTRAZIONE', 'PULIZIA', 'SPURGO', 'SERRAGGIO', 'REGOLAZIONE', 'RABBOCCO', 'SVUOTAMENTO'];
+
+let analisiIA = null;
+let analisiStorico = null;
+let analisiStoricoPerImpianto = new Map();
+let analisiChiamateRecenti = new Map();
+
+document.getElementById('analisiIAFile').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: 'array', cellDates: false });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
+        const headers = aoa[0];
+        const rows = aoa.slice(1).filter(r => r.some(c => c !== '' && c !== null && c !== undefined));
+        const colIndex = {};
+        headers.forEach((h, i) => { if (h) colIndex[h] = i; });
+        analisiIA = { headers, rows, colIndex };
+        document.getElementById('analisi-ia-status').innerHTML = `<span class="text-emerald-600">✅ ${rows.length} righe</span>`;
+        tryAvviaAnalisi();
+    } catch (err) {
+        notifica('Errore IA: ' + err.message, 'error');
+    }
+});
+
+document.getElementById('analisiStoricoFile').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        if (data.numChunks && data.chunks) {
+            const chunks = await Promise.all(data.chunks.map(async c => {
+                const resp = await fetch(c.fileName);
+                return await resp.json();
+            }));
+            analisiStorico = chunks.flat();
+        } else if (Array.isArray(data)) {
+            analisiStorico = data;
+        } else if (data.interventi) {
+            analisiStorico = data.interventi;
+        } else {
+            throw new Error('Formato non riconosciuto');
+        }
+        document.getElementById('analisi-storico-status').innerHTML = `<span class="text-emerald-600">✅ ${analisiStorico.length} interventi</span>`;
+        tryAvviaAnalisi();
+    } catch (err) {
+        notifica('Errore storico: ' + err.message, 'error');
+    }
+});
+
+function tryAvviaAnalisi() {
+    if (!analisiIA || !analisiStorico) return;
+    eseguiAnalisiCompleta();
+    document.getElementById('analisiRisultati').classList.remove('hidden');
+}
+
+function classificaTipo(codice, componente, workPerf, descrizione) {
+    const testo = (componente + ' ' + workPerf + ' ' + descrizione + ' ' + codice).toUpperCase();
+    if (codice === 'A24' || testo.includes('LASCIATO FUORI SERVIZIO') || testo.includes('LASCIATO FERMO')) return 'fuori_servizio';
+    if (KEYWORDS_SOSTITUZIONE.some(k => testo.includes(k))) return 'sostituzione';
+    if (KEYWORDS_RIPARAZIONE.some(k => testo.includes(k))) return 'riparazione';
+    if (KEYWORDS_OPERATIVO.some(k => testo.includes(k))) return 'operativo';
+    return 'altro';
+}
+
+function applicaRegole({ tipo, contratto, codice, componente, workPerf, descrizione, impianto, prezzoIA }) {
+    const testo = (componente + ' ' + workPerf + ' ' + descrizione).toLowerCase();
+
+    // Garanzia
+    if (KEYWORDS_GARANZIA.some(k => testo.includes(k))) return { sicurezza: 'ASSORBI', prezzo: 0, regola: 'Garanzia → 0' };
+    // Commessa/preventivo
+    if (KEYWORDS_COMMESSA.some(k => testo.includes(k))) return { sicurezza: 'ASSORBI', prezzo: 0, regola: 'Commessa/preventivo → 0' };
+    // Fuori servizio
+    if (tipo === 'fuori_servizio') return { sicurezza: 'ASSORBI', prezzo: 0, regola: 'A24 fuori servizio → commessa' };
+    // Causa esterna
+    if (KEYWORDS_CAUSA_ESTERNA.some(k => testo.includes(k))) return { sicurezza: 'SICURO', prezzo: prezzoIA, regola: 'Causa esterna → fattura sempre' };
+    // Reperibilità
+    if (KEYWORDS_REPERIBILITA.some(k => testo.includes(k))) return { sicurezza: 'SICURO', prezzo: prezzoIA, regola: 'Reperibilità → fattura sempre' };
+    // Contratti
+    if (contratto.startsWith('T -') || contratto === 'T - Totale') return { sicurezza: 'ASSORBI', prezzo: 0, regola: 'T-Totale → coperto' };
+    if (contratto.startsWith('OM')) return { sicurezza: 'ASSORBI', prezzo: 0, regola: 'OM → coperto (usura)' };
+    if (contratto.startsWith('OA')) {
+        if (tipo === 'sostituzione' || tipo === 'riparazione') return { sicurezza: 'SICURO', prezzo: prezzoIA, regola: 'OA ' + tipo + ' → extra canone' };
+        if (tipo === 'operativo') {
+            const stressato = (analisiChiamateRecenti.get(impianto) || 0) >= 3;
+            if (stressato) return { sicurezza: 'ASSORBI', prezzo: 0, regola: 'OA operativo + cliente stressato → assorbi' };
+            return { sicurezza: 'SICURO', prezzo: prezzoIA, regola: 'OA operativo cliente tranquillo → fattura' };
+        }
+        return { sicurezza: 'DA_VALUTARE', prezzo: prezzoIA, regola: 'OA altro → verifica' };
+    }
+    if (contratto.startsWith('SA')) {
+        if (tipo === 'sostituzione' || tipo === 'riparazione') return { sicurezza: 'DA_VALUTARE', prezzo: Math.round(prezzoIA * 0.6), regola: 'SA ' + tipo + ' → solo materiale (60%)' };
+        return { sicurezza: 'ASSORBI', prezzo: 0, regola: 'SA operativo → coperto' };
+    }
+    if (contratto.startsWith('P -')) return { sicurezza: 'DA_VALUTARE', prezzo: Math.round(prezzoIA * 0.5), regola: 'P → verifica (50%)' };
+    if (contratto === 'N/D') return { sicurezza: 'SICURO', prezzo: prezzoIA, regola: 'N/D no garanzia → fattura' };
+    if (contratto === 'Conservativa') return { sicurezza: 'DA_VALUTARE', prezzo: prezzoIA, regola: 'Conservativa → verifica' };
+    return { sicurezza: 'DA_VALUTARE', prezzo: prezzoIA, regola: 'Contratto non standard → verifica' };
+}
+
+function eseguiAnalisiCompleta() {
+    // Costruisci indice storico
+    analisiStoricoPerImpianto = new Map();
+    analisiChiamateRecenti = new Map();
+    const oggi = new Date();
+    const trentaGiorniFa = new Date(oggi.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    analisiStorico.forEach(row => {
+        const imp = row[COLS_IA.IMPIANTO];
+        if (!imp) return;
+        if (!analisiStoricoPerImpianto.has(imp)) analisiStoricoPerImpianto.set(imp, []);
+        analisiStoricoPerImpianto.get(imp).push(row);
+
+        const dataRaw = row['JobCompletedDate (Job) (Job)'];
+        let data = null;
+        if (dataRaw instanceof Date) data = dataRaw;
+        else if (typeof dataRaw === 'number') data = new Date(Math.round((dataRaw - 25569) * 86400 * 1000));
+        else if (dataRaw) data = new Date(dataRaw);
+        if (data && data >= trentaGiorniFa) {
+            analisiChiamateRecenti.set(imp, (analisiChiamateRecenti.get(imp) || 0) + 1);
+        }
+    });
+
+    // Analizza IA
+    const { rows, colIndex } = analisiIA;
+    const risultati = [];
+    const kpi = { jobs: 0, totIA: 0, sicuro: { jobs: 0, tot: 0 }, valutare: { jobs: 0, tot: 0 }, assorbi: { jobs: 0, tot: 0 }, perRegola: {}, perTipo: {} };
+
+    rows.forEach(row => {
+        const jobId = row[colIndex[COLS_IA.JOB]];
+        if (!jobId) return;
+
+        const prezzoIA = parseFloat(row[colIndex[COLS_IA.PREZZO_CONSIGLIATO]]) || 0;
+        const contratto = String(row[colIndex[COLS_IA.CONTRATTO]] || '').trim() || 'N/D';
+        const codice = String(row[colIndex[COLS_IA.COMP_CODE]] || '').trim();
+        const componente = String(row[colIndex[COLS_IA.COMPONENTE]] || '').trim();
+        const workPerf = String(row[colIndex[COLS_IA.WORK_PERFORMED]] || '').trim();
+        const descrizione = String(row[colIndex[COLS_IA.DESCRIZIONE]] || '').trim();
+        const impianto = String(row[colIndex[COLS_IA.IMPIANTO]] || '').trim();
+
+        kpi.jobs++;
+        kpi.totIA += prezzoIA;
+
+        const tipo = classificaTipo(codice, componente, workPerf, descrizione);
+        const esito = applicaRegole({ tipo, contratto, codice, componente, workPerf, descrizione, impianto, prezzoIA });
+
+        risultati.push({ jobId, impianto, contratto, codice, componente, workPerf, tipo, prezzoIA, prezzoSimulato: esito.prezzo, sicurezza: esito.sicurezza, regola: esito.regola });
+
+        const keyMap = { 'SICURO': 'sicuro', 'DA_VALUTARE': 'valutare', 'ASSORBI': 'assorbi' };
+        const k = keyMap[esito.sicurezza];
+        if (k) { kpi[k].jobs++; kpi[k].tot += esito.prezzo; }
+
+        if (!kpi.perRegola[esito.regola]) kpi.perRegola[esito.regola] = { jobs: 0, totIA: 0, totSim: 0 };
+        kpi.perRegola[esito.regola].jobs++;
+        kpi.perRegola[esito.regola].totIA += prezzoIA;
+        kpi.perRegola[esito.regola].totSim += esito.prezzo;
+
+        if (!kpi.perTipo[tipo]) kpi.perTipo[tipo] = { jobs: 0, totIA: 0, sicurezza: {} };
+        kpi.perTipo[tipo].jobs++;
+        kpi.perTipo[tipo].totIA += prezzoIA;
+        kpi.perTipo[tipo].sicurezza[esito.sicurezza] = (kpi.perTipo[tipo].sicurezza[esito.sicurezza] || 0) + 1;
+    });
+
+    window._analisiRisultati = risultati;
+    window._analisiKpi = kpi;
+    renderAnalisi(kpi);
+}
+
+function renderAnalisi(kpi) {
+    document.getElementById('analisi-jobs').textContent = kpi.jobs.toLocaleString('it-IT');
+    document.getElementById('analisi-totale-ia').textContent = formatEuro(kpi.totIA);
+    document.getElementById('analisi-sicuro-tot').textContent = formatEuro(kpi.sicuro.tot);
+    document.getElementById('analisi-sicuro-jobs').textContent = kpi.sicuro.jobs + ' job';
+    document.getElementById('analisi-valutare-tot').textContent = formatEuro(kpi.valutare.tot);
+    document.getElementById('analisi-valutare-jobs').textContent = kpi.valutare.jobs + ' job';
+    document.getElementById('dist-sicuro-jobs').textContent = kpi.sicuro.jobs;
+    document.getElementById('dist-sicuro-tot').textContent = formatEuro(kpi.sicuro.tot);
+    document.getElementById('dist-valutare-jobs').textContent = kpi.valutare.jobs;
+    document.getElementById('dist-valutare-tot').textContent = formatEuro(kpi.valutare.tot);
+    document.getElementById('dist-assorbi-jobs').textContent = kpi.assorbi.jobs;
+    document.getElementById('dist-assorbi-tot').textContent = formatEuro(kpi.assorbi.tot);
+
+    const tbody = document.getElementById('analisi-regole-body');
+    tbody.innerHTML = Object.entries(kpi.perRegola).sort((a, b) => b[1].totIA - a[1].totIA).map(([regola, d]) => `
+        <tr class="hover:bg-slate-50">
+            <td class="px-3 py-2 text-xs">${regola}</td>
+            <td class="px-3 py-2 text-right font-mono text-xs">${d.jobs}</td>
+            <td class="px-3 py-2 text-right font-mono text-xs text-blue-700">${formatEuro(d.totIA)}</td>
+            <td class="px-3 py-2 text-right font-mono text-xs text-emerald-700">${formatEuro(d.totSim)}</td>
+            <td class="px-3 py-2 text-right font-mono text-xs text-red-600">-${formatEuro(d.totIA - d.totSim)}</td>
+        </tr>
+    `).join('');
+
+    const tbodyTipi = document.getElementById('analisi-tipi-body');
+    tbodyTipi.innerHTML = Object.entries(kpi.perTipo).sort((a, b) => b[1].totIA - a[1].totIA).map(([tipo, d]) => {
+        const prev = Object.entries(d.sicurezza).sort((a, b) => b[1] - a[1])[0]?.[0] || '—';
+        const cls = prev === 'SICURO' ? 'badge-green' : prev === 'DA_VALUTARE' ? 'badge-yellow' : 'badge-gray';
+        return `
+            <tr class="hover:bg-slate-50">
+                <td class="px-3 py-2 text-xs font-bold">${tipo}</td>
+                <td class="px-3 py-2 text-right font-mono text-xs">${d.jobs}</td>
+                <td class="px-3 py-2 text-right font-mono text-xs text-blue-700">${formatEuro(d.totIA)}</td>
+                <td class="px-3 py-2"><span class="badge ${cls}">${prev}</span></td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function exportAnalisiDettaglio() {
+    if (!window._analisiRisultati) return;
+    const header = ['Job', 'Impianto', 'Contratto', 'Codice', 'Componente', 'WorkPerformed', 'Tipo', 'Sicurezza', 'PrezzoIA', 'PrezzoSimulato', 'Delta', 'Regola'];
+    const rows = [header];
+    window._analisiRisultati.forEach(r => {
+        rows.push([r.jobId, r.impianto, r.contratto, r.codice, r.componente, r.workPerf, r.tipo, r.sicurezza, r.prezzoIA, r.prezzoSimulato, r.prezzoIA - r.prezzoSimulato, r.regola]);
+    });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Dettaglio');
+    XLSX.writeFile(wb, `analisi_dettaglio_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    notifica('Dettaglio esportato', 'success');
+}
+
+function resetAnalisi() {
+    analisiIA = null;
+    analisiStorico = null;
+    document.getElementById('analisiRisultati').classList.add('hidden');
+    document.getElementById('analisi-ia-status').textContent = 'Nessun file caricato';
+    document.getElementById('analisi-storico-status').textContent = 'Nessun file caricato';
+}
+
+// ============================================
+// SEZIONE 3: ISPEZIONA
+// ============================================
+const CONTRACT_ISPEZIONE = {
+    costoIndex: 23, noteIndex: 24, jobIndex: 3,
+    required: {
+        'Job': 3, 'Impiantodiriferimento (Job) (Job)': 4,
+        'Indrizzo Edificio (LocalUnitId) (Impianto)': 5,
+        'Contract template (LocalUnitId) (Impianto)': 11,
+        'COSTO': 23, 'NOTE': 24, 'FATTURABILITÀ': 29, 'PREZZO CONSIGLIATO': 30,
+        'CRITICITÀ IMPIANTO': 31, 'CONFIDENZA': 32, 'MOTIVAZIONE': 33,
+        'INDICAZIONE COMMERCIALE': 34, 'ANALOGHI UTILIZZATI': 35,
+        'INTERVALLO STORICO': 36, 'CREDITO COMMERCIALE': 37
+    }
+};
+
+document.getElementById('ispezionaFile').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: 'array', cellDates: false });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
+        const headers = aoa[0];
+
+        const checks = [];
+        checks.push({ label: 'COSTO a indice 23', ok: headers[23] === 'COSTO', detail: headers[23] || '—' });
+        checks.push({ label: 'NOTE a indice 24', ok: headers[24] === 'NOTE', detail: headers[24] || '—' });
+        checks.push({ label: 'Job a indice 3', ok: headers[3] === 'Job', detail: headers[3] || '—' });
+        checks.push({ label: 'Totale colonne', ok: headers.length === 38, detail: headers.length });
+        const missing = Object.entries(CONTRACT_ISPEZIONE.required).filter(([name]) => !headers.includes(name));
+        checks.push({ label: 'Colonne obbligatorie', ok: missing.length === 0, detail: missing.length > 0 ? `Mancanti: ${missing.map(m => m[0]).join(', ')}` : 'Tutte presenti' });
+
+        document.getElementById('ispeziona-checks').innerHTML = checks.map(c => `
+            <div class="p-3 rounded-lg border ${c.ok ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}">
+                <div class="flex items-center justify-between">
+                    <span class="font-bold text-sm ${c.ok ? 'text-emerald-700' : 'text-red-700'}">${c.ok ? '✅' : '❌'} ${c.label}</span>
+                    <span class="text-xs font-mono ${c.ok ? 'text-emerald-600' : 'text-red-600'}">${c.detail}</span>
+                </div>
+            </div>
+        `).join('');
+
+        const tbody = document.getElementById('ispeziona-colonne-body');
+        tbody.innerHTML = headers.map((h, i) => `
+            <tr class="hover:bg-slate-50">
+                <td class="px-2 py-1 font-mono text-slate-400">${i}</td>
+                <td class="px-2 py-1 font-mono text-slate-400">${String.fromCharCode(65 + i)}</td>
+                <td class="px-2 py-1 font-bold">${h || '—'}</td>
+                <td class="px-2 py-1 text-slate-500">${typeof aoa[1]?.[i] === 'number' ? 'numero' : 'testo'}</td>
+                <td class="px-2 py-1 font-mono text-slate-500 truncate max-w-xs">${aoa[1]?.[i] || ''}</td>
+            </tr>
+        `).join('');
+
+        document.getElementById('ispezionaRisultati').classList.remove('hidden');
+        notifica(`File ispezionato: ${headers.length} colonne`, 'success');
+    } catch (err) {
+        notifica('Errore: ' + err.message, 'error');
+    }
+});
+
+// ============================================
+// SEZIONE 4: SPLIT (ZIP unico)
+// ============================================
+let splitData = null;
+
+document.getElementById('splitFileInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: 'array', cellDates: false });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
+        const headers = aoa[0];
+        const rows = aoa.slice(1).filter(r => r.some(c => c !== '' && c !== null && c !== undefined));
+
+        const idxVenditore = headers.findIndex(h => h === 'Venditore (LocalUnitId) (Impianto)');
+        if (idxVenditore < 0) throw new Error('Colonna Venditore non trovata');
+
+        const perVenditore = {};
+        rows.forEach(row => {
+            const v = row[idxVenditore] || 'N/D';
+            if (!perVenditore[v]) perVenditore[v] = [];
+            perVenditore[v].push(row);
+        });
+
+        splitData = { headers, perVenditore, fileName: file.name };
+
+        document.getElementById('split-file-status').innerHTML = `<span class="text-emerald-600">✅ ${rows.length} righe, ${Object.keys(perVenditore).length} venditori</span>`;
+
+        const list = document.getElementById('split-venditori-list');
+        list.innerHTML = Object.entries(perVenditore)
+            .sort((a, b) => b[1].length - a[1].length)
+            .map(([v, rows]) => `
+                <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
+                    <span class="font-bold text-slate-700">${v}</span>
+                    <span class="text-sm text-slate-500 font-mono">${rows.length} righe</span>
+                </div>
+            `).join('');
+
+        document.getElementById('splitRisultati').classList.remove('hidden');
+        notifica(`Split pronto: ${Object.keys(perVenditore).length} venditori`, 'success');
+    } catch (err) {
+        notifica('Errore split: ' + err.message, 'error');
+    }
+});
+
+async function esportaSplit() {
+    if (!splitData) return;
+    const { headers, perVenditore, fileName } = splitData;
+    const baseName = fileName.replace(/\.xlsx?$/i, '');
+    const dataOggi = new Date().toISOString().slice(0, 10);
+
+    const zip = new JSZip();
+    const folder = zip.folder('venditori');
+
+    for (const [venditore, rows] of Object.entries(perVenditore)) {
+        const out = [headers];
+        rows.forEach(r => out.push([...r]));
+        const ws = XLSX.utils.aoa_to_sheet(out);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Interventi');
+        const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const safeVend = venditore.replace(/[^a-zA-Z0-9]/g, '_');
+        folder.file(`${baseName}_${safeVend}_${dataOggi}.xlsx`, wbout);
+    }
+
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+    scaricaBlob(blob, `${baseName}_SPLIT_${dataOggi}.zip`);
+    notifica(`ZIP esportato con ${Object.keys(perVenditore).length} file`, 'success');
+}
+
+function resetSplit() {
+    splitData = null;
+    document.getElementById('splitFileInput').value = '';
+    document.getElementById('splitRisultati').classList.add('hidden');
+    document.getElementById('split-file-status').textContent = 'Nessun file caricato';
+}
+
+// ============================================
+// SEZIONE 5: MERGE (wizard a step)
+// ============================================
+let mergeFiles = [];  // array di { fileName, headers, rows }
+let mergeExpectedCount = 0;
+
+function generaUploadersMerge() {
+    const n = parseInt(document.getElementById('merge-num-files').value) || 0;
+    if (n < 1 || n > 50) {
+        notifica('Inserisci un numero tra 1 e 50', 'warning');
+        return;
+    }
+    mergeExpectedCount = n;
+    mergeFiles = [];
+
+    const list = document.getElementById('merge-uploaders-list');
+    list.innerHTML = '';
+    for (let i = 0; i < n; i++) {
+        const div = document.createElement('div');
+        div.className = 'border border-slate-200 rounded-lg p-3 bg-slate-50';
+        div.id = `merge-uploader-${i}`;
+        div.innerHTML = `
+            <div class="font-bold text-sm text-slate-700 mb-2">File ${i + 1}</div>
+            <input type="file" id="merge-file-${i}" accept=".xlsx,.xls" class="hidden">
+            <button onclick="document.getElementById('merge-file-${i}').click()" class="w-full bg-white hover:bg-blue-50 border-2 border-dashed border-slate-300 hover:border-blue-400 rounded p-3 text-xs text-slate-500 transition">
+                📂 Clicca per selezionare
+            </button>
+            <div id="merge-status-${i}" class="text-xs font-mono mt-2 text-slate-400">In attesa...</div>
+        `;
+        list.appendChild(div);
+    }
+
+    // Aggiungi listener
+    for (let i = 0; i < n; i++) {
+        setTimeout(() => {
+            document.getElementById(`merge-file-${i}`).addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                try {
+                    const buf = await file.arrayBuffer();
+                    const wb = XLSX.read(buf, { type: 'array', cellDates: false });
+                    const sheet = wb.Sheets[wb.SheetNames[0]];
+                    const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
+                    const headers = aoa[0];
+                    const rows = aoa.slice(1).filter(r => r.some(c => c !== '' && c !== null && c !== undefined));
+                    mergeFiles[i] = { fileName: file.name, headers, rows };
+                    document.getElementById(`merge-status-${i}`).innerHTML = `<span class="text-emerald-600">✅ ${file.name} (${rows.length} righe)</span>`;
+                    aggiornaReportMerge();
+                } catch (err) {
+                    document.getElementById(`merge-status-${i}`).innerHTML = `<span class="text-red-600">❌ ${err.message}</span>`;
+                }
+            });
+        }, 50);
+    }
+
+    document.getElementById('merge-uploaders-container').classList.remove('hidden');
+    aggiornaReportMerge();
+}
+
+function aggiornaReportMerge() {
+    const caricati = mergeFiles.filter(f => f).length;
+    const report = document.getElementById('merge-report');
+    const btn = document.getElementById('merge-export-btn');
+
+    if (caricati === 0) {
+        report.innerHTML = '<div>In attesa di caricamento...</div>';
+        btn.disabled = true;
+        return;
+    }
+
+    // Verifica headers coerenti
+    const firstHeaders = mergeFiles.find(f => f)?.headers;
+    const headersOk = mergeFiles.every(f => !f || JSON.stringify(f.headers) === JSON.stringify(firstHeaders));
+
+    // Job unici
+    const allJobIds = new Set();
+    const jobPerFile = {};
+    mergeFiles.forEach((f, i) => {
+        if (!f) return;
+        const idxJob = f.headers.findIndex(h => h === 'Job');
+        jobPerFile[i] = new Set();
+        f.rows.forEach(r => {
+            const jid = r[idxJob];
+            if (jid) { allJobIds.add(jid); jobPerFile[i].add(jid); }
+        });
+    });
+
+    // Conflitti
+    let conflittiCount = 0;
+    const jobToFiles = {};
+    mergeFiles.forEach((f, i) => {
+        if (!f) return;
+        jobPerFile[i]?.forEach(jid => {
+            if (!jobToFiles[jid]) jobToFiles[jid] = [];
+            jobToFiles[jid].push(i);
+        });
+    });
+    Object.values(jobToFiles).forEach(arr => { if (arr.length > 1) conflittiCount++; });
+
+    report.innerHTML = `
+        <div>📁 File caricati: <b>${caricati} / ${mergeExpectedCount}</b></div>
+        <div>📊 Job totali unici: <b>${allJobIds.size}</b></div>
+        <div>⚠️ Conflitti rilevati: <b class="${conflittiCount > 0 ? 'text-amber-600' : 'text-slate-500'}">${conflittiCount}</b></div>
+        <div>${headersOk ? '<span class="text-emerald-600">✅ Intestazioni coerenti</span>' : '<span class="text-red-600">❌ Intestazioni diverse tra i file!</span>'}</div>
+        <div>${caricati === mergeExpectedCount && headersOk ? '<span class="text-emerald-600 font-bold">✅ Pronto per il merge</span>' : '<span class="text-slate-400">⏳ In attesa...</span>'}</div>
+    `;
+
+    btn.disabled = !(caricati === mergeExpectedCount && headersOk);
+}
+
+async function esportaMerge() {
+    const files = mergeFiles.filter(f => f);
+    if (files.length === 0) return;
+
+    const firstHeaders = files[0].headers;
+    const idxJob = firstHeaders.findIndex(h => h === 'Job');
+    const idxCosto = firstHeaders.findIndex(h => h === 'COSTO');
+    const idxNote = firstHeaders.findIndex(h => h === 'NOTE');
+
+    // Raccogli Job → lista di righe candidate
+    const jobCandidates = new Map();
+    files.forEach((f, fi) => {
+        f.rows.forEach(row => {
+            const jid = row[idxJob];
+            if (!jid) return;
+            if (!jobCandidates.has(jid)) jobCandidates.set(jid, []);
+            jobCandidates.get(jid).push({ file: f.fileName, row });
+        });
+    });
+
+    // Conflitti
+    const conflitti = [...jobCandidates.entries()].filter(([jid, arr]) => arr.length > 1);
+
+    if (conflitti.length > 0) {
+        const scelte = await risolviConflitti(conflitti);
+        if (!scelte) { notifica('Merge annullato', 'warning'); return; }
+        scelte.forEach(({ jid, scelta }) => { jobCandidates.set(jid, [scelta]); });
+    }
+
+    // Genera file finale (ordine dal primo file)
+    const out = [firstHeaders];
+    const processedJobs = new Set();
+    files[0].rows.forEach(row => {
+        const jid = row[idxJob];
+        if (!jid) return;
+        if (processedJobs.has(jid)) return;
+        processedJobs.add(jid);
+        const arr = jobCandidates.get(jid);
+        if (!arr) return;
+        const chosen = arr[0].row;
+        const newRow = [...row];
+        newRow[idxCosto] = chosen[idxCosto] || 0;
+        newRow[idxNote] = chosen[idxNote] || '';
+        out.push(newRow);
+    });
+
+    // Aggiungi Job che sono solo negli altri file (rari ma possibili)
+    files.slice(1).forEach(f => {
+        f.rows.forEach(row => {
+            const jid = row[idxJob];
+            if (!jid || processedJobs.has(jid)) return;
+            processedJobs.add(jid);
+            const arr = jobCandidates.get(jid);
+            if (!arr) return;
+            const chosen = arr[0].row;
+            const newRow = [...row];
+            newRow[idxCosto] = chosen[idxCosto] || 0;
+            newRow[idxNote] = chosen[idxNote] || '';
+            out.push(newRow);
+        });
+    });
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(out), 'Merge');
+    XLSX.writeFile(wb, `merge_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    notifica(`Merge completato: ${out.length - 1} righe`, 'success');
+}
+
+function risolviConflitti(conflitti) {
+    return new Promise(resolve => {
+        const modal = document.getElementById('merge-conflict-modal');
+        const title = document.getElementById('merge-conflict-title');
+        const msg = document.getElementById('merge-conflict-message');
+        const options = document.getElementById('merge-conflict-options');
+        let current = 0;
+        const scelte = [];
+
+        function mostraCorrente() {
+            if (current >= conflitti.length) {
+                modal.classList.add('hidden');
+                resolve(scelte);
+                return;
+            }
+            const [jid, arr] = conflitti[current];
+            title.textContent = `Job ${jid} (${current + 1}/${conflitti.length})`;
+            msg.textContent = `Il Job appare in ${arr.length} file. Quale versione tenere?`;
+            options.innerHTML = arr.map((item, i) => `
+                <button onclick="mergeConflictChoice(${i})" class="w-full text-left p-3 bg-white hover:bg-blue-50 border border-slate-200 rounded-lg transition">
+                    <div class="font-bold text-sm text-slate-800">${item.file}</div>
+                    <div class="text-xs text-slate-500 mt-1">COSTO: ${item.row[23] || '—'} · NOTE: ${item.row[24] || '—'}</div>
+                </button>
+            `).join('');
+            modal.classList.remove('hidden');
+        }
+
+        window.mergeConflictChoice = (idx) => {
+            if (idx === null) { resolve(null); return; }
+            const [jid, arr] = conflitti[current];
+            scelte.push({ jid, scelta: arr[idx] });
+            current++;
+            mostraCorrente();
+        };
+
+        mostraCorrente();
+    });
+}
+
+function resetMerge() {
+    mergeFiles = [];
+    mergeExpectedCount = 0;
+    document.getElementById('merge-num-files').value = 2;
+    document.getElementById('merge-uploaders-container').classList.add('hidden');
+    document.getElementById('merge-uploaders-list').innerHTML = '';
+    document.getElementById('merge-report').innerHTML = '<div>In attesa di caricamento...</div>';
+    document.getElementById('merge-export-btn').disabled = true;
+}
+
+// ============================================
+// UTILITY
+// ============================================
+function scaricaBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, 1000);
+}
+</script>
+
+</body>
+</html>
