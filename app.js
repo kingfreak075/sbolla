@@ -194,10 +194,6 @@ function roundTo5(n) {
     return Math.round(v / 5) * 5;
 }
 
-/**
- * Estrae gli indici originali dell'input "slider" dal dataset dell'HTML
- * (usato dai listener dinamici).
- */
 function isJobMulti(group) {
     return group && group.rows && group.rows.length > 1;
 }
@@ -217,12 +213,12 @@ function saveState() {
     if (_saveStateTimer) clearTimeout(_saveStateTimer);
     _saveStateTimer = setTimeout(() => {
         try {
-          const state = {
-    _v: SCHEMA_VERSION,
-    venditore: appData.venditore,
-    promemoria: appData.promemoria,
-    timestamp: new Date().toISOString()
-};
+            const state = {
+                _v: SCHEMA_VERSION,
+                venditore: appData.venditore,
+                promemoria: appData.promemoria,
+                timestamp: new Date().toISOString()
+            };
             localStorage.setItem(storageKey(), JSON.stringify(state));
         } catch (e) {
             console.error("❌ Errore salvataggio:", e);
@@ -240,6 +236,7 @@ function saveStateNow() {
         const state = {
             _v: SCHEMA_VERSION,
             venditore: appData.venditore,
+            promemoria: appData.promemoria,
             timestamp: new Date().toISOString()
         };
         localStorage.setItem(storageKey(), JSON.stringify(state));
@@ -262,13 +259,14 @@ function loadState() {
             return false;
         }
 
-       if (state.venditore) {
-    appData.venditore = state.venditore;
-}
-if (state.promemoria) {
-    appData.promemoria = state.promemoria;
-}
-return !!(state.venditore);
+        if (state.venditore) {
+            appData.venditore = state.venditore;
+        }
+        if (state.promemoria) {
+            appData.promemoria = state.promemoria;
+        }
+        return !!(state.venditore);
+
     } catch (e) {
         console.error("❌ Errore caricamento stato:", e);
     }
@@ -488,9 +486,9 @@ async function loadExcelIA(file) {
         appData.aoa = aoa;
         appData.headers = headers;
         appData.columnIndex = columnIndex;
-       appData.dataStartRow = 1;
-appData.venditore = {};
-appData.promemoria = {};
+        appData.dataStartRow = 1;
+        appData.venditore = {};
+        appData.promemoria = {};
 
         const hadState = loadState();
         if (hadState) {
@@ -825,7 +823,7 @@ function buildRow(group) {
     const totaleVend = mod ? sommaRigheJob(group.jobId) : 0;
     const isMulti = group.rows.length > 1;
     const incoerente = isMulti && mod && !jobCoerente(group.jobId);
-    const isConfermato = mod && mod.stato === STATI.CONFERMATO;
+    const isPromemoria = !!appData.promemoria[group.jobId];
 
     const wp = r[COLS.WORK_PERFORMED] || '';
     let wpClass = 'text-slate-500';
@@ -844,9 +842,8 @@ function buildRow(group) {
     }
 
     const stato = mod?.stato || STATI.DA_RIVEDERE;
-const isModified = stato === STATI.MODIFICATO;
-const isAzzerato = stato === STATI.AZZERATO;
-const isPromemoria = !!appData.promemoria[group.jobId];
+    const isModified = stato === STATI.MODIFICATO;
+    const isAzzerato = stato === STATI.AZZERATO;
     const inputClass = isModified ? 'modified' : (isAzzerato ? 'azzera' : '');
 
     tr.className = `${rowClass} border-b border-slate-200 transition-colors`;
@@ -896,8 +893,8 @@ const isPromemoria = !!appData.promemoria[group.jobId];
                     class="text-slate-400 hover:text-red-600 hover:bg-red-50 px-1 py-0.5 rounded transition text-xs font-bold flex-shrink-0"
                     title="Azzera totale Job">0️⃣</button>
                 <button onclick="togglePromemoria('${group.jobId}')" 
-    class="px-1 py-0.5 rounded transition text-xs font-bold flex-shrink-0 ${isPromemoria ? 'text-emerald-600 bg-emerald-50 border border-emerald-300' : 'text-slate-300 hover:text-emerald-600 hover:bg-emerald-50'}"
-    title="${isPromemoria ? 'Rimuovi promemoria' : 'Aggiungi promemoria'}">✓</button>
+                    class="px-1 py-0.5 rounded transition text-xs font-bold flex-shrink-0 ${isPromemoria ? 'text-emerald-600 bg-emerald-50 border border-emerald-300' : 'text-slate-300 hover:text-emerald-600 hover:bg-emerald-50'}"
+                    title="${isPromemoria ? 'Rimuovi promemoria' : 'Aggiungi promemoria'}">✓</button>
                 <input type="number"
                     class="price-input ${inputClass}"
                     value="${totaleVend}"
@@ -1026,7 +1023,21 @@ function salvaCostoRiga(jobId, originalIndex, valore) {
 
     const modal = document.getElementById('info-modal');
     if (modal && !modal.classList.contains('hidden') && modal.dataset.currentJobId === jobId) {
-        openInfo(jobId, { preserveScroll: true });
+        // Aggiorna input delle righe
+        group.rows.forEach(r => {
+            const input = document.querySelector(`#info-modal input[data-row-price="${r._id}"]`);
+            if (input) input.value = mod.rowPrices[r._id] || 0;
+        });
+        // Aggiorna KPI
+        const totIA = group.iaRows.reduce((a, b) => a + (b || 0), 0);
+        const kpiVend = document.getElementById('sdv-tot-vend');
+        const kpiDiff = document.getElementById('sdv-diff');
+        if (kpiVend) kpiVend.textContent = formatEuro(mod.totaleJob);
+        if (kpiDiff) {
+            const d = mod.totaleJob - totIA;
+            kpiDiff.textContent = (d >= 0 ? '+' : '') + formatEuro(d);
+            kpiDiff.className = `text-2xl font-bold font-mono ${d > 0 ? 'text-red-600' : d < 0 ? 'text-emerald-600' : 'text-slate-500'}`;
+        }
     }
 }
 
@@ -1052,10 +1063,6 @@ function azzeraCostoJob(jobId) {
     }
 }
 
-/**
- * MODIFICA 1 (parte 2): Ripristina IA per un Job.
- * Riporta tutte le righe al valore IA di ciascuna.
- */
 function ripristinaIAJob(jobId) {
     const group = appData.jobGroups[jobId];
     const mod = appData.venditore[jobId];
@@ -1083,12 +1090,6 @@ function ripristinaIAJob(jobId) {
     mostraNotifica(`↺ Ripristinato IA per Job ${jobId}`, 'info');
 }
 
-/**
- * MODIFICA 7: Conferma il prezzo attuale del Job senza toccare nulla.
- */
-/**
- * MODIFICA 10: promemoria toggle (non tocca lo stato economico).
- */
 function togglePromemoria(jobId) {
     if (appData.promemoria[jobId]) {
         delete appData.promemoria[jobId];
@@ -1106,9 +1107,6 @@ function salvaNota(jobId, testo) {
     saveState();
 }
 
-/**
- * MODIFICA 5: Azzera tutti i Job visibili (rispetta i filtri).
- */
 function azzeraTuttiVisibili() {
     const jobIds = appData.displayList.map(g => g.jobId);
     if (jobIds.length === 0) {
@@ -1137,23 +1135,9 @@ function azzeraTuttiVisibili() {
     saveStateNow();
     updateHeaderStats();
     renderTable();
-    mostraNotifica(`🗑️ ${azzerati} Job azzerati`, 'success');
+    mostraNotifica(`🗑️ ${azzzerati} Job azzerati`, 'success');
 }
 
-/**
- * MODIFICA 3: Applica lo slider percentuale (-50% .. +50%).
- * Riproporziona sulle righe correnti. Righe a 0 restano a 0.
- * Arrotondamento al multiplo di 5 più vicino.
- */
-/**
- * MODIFICA 13: Applica lo slider percentuale (-50% .. +50%).
- * - A: la variazione si applica sempre rispetto al TOTALE IA originale
- * - B2: il cursore NON si resetta (resta dove l'utente l'ha lasciato)
- * - C1: applicazione solo al rilascio (il drag è anteprima)
- * - Opzione B: aggiorna anche gli input delle singole righe
- * - Riproporziona sulle righe correnti. Righe a 0 restano a 0.
- * - Arrotondamento al multiplo di 5 più vicino.
- */
 function applicaSliderJob(jobId, percentuale) {
     const group = appData.jobGroups[jobId];
     const mod = appData.venditore[jobId];
@@ -1162,12 +1146,9 @@ function applicaSliderJob(jobId, percentuale) {
     const totIA = group.iaRows.reduce((a, b) => a + (b || 0), 0);
     if (totIA === 0) return;
 
-    // Percentuale -50..+50
     const pct = Math.max(-50, Math.min(50, Number(percentuale) || 0));
-    // A: variazione SEMPRE rispetto a IA originale
     const nuovoTotaleRaw = totIA * (1 + pct / 100);
 
-    // Se pct = 0 → valore IA esatto, NON arrotondato
     let nuovoTotale;
     if (pct === 0) {
         nuovoTotale = totIA;
@@ -1176,15 +1157,12 @@ function applicaSliderJob(jobId, percentuale) {
     }
     nuovoTotale = Math.max(0, nuovoTotale);
 
-    // Riproporziona sulle righe correnti (righe a 0 restano a 0)
     const totaleAttuale = sommaRigheJob(jobId);
 
     if (totaleAttuale === 0) {
-        // Nessuna riga valorizzata → tutto sulla riga principale
         const mainIdx = mod.mainRowIndex != null ? mod.mainRowIndex : group.rows[0]._id;
         group.rows.forEach(r => { mod.rowPrices[r._id] = (r._id === mainIdx) ? nuovoTotale : 0; });
     } else {
-        // Riproporziona
         const righeConValore = group.rows.filter(r => (mod.rowPrices[r._id] || 0) > 0);
         let somma = 0;
         righeConValore.forEach(r => {
@@ -1192,13 +1170,11 @@ function applicaSliderJob(jobId, percentuale) {
             mod.rowPrices[r._id] = q;
             somma += q;
         });
-        // Aggiusta il resto sull'ultima riga non-zero
         const resto = nuovoTotale - somma;
         if (resto !== 0 && righeConValore.length > 0) {
             const ultima = righeConValore[righeConValore.length - 1];
             mod.rowPrices[ultima._id] = (mod.rowPrices[ultima._id] || 0) + resto;
         }
-        // Righe a 0 restano a 0
         group.rows.forEach(r => {
             if (!righeConValore.includes(r)) mod.rowPrices[r._id] = 0;
         });
@@ -1212,15 +1188,12 @@ function applicaSliderJob(jobId, percentuale) {
     updateHeaderStats();
     aggiornaRiga(jobId);
 
-    // Opzione B: aggiorna gli input delle righe nella Scheda Tecnica
     const modal = document.getElementById('info-modal');
     if (modal && !modal.classList.contains('hidden') && modal.dataset.currentJobId === jobId) {
-        // Aggiorna input delle righe
         group.rows.forEach(r => {
             const input = document.querySelector(`#info-modal input[data-row-price="${r._id}"]`);
             if (input) input.value = mod.rowPrices[r._id] || 0;
         });
-        // Aggiorna KPI
         const kpiVend = document.getElementById('sdv-tot-vend');
         const kpiDiff = document.getElementById('sdv-diff');
         if (kpiVend) kpiVend.textContent = formatEuro(mod.totaleJob);
@@ -1229,7 +1202,6 @@ function applicaSliderJob(jobId, percentuale) {
             kpiDiff.textContent = (d >= 0 ? '+' : '') + formatEuro(d);
             kpiDiff.className = `text-2xl font-bold font-mono ${d > 0 ? 'text-red-600' : d < 0 ? 'text-emerald-600' : 'text-slate-500'}`;
         }
-        // Aggiorna label preview dello slider
         const previewEl = document.getElementById('sdv-slider-preview');
         if (previewEl) previewEl.textContent = formatEuro(mod.totaleJob);
     }
@@ -1241,8 +1213,6 @@ function setMainRow(jobId, originalIndex) {
     mod.mainRowIndex = originalIndex;
     saveState();
 }
-
-// ── Wrapper retrocompatibili ──
 
 function salvaCosto(jobId, valore) {
     salvaCostoTotale(jobId, valore);
@@ -1586,12 +1556,9 @@ function openInfo(jobId, opts = {}) {
                 salvaNota(jobId, e.target.value);
             });
         }
-        // Listener slider (Modifica 3)
         const slider = document.getElementById('sdv-slider');
         if (slider) {
-            let _sliderLive = null;
             slider.addEventListener('input', (e) => {
-                // Preview live del valore senza scrivere nel modello
                 const pct = Number(e.target.value);
                 const totIA = group.iaRows.reduce((a, b) => a + (b || 0), 0);
                 const raw = totIA * (1 + pct / 100);
@@ -1601,12 +1568,11 @@ function openInfo(jobId, opts = {}) {
                 if (label) label.textContent = `${pct > 0 ? '+' : ''}${pct}%`;
                 if (previewEl) previewEl.textContent = formatEuro(Math.max(0, preview));
             });
-     slider.addEventListener('change', (e) => {
-    // Al rilascio: applica al modello. B2: il cursore resta dove l'utente l'ha lasciato.
-    applicaSliderJob(jobId, Number(e.target.value));
-    const label = document.getElementById('sdv-slider-label');
-    if (label) label.textContent = `${Number(e.target.value) > 0 ? '+' : ''}${Number(e.target.value)}%`;
-});
+            slider.addEventListener('change', (e) => {
+                applicaSliderJob(jobId, Number(e.target.value));
+                const label = document.getElementById('sdv-slider-label');
+                if (label) label.textContent = `${Number(e.target.value) > 0 ? '+' : ''}${Number(e.target.value)}%`;
+            });
         }
     }, 10);
 }
@@ -1870,11 +1836,6 @@ function renderSezioneTimeline(impianto) {
     `;
 }
 
-/**
- * Sezione Decisione Job-aware.
- * Modifiche incluse: 1 (pulsanti riga), 2 (input editabile Job singolo),
- *                    3 (slider), 8 (KPI coerenti).
- */
 function renderSezioneDecisioneJob(jobId, group, mod, ia) {
     const totIA = group.iaRows.reduce((a, b) => a + (b || 0), 0);
     const totVend = sommaRigheJob(jobId);
@@ -1890,7 +1851,6 @@ function renderSezioneDecisioneJob(jobId, group, mod, ia) {
         [STATI.DA_RIVEDERE]: '<span class="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-1 rounded uppercase">⏳ Da rivedere</span>'
     };
 
-    // --- SLIDER (Modifica 3) ---
     const sliderBlock = isMulti ? `
         <div class="bg-slate-50 rounded-lg p-4 border border-slate-200">
             <div class="flex justify-between items-center mb-3">
@@ -1913,32 +1873,30 @@ function renderSezioneDecisioneJob(jobId, group, mod, ia) {
         </div>
     ` : '';
 
-    // --- INPUT EDITABILE (Modifica 2 - Job singolo) ---
-   // --- INPUT EDITABILE (Modifica 2 - Job singolo) ---
-const singleRowBlock = !isMulti ? (() => {
-    const onlyRow = group.rows[0];
-    const onlyRowIdx = onlyRow._id;
-    const onlyVend = mod.rowPrices[onlyRowIdx] != null ? mod.rowPrices[onlyRowIdx] : 0;
-    return `
-        <div class="bg-blue-50 rounded-lg p-4 border-2 border-blue-200">
-            <div class="flex justify-between items-center gap-4">
-                <div class="flex-1">
-                    <div class="text-[10px] font-bold text-blue-600 uppercase mb-1">Modifica prezzo</div>
-                    <div class="text-xs text-slate-500">Job con una sola lavorazione. Scrivi il prezzo direttamente.</div>
+    const singleRowBlock = !isMulti ? (() => {
+        const onlyRow = group.rows[0];
+        const onlyRowIdx = onlyRow._id;
+        const onlyVend = mod.rowPrices[onlyRowIdx] != null ? mod.rowPrices[onlyRowIdx] : 0;
+        return `
+            <div class="bg-blue-50 rounded-lg p-4 border-2 border-blue-200">
+                <div class="flex justify-between items-center gap-4">
+                    <div class="flex-1">
+                        <div class="text-[10px] font-bold text-blue-600 uppercase mb-1">Modifica prezzo</div>
+                        <div class="text-xs text-slate-500">Job con una sola lavorazione. Scrivi il prezzo direttamente.</div>
+                    </div>
+                    <input type="number"
+                        data-row-price="${onlyRowIdx}"
+                        class="price-input"
+                        style="width: 110px; text-align: right;"
+                        value="${onlyVend}"
+                        step="1"
+                        min="0"
+                        onchange="salvaCostoRiga('${jobId}', ${onlyRowIdx}, this.value)">
                 </div>
-                <input type="number"
-                    class="price-input"
-                    style="width: 110px; text-align: right;"
-                    value="${onlyVend}"
-                    step="1"
-                    min="0"
-                    onchange="salvaCostoRiga('${jobId}', ${onlyRowIdx}, this.value)">
             </div>
-        </div>
-    `;
-})() : '';
+        `;
+    })() : '';
 
-    // --- TABELLA RIGHE (solo multi) con pulsanti 0️⃣ e radio principale ---
     const rowsHtml = group.rows.map((r, idx) => {
         const rowIdx = r._id;
         const iaRow = r._ia.prezzoConsigliato || 0;
@@ -1976,6 +1934,7 @@ const singleRowBlock = !isMulti ? (() => {
                             class="bg-blue-100 hover:bg-blue-200 text-blue-700 border border-blue-300 px-2 py-1 rounded font-bold text-xs transition"
                             title="Azzera questa riga">0️⃣</button>
                         <input type="number"
+                            data-row-price="${rowIdx}"
                             class="price-input"
                             style="width: 110px; text-align: right;"
                             value="${vendRow}"
@@ -2021,7 +1980,6 @@ const singleRowBlock = !isMulti ? (() => {
                 ${statoBadge[mod.stato] || ''}
             </div>
             <div class="p-5 bg-white">
-                <!-- KPI Job -->
                 <div class="grid grid-cols-4 gap-4 mb-5">
                     <div class="bg-blue-50 rounded-lg p-3 border border-blue-200">
                         <div class="text-[10px] font-bold text-blue-600 uppercase">Totale IA Job</div>
@@ -2049,16 +2007,10 @@ const singleRowBlock = !isMulti ? (() => {
                     </div>
                 ` : ''}
 
-                <!-- Modifica 2: input editabile Job singolo -->
                 ${singleRowBlock}
-
-                <!-- Modifica 3: slider -->
                 ${sliderBlock}
-
-                <!-- Tabella righe (solo multi) -->
                 ${tableBlock}
 
-                <!-- Nota Job + Ripristina IA + Azzera tutto -->
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
                     <div class="md:col-span-1">
                         <label class="block text-xs font-bold text-slate-500 uppercase mb-2">Note per l'inserimento dati (una per Job)</label>
@@ -2428,7 +2380,6 @@ function caricaRicercheSalvate() {
 }
 
 function salvaRicercaCorrente() {
-    // MODIFICA 6: rimuovo mostraStorico
     const filtro = {
         testo: document.getElementById('searchBox').value.trim(),
         venditore: document.getElementById('filter-venditore').value,
@@ -2495,7 +2446,6 @@ function applicaRicerca(filtro) {
     document.getElementById('filter-credito').value = filtro.credito || 'ALL';
     document.getElementById('filter-indicazione').value = filtro.indicazione || 'ALL';
     document.getElementById('filter-stato').value = filtro.stato || 'ALL';
-    // MODIFICA 6: mostraStorico non più gestito
     applyFilters();
     mostraNotifica(`🔍 Filtro applicato: "${filtro.nome}"`, 'info');
 }
@@ -2605,14 +2555,14 @@ function ricaricaStorico() {
 
 function downloadSession() {
     if (!appData.fileName) { alert('Nessun file caricato'); return; }
-  const sessionData = {
-    _v: SCHEMA_VERSION,
-    version: 'v5',
-    fileName: appData.fileName,
-    timestamp: new Date().toISOString(),
-    venditore: appData.venditore,
-    promemoria: appData.promemoria
-};
+    const sessionData = {
+        _v: SCHEMA_VERSION,
+        version: 'v5',
+        fileName: appData.fileName,
+        timestamp: new Date().toISOString(),
+        venditore: appData.venditore,
+        promemoria: appData.promemoria
+    };
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(sessionData, null, 2));
     const link = document.createElement('a');
     link.href = dataStr;
@@ -2627,15 +2577,15 @@ function loadSessionFile(input) {
     reader.onload = function (e) {
         try {
             const data = JSON.parse(e.target.result);
-           if (data.venditore) {
-    const migrato = migraVenditoreSeNecessario(data.venditore, data._v || data.version);
-    appData.venditore = migrato;
-    appData.promemoria = data.promemoria || {};
-    saveState();
-    renderTable();
-    updateHeaderStats();
-    mostraNotifica(`📂 ${Object.keys(migrato).length} job ripristinati`, 'success');
-}
+            if (data.venditore) {
+                const migrato = migraVenditoreSeNecessario(data.venditore, data._v || data.version);
+                appData.venditore = migrato;
+                appData.promemoria = data.promemoria || {};
+                saveState();
+                renderTable();
+                updateHeaderStats();
+                mostraNotifica(`📂 ${Object.keys(migrato).length} job ripristinati`, 'success');
+            }
         } catch (err) {
             console.error(err);
             alert('Errore caricamento sessione: ' + err.message);
@@ -2797,7 +2747,6 @@ window.applyFilters = applyFilters;
 window.applySorting = applySorting;
 window.resetFilters = resetFilters;
 
-// Editing v5 job-aware
 window.salvaCostoRiga = salvaCostoRiga;
 window.azzeraCostoRiga = azzeraCostoRiga;
 window.azzeraCostoJob = azzeraCostoJob;
@@ -2813,11 +2762,9 @@ window.isJobIncoerente = isJobIncoerente;
 window.ripristinaIAJob = ripristinaIAJob;
 window.togglePromemoria = togglePromemoria;
 
-// Wrapper retrocompatibili
 window.salvaCosto = salvaCosto;
 window.azzeraCosto = azzeraCosto;
 
-// Redistribuzione
 window.apriRedistribuzione = apriRedistribuzione;
 window.chiudiRedistribuzione = chiudiRedistribuzione;
 window.eseguiAzioneRedistribuzione = eseguiAzioneRedistribuzione;
@@ -2858,7 +2805,6 @@ window.badgeConfidenza = badgeConfidenza;
 window.badgeFatturabilita = badgeFatturabilita;
 window.migraVenditoreSeNecessario = migraVenditoreSeNecessario;
 
-// Salvataggio prima di chiusura
 window.addEventListener('beforeunload', () => {
     saveStateNow();
 });
