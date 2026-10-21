@@ -1047,16 +1047,24 @@ function aggiornaReportMerge() {
     // Job unici
     const allJobIds = new Set();
     const jobPerFile = {};
-    mergeFiles.forEach((f, i) => {
-        if (!f) return;
-        const idxJob = f.headers.findIndex(h => h === 'Job');
-        jobPerFile[i] = new Set();
-        f.rows.forEach(r => {
-            const jid = r[idxJob];
-            if (jid) { allJobIds.add(jid); jobPerFile[i].add(jid); }
-        });
-    });
+mergeFiles.forEach((f, i) => {
+    if (!f) return;
 
+    const idxJobTask = f.headers.findIndex(
+        h => h === '(Non modificare) JobTask'
+    );
+
+    jobPerFile[i] = new Set();
+
+    f.rows.forEach(r => {
+        const jid = r[idxJobTask];
+
+        if (jid) {
+            allJobIds.add(jid);
+            jobPerFile[i].add(jid);
+        }
+    });
+});
     // Conflitti
     let conflittiCount = 0;
     const jobToFiles = {};
@@ -1085,7 +1093,7 @@ async function esportaMerge() {
     if (files.length === 0) return;
 
     const firstHeaders = files[0].headers;
-    const idxJob = firstHeaders.findIndex(h => h === 'Job');
+    const idxJob = firstHeaders.findIndex(h => h === '(Non modificare) JobTask');
     const idxCosto = firstHeaders.findIndex(h => h === 'COSTO');
     const idxNote = firstHeaders.findIndex(h => h === 'NOTE');
 
@@ -1093,7 +1101,7 @@ async function esportaMerge() {
     const jobCandidates = new Map();
     files.forEach((f, fi) => {
         f.rows.forEach(row => {
-            const jid = row[idxJob];
+            const jid = row[idxJobTask];
             if (!jid) return;
             if (!jobCandidates.has(jid)) jobCandidates.set(jid, []);
             jobCandidates.get(jid).push({ file: f.fileName, row });
@@ -1112,12 +1120,15 @@ async function esportaMerge() {
     // Genera file finale (ordine dal primo file)
     const out = [firstHeaders];
     const processedJobs = new Set();
-    files[0].rows.forEach(row => {
-        const jid = row[idxJob];
-        if (!jid) return;
-        if (processedJobs.has(jid)) return;
-        processedJobs.add(jid);
-        const arr = jobCandidates.get(jid);
+files[0].rows.forEach(row => {
+
+    const jid = row[idxJobTask];
+
+    if (!jid) return;
+
+    if (processedJobs.has(jid)) return;
+
+    processedJobs.add(jid);
         if (!arr) return;
         const chosen = arr[0].row;
         const newRow = [...row];
@@ -1128,8 +1139,10 @@ async function esportaMerge() {
 
     // Aggiungi Job che sono solo negli altri file (rari ma possibili)
     files.slice(1).forEach(f => {
-        f.rows.forEach(row => {
-            const jid = row[idxJob];
+
+    f.rows.forEach(row => {
+
+        const jid = row[idxJobTask];
             if (!jid || processedJobs.has(jid)) return;
             processedJobs.add(jid);
             const arr = jobCandidates.get(jid);
@@ -1164,7 +1177,8 @@ function risolviConflitti(conflitti) {
                 return;
             }
             const [jid, arr] = conflitti[current];
-            title.textContent = `Job ${jid} (${current + 1}/${conflitti.length})`;
+            title.textContent =
+    `JobTask ${jid} (${current + 1}/${conflitti.length})`;
             msg.textContent = `Il Job appare in ${arr.length} file. Quale versione tenere?`;
             options.innerHTML = arr.map((item, i) => `
                 <button onclick="mergeConflictChoice(${i})" class="w-full text-left p-3 bg-white hover:bg-blue-50 border border-slate-200 rounded-lg transition">
