@@ -1093,7 +1093,9 @@ async function esportaMerge() {
     if (files.length === 0) return;
 
     const firstHeaders = files[0].headers;
-    const idxJob = firstHeaders.findIndex(h => h === '(Non modificare) JobTask');
+    const idxJobTask = firstHeaders.findIndex(
+    h => h === '(Non modificare) JobTask'
+);
     const idxCosto = firstHeaders.findIndex(h => h === 'COSTO');
     const idxNote = firstHeaders.findIndex(h => h === 'NOTE');
 
@@ -1145,7 +1147,29 @@ files[0].rows.forEach(row => {
         const jid = row[idxJobTask];
             if (!jid || processedJobs.has(jid)) return;
             processedJobs.add(jid);
-            const arr = jobCandidates.get(jid);
+           files[0].rows.forEach(row => {
+
+    const jid = row[idxJobTask];
+
+    if (!jid) return;
+
+    if (processedJobs.has(jid)) return;
+
+    processedJobs.add(jid);
+
+    const arr = jobCandidates.get(jid);
+
+    if (!arr) return;
+
+    const chosen = arr[0].row;
+
+    const newRow = [...row];
+
+    newRow[idxCosto] = chosen[idxCosto] || 0;
+    newRow[idxNote] = chosen[idxNote] || '';
+
+    out.push(newRow);
+});
             if (!arr) return;
             const chosen = arr[0].row;
             const newRow = [...row];
