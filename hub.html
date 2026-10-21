@@ -1131,31 +1131,6 @@ files[0].rows.forEach(row => {
     if (processedJobs.has(jid)) return;
 
     processedJobs.add(jid);
-        if (!arr) return;
-        const chosen = arr[0].row;
-        const newRow = [...row];
-        newRow[idxCosto] = chosen[idxCosto] || 0;
-        newRow[idxNote] = chosen[idxNote] || '';
-        out.push(newRow);
-    });
-
-    // Aggiungi Job che sono solo negli altri file (rari ma possibili)
-    files.slice(1).forEach(f => {
-
-    f.rows.forEach(row => {
-
-        const jid = row[idxJobTask];
-            if (!jid || processedJobs.has(jid)) return;
-            processedJobs.add(jid);
-           files[0].rows.forEach(row => {
-
-    const jid = row[idxJobTask];
-
-    if (!jid) return;
-
-    if (processedJobs.has(jid)) return;
-
-    processedJobs.add(jid);
 
     const arr = jobCandidates.get(jid);
 
@@ -1169,7 +1144,18 @@ files[0].rows.forEach(row => {
     newRow[idxNote] = chosen[idxNote] || '';
 
     out.push(newRow);
+
 });
+
+    // Aggiungi Job che sono solo negli altri file (rari ma possibili)
+    files.slice(1).forEach(f => {
+
+    f.rows.forEach(row => {
+
+        const jid = row[idxJobTask];
+            if (!jid || processedJobs.has(jid)) return;
+            processedJobs.add(jid);
+            const arr = jobCandidates.get(jid);
             if (!arr) return;
             const chosen = arr[0].row;
             const newRow = [...row];
