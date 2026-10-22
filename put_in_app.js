@@ -1094,13 +1094,17 @@ function openQuickPanel() {
             color: #4a6280; text-align: center; padding-top: 8px;
         }
 
-.info-row.big .value {
-    font-size: 3rem; /* Aumenta il font (es. 2.4rem o 3rem per il triplo) */
+/* Mantiene il costo verde e con la sua dimensione normale */
+.info-row.big .value.cost {
+    color: #5ce0a8; 
+    font-size: 1.2rem; /* Riporta il costo a una dimensione normale */
+}
+
+/* Rende SOLO la data grande il doppio */
+.info-row.big .value.date-big {
+    font-size: 2rem; /* Il doppio rispetto al normale */
     font-weight: 700;
     line-height: 1.1;
-}
-.info-row.big .value.cost {
-    color: #5ce0a8; /* Mantiene il costo verde anche se grande */
 }
 
 
