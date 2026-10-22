@@ -1099,10 +1099,10 @@ function openQuickPanel() {
     const popupHTML = `
         <div class="panel-title">
             🪟 KAPPA QUICK PANEL
-            <span>v1.3</span>
+            <span>v1.4</span>
         </div>
         <div class="info-row"><span class="label">Job</span><span class="value" id="panelJobValue">—</span></div>
-        <div class="info-row">
+        
  <div class="info-row big">
     <span class="label">Data Intervento</span>
     <span class="value" id="panelDataInterventoValue">—</span>
