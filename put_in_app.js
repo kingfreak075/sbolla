@@ -525,7 +525,7 @@ function showJobDetail(index) {
                         <div class="info-value">${j.job}</div>
                     </div>
                     <div class="info-item">
-                        <div class="info-label">Data Intervento</div>
+                        <div class="info-label"></div>
                         <div class="info-value">${formatDate(ft.scheduledDate)}</div>
                     </div>
                     <div class="info-item">
@@ -1109,7 +1109,7 @@ function openQuickPanel() {
 </div>
         <div class="info-row"><span class="label">Impianto</span><span class="value" id="panelImpiantoValue">—</span></div>
         <div class="info-row"><span class="label">Indirizzo</span><span class="value" id="panelIndirizzoValue">—</span></div>
-        <<div class="info-row big">
+        <div class="info-row big">
     <span class="label">Costo</span>
     <span class="value cost" id="panelCostoValue">€ 0,00</span>
 </div>
