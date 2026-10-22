@@ -1093,13 +1093,26 @@ function openQuickPanel() {
             margin-top: auto; font-size: 0.6rem;
             color: #4a6280; text-align: center; padding-top: 8px;
         }
+
+.info-row.big .value {
+    font-size: 3rem; /* Aumenta il font (es. 2.4rem o 3rem per il triplo) */
+    font-weight: 700;
+    line-height: 1.1;
+}
+.info-row.big .value.cost {
+    color: #5ce0a8; /* Mantiene il costo verde anche se grande */
+}
+
+
+
+        
     `;
 
     // ── HTML del popup ──
     const popupHTML = `
         <div class="panel-title">
             🪟 KAPPA QUICK PANEL
-            <span>v1.4</span>
+            <span>v1.5</span>
         </div>
         <div class="info-row"><span class="label">Job</span><span class="value" id="panelJobValue">—</span></div>
         
